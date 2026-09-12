@@ -17,12 +17,23 @@ from core.analysis.power_flow_preparation import PreparedPowerFlow
 from core.analysis.short_circuit import ShortCircuitAnalysis
 from core.analysis.short_circuit_configuration import ShortCircuitStudyConfiguration
 from core.analysis.dynamic_model_association import DynamicMachineModelRegistry
+from core.analysis.transient_event_state import TransientEventState
+from core.analysis.transient_events import (
+    schedule_breaker_close,
+    schedule_breaker_open,
+    schedule_equipment_state,
+    schedule_fault_apply,
+    schedule_fault_clear,
+)
+from core.analysis.transient_fault import TransientFault
 from core.analysis.transient_network import TransientNetworkSolver
+from core.analysis.transient_runtime import TransientNetworkRuntime
 from core.analysis.transient_stability import TransientStabilityAnalysis, TransientStabilityStudyConfiguration
 from core.network import Network
 from core.persistence import ProjectPersistenceService
-from core.solver.dynamics import DAESolver, Integrator, MultiMachineSystem, TransientStabilitySolver
+from core.solver.dynamics import DAESolver, EventManager, Integrator, MultiMachineSystem, TransientStabilitySolver
 from core.solver.power_flow.result import PowerFlowResult
+from core.solver.short_circuit.fault_types import FaultType
 
 from .application import Application
 from .command_handlers import build_model_command_handlers
@@ -127,6 +138,50 @@ def create_application(network: Any) -> Application:
         analysis = ShortCircuitAnalysis.from_prepared(prepared)
         return analysis.run()
 
+    def configure_transient_events(request: StudyRequest, event_manager: EventManager, event_state: TransientEventState) -> None:
+        for event in request.configuration.get("events", ()):
+            kind = str(event["type"]).strip().lower()
+            time = float(event["time"])
+            event_id = str(event["event_id"])
+            if kind == "breaker_open":
+                schedule_breaker_open(
+                    event_manager,
+                    event_state,
+                    time,
+                    str(event["breaker_id"]),
+                    event_id,
+                    event.get("affected_equipment_ids", ()),
+                )
+            elif kind == "breaker_close":
+                schedule_breaker_close(
+                    event_manager,
+                    event_state,
+                    time,
+                    str(event["breaker_id"]),
+                    event_id,
+                    event.get("affected_equipment_ids", ()),
+                )
+            elif kind == "equipment_state":
+                schedule_equipment_state(
+                    event_manager,
+                    event_state,
+                    time,
+                    str(event["equipment_id"]),
+                    bool(event["conducting"]),
+                    event_id,
+                )
+            elif kind == "fault_apply":
+                fault = TransientFault(
+                    fault_type=FaultType.from_value(event["fault_type"]),
+                    bus_id=str(event["bus_id"]),
+                    impedance=complex(event.get("impedance", 0.0j)),
+                )
+                schedule_fault_apply(event_manager, event_state, time, fault, event_id)
+            elif kind == "fault_clear":
+                schedule_fault_clear(event_manager, event_state, time, event_id)
+            else:
+                raise ValueError(f"Unsupported transient event type: {kind!r}.")
+
     def run_transient_stability(request: StudyRequest, token: StudyCancellationToken) -> Any:
         if token.cancelled:
             return None
@@ -145,10 +200,13 @@ def create_application(network: Any) -> Application:
             return None
 
         machine_system = MultiMachineSystem(prepared.machines)
-        network_solver = TransientNetworkSolver(prepared.network, machine_system)
+        event_state = TransientEventState.from_snapshot(prepared.network)
+        network_runtime = TransientNetworkRuntime(event_state, machine_system)
+        event_manager = EventManager()
+        configure_transient_events(request, event_manager, event_state)
         dae_solver = DAESolver(
             machine_system,
-            network_solver.solve,
+            network_runtime.solve,
             prepared.mechanical_powers,
             integrator=Integrator("RK4"),
         )
@@ -157,6 +215,7 @@ def create_application(network: Any) -> Application:
             start_time=configuration.start_time,
             end_time=configuration.end_time,
             dt=configuration.dt,
+            event_manager=event_manager,
         )
         analysis = TransientStabilityAnalysis(solver, configuration, prepared.initial_state)
         result = analysis.run()
