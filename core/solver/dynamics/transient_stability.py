@@ -138,15 +138,27 @@ class TransientStabilitySolver:
         executions: list[EventExecution] = []
 
         if record_initial:
+            executions.extend(self.event_manager.process(self._time))
             initial = self.dae_solver.evaluate(self._state, self._time)
             self._record(initial, times, states, voltages, powers)
-            executions.extend(self.event_manager.process(self._time))
 
         while self._time < self.end_time - self.event_manager.tolerance:
-            step_dt = min(self.dt, self.end_time - self._time)
             previous_time = self._time
+            next_event_time = self.event_manager.next_event_time(previous_time)
+            target_time = min(previous_time + self.dt, self.end_time)
+            event_boundary = (
+                next_event_time is not None
+                and next_event_time <= target_time + self.event_manager.tolerance
+                and next_event_time <= self.end_time + self.event_manager.tolerance
+            )
+            if event_boundary:
+                target_time = min(float(next_event_time), self.end_time)
+            step_dt = target_time - previous_time
+            if step_dt <= self.event_manager.tolerance:
+                raise TransientStabilityError("Simulation failed to advance toward the next event or end time.")
+
             try:
-                solution = self.dae_solver.step(self._state, self._time, step_dt)
+                solution = self.dae_solver.step(self._state, previous_time, step_dt)
             except Exception as exc:
                 raise TransientStabilityError(
                     f"Transient-stability simulation failed at t={previous_time:.12g} s."
@@ -156,8 +168,12 @@ class TransientStabilitySolver:
                 raise TransientStabilityError("Simulation time failed to advance.")
             self._state = solution.state.copy()
             self._time = float(solution.time)
+
+            if event_boundary and next_event_time is not None and abs(self._time - next_event_time) <= self.event_manager.tolerance:
+                executions.extend(self.event_manager.process_interval(previous_time, self._time))
+                solution = self.dae_solver.evaluate(self._state, self._time)
+
             self._record(solution, times, states, voltages, powers)
-            executions.extend(self.event_manager.process(self._time))
 
         return TransientStabilityResult(
             time=np.asarray(times, dtype=float),
@@ -170,15 +186,25 @@ class TransientStabilitySolver:
     def step(self, dt: float | None = None) -> DAESolution:
         if self._state is None:
             raise TransientStabilityError("Transient-stability solver must be initialized before step().")
-        step_dt = self.dt if dt is None else float(dt)
-        if step_dt <= 0.0:
+        requested_dt = self.dt if dt is None else float(dt)
+        if requested_dt <= 0.0:
             raise ValueError("dt must be greater than zero.")
         if self._time >= self.end_time - self.event_manager.tolerance:
             raise TransientStabilityError("Simulation has reached end_time.")
-        solution = self.dae_solver.step(self._state, self._time, min(step_dt, self.end_time - self._time))
+        previous_time = self._time
+        step_end = min(previous_time + requested_dt, self.end_time)
+        next_event_time = self.event_manager.next_event_time(previous_time)
+        if next_event_time is not None and next_event_time <= step_end + self.event_manager.tolerance:
+            step_end = min(float(next_event_time), self.end_time)
+        step_dt = step_end - previous_time
+        if step_dt <= self.event_manager.tolerance:
+            raise TransientStabilityError("Simulation failed to advance toward the next event or end time.")
+        solution = self.dae_solver.step(self._state, previous_time, step_dt)
         self._state = solution.state.copy()
         self._time = float(solution.time)
-        self.event_manager.process(self._time)
+        if next_event_time is not None and abs(self._time - next_event_time) <= self.event_manager.tolerance:
+            self.event_manager.process_interval(previous_time, self._time)
+            solution = self.dae_solver.evaluate(self._state, self._time)
         return solution
 
     def reset(self) -> None:

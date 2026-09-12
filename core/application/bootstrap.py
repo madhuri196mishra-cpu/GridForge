@@ -13,11 +13,16 @@ from uuid import uuid4
 
 from core.analysis.power_flow import PowerFlowAnalysis
 from core.analysis.power_flow_configuration import PowerFlowStudyConfiguration
+from core.analysis.power_flow_preparation import PreparedPowerFlow
 from core.analysis.short_circuit import ShortCircuitAnalysis
 from core.analysis.short_circuit_configuration import ShortCircuitStudyConfiguration
 from core.analysis.dynamic_model_association import DynamicMachineModelRegistry
+from core.analysis.transient_network import TransientNetworkSolver
+from core.analysis.transient_stability import TransientStabilityAnalysis, TransientStabilityStudyConfiguration
 from core.network import Network
 from core.persistence import ProjectPersistenceService
+from core.solver.dynamics import DAESolver, Integrator, MultiMachineSystem, TransientStabilitySolver
+from core.solver.power_flow.result import PowerFlowResult
 
 from .application import Application
 from .command_handlers import build_model_command_handlers
@@ -76,9 +81,6 @@ def create_application(network: Any) -> Application:
         dynamic_models.replace(())
         return Network()
 
-    # Keep the project-scoped association store outside Network topology. The
-    # composition root owns persistence wiring; the solver receives detached
-    # dynamic definitions and the electrical Network remains authoritative.
     application.dynamic_models = dynamic_models
 
     lifecycle = ProjectLifecycleService(
@@ -94,7 +96,6 @@ def create_application(network: Any) -> Application:
     study_preparation = StudyPreparationService(lambda: lifecycle.network)
 
     def study_configuration(request: StudyRequest, expected_type: type[Any]) -> Any:
-        """Extract one immutable Core study configuration from the request."""
         configuration = request.configuration.get("configuration", request.configuration)
         if not isinstance(configuration, expected_type):
             raise TypeError(
@@ -126,8 +127,46 @@ def create_application(network: Any) -> Application:
         analysis = ShortCircuitAnalysis.from_prepared(prepared)
         return analysis.run()
 
+    def run_transient_stability(request: StudyRequest, token: StudyCancellationToken) -> Any:
+        if token.cancelled:
+            return None
+        configuration = study_configuration(request, TransientStabilityStudyConfiguration)
+        prepared_power_flow = request.configuration.get("prepared_power_flow")
+        power_flow_result = request.configuration.get("power_flow_result")
+        if not isinstance(prepared_power_flow, PreparedPowerFlow) or not isinstance(power_flow_result, PowerFlowResult):
+            raise TypeError("transient_stability requires prepared_power_flow and power_flow_result in the study request.")
+        prepared = study_preparation.prepare_transient_stability(
+            configuration,
+            prepared_power_flow,
+            power_flow_result,
+            dynamic_models,
+        )
+        if token.cancelled:
+            return None
+
+        machine_system = MultiMachineSystem(prepared.machines)
+        network_solver = TransientNetworkSolver(prepared.network, machine_system)
+        dae_solver = DAESolver(
+            machine_system,
+            network_solver.solve,
+            prepared.mechanical_powers,
+            integrator=Integrator("RK4"),
+        )
+        solver = TransientStabilitySolver(
+            dae_solver,
+            start_time=configuration.start_time,
+            end_time=configuration.end_time,
+            dt=configuration.dt,
+        )
+        analysis = TransientStabilityAnalysis(solver, configuration, prepared.initial_state)
+        result = analysis.run()
+        if token.cancelled:
+            return None
+        return result
+
     application.study_service.register("power_flow", run_power_flow)
     application.study_service.register("short_circuit", run_short_circuit)
+    application.study_service.register("transient_stability", run_transient_stability)
     return application
 
 
