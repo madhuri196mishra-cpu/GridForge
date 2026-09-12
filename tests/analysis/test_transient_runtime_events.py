@@ -2,7 +2,7 @@ import numpy as np
 
 from core.analysis.power_flow_preparation import PreparedBranch, PreparedShunt
 from core.analysis.transient_event_state import TransientEventState
-from core.analysis.transient_events import schedule_fault_apply, schedule_fault_clear
+from core.analysis.transient_events import schedule_breaker_open, schedule_fault_apply, schedule_fault_clear
 from core.analysis.transient_fault import TransientFault
 from core.analysis.transient_network import DetachedTransientNetworkState
 from core.analysis.transient_runtime import TransientNetworkRuntime
@@ -16,8 +16,8 @@ def _runtime():
         bus_ids=("B1", "B2"),
         branches=(PreparedBranch("L1", "B1", "B2", 0.0, 0.2, 0.0),),
         transformers=(),
-        shunts=(PreparedShunt("S1", "B2", 0.0, 0.0),),
-        equipment_states={"L1": True},
+        shunts=(PreparedShunt("S1", "B2", 1.0, 0.0),),
+        equipment_states={"L1": True, "S1": True},
         topology_revision=1,
     )
     event_state = TransientEventState.from_snapshot(snapshot)
@@ -47,8 +47,6 @@ def test_fault_event_changes_detached_network_solution_and_clear_restores():
 def test_breaker_event_changes_only_detached_passive_equipment_state():
     event_state, runtime = _runtime()
     manager = EventManager()
-    from core.analysis.transient_events import schedule_breaker_open
-
     schedule_breaker_open(manager, event_state, 0.1, "CB1", "breaker-open", ("L1",))
     baseline = runtime.solve(np.array([0.0, 0.0]), 0.0)
     manager.process_interval(0.0, 0.1)
