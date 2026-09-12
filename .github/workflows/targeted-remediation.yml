@@ -46,9 +46,20 @@ jobs:
           tests/core/persistence/test_project_persistence_sld.py
           tests/core/application/test_project_lifecycle_r3.py
           tests/ui/sld/test_project_dirty_authority_r3.py
-      - name: Run R3 remediation tests
+          tests/application/test_transient_stability_execution.py
+          tests/application/test_transient_stability_registration.py
+          tests/analysis/test_dynamic_initial_state_preparation.py
+          tests/analysis/test_transient_network_coupling.py
+          tests/analysis/test_transient_runtime_events.py
+          tests/analysis/test_transient_event_state.py
+          tests/solver/dynamics/test_transient_event_boundary.py
+      - name: Run GF-AUD-019 transient remediation tests
         run: >-
           python -m pytest -q
-          tests/core/persistence/test_project_persistence_sld.py
-          tests/core/application/test_project_lifecycle_r3.py
-          tests/ui/sld/test_project_dirty_authority_r3.py
+          tests/application/test_transient_stability_execution.py
+          tests/application/test_transient_stability_registration.py
+          tests/analysis/test_dynamic_initial_state_preparation.py
+          tests/analysis/test_transient_network_coupling.py
+          tests/analysis/test_transient_runtime_events.py
+          tests/analysis/test_transient_event_state.py
+          tests/solver/dynamics/test_transient_event_boundary.py
