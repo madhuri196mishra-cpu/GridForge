@@ -99,18 +99,12 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
             if not isinstance(symbol_id, str) or not symbol_id.strip():
                 raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} requires geometry.symbol_id")
             insert = geometry.get("insert")
-            if isinstance(insert, Mapping):
-                _number(insert, "x", entity.entity_id)
-                _number(insert, "y", entity.entity_id)
-            else:
-                _point(insert, "geometry.insert", entity.entity_id)
-            scale = geometry.get("scale", insert.get("scale", 1.0) if isinstance(insert, Mapping) else 1.0)
+            _point(insert, "geometry.insert", entity.entity_id)
+            scale = geometry.get("scale", 1.0)
             if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not math.isfinite(float(scale)) or float(scale) <= 0:
                 raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} scale must be finite and positive")
             if "rotation" in geometry:
                 _number(geometry, "rotation", entity.entity_id)
-            elif isinstance(insert, Mapping) and "rotation" in insert:
-                _number(insert, "rotation", entity.entity_id)
         elif kind == "TEXT":
             if not isinstance(geometry.get("text"), str):
                 raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} requires string geometry.text")
