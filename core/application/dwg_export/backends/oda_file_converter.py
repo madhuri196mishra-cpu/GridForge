@@ -6,6 +6,7 @@ from PATH implicitly. This backend does not require IngeCAD.
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -106,10 +107,10 @@ class ODAFileConverterBackend:
         if len(scale) == 2:
             scale = (*scale, 1.0)
         scale = tuple(float(v) for v in scale)
-        if any(not __import__("math").isfinite(v) or v == 0 for v in scale):
+        if any(not math.isfinite(v) or v == 0 for v in scale):
             raise ValueError(f"INSERT {entity.entity_id} scale values must be finite and non-zero")
         rotation = float(g.get("rotation", 0.0))
-        if not __import__("math").isfinite(rotation):
+        if not math.isfinite(rotation):
             raise ValueError(f"INSERT {entity.entity_id} rotation must be finite")
         return doc.modelspace().add_blockref(
             definition.block_name,
