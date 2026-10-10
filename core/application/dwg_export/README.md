@@ -32,3 +32,5 @@ This is an initial vertical slice, not a complete production export workflow. Th
 
 
 - ODA identity XDATA serialization splits metadata on UTF-8 character boundaries with a conservative per-string byte budget. Entity IDs that exceed the supported XDATA string budget are rejected rather than truncated or written as invalid CAD strings.
+
+- Final DWG publication uses a unique temporary file in the destination directory, flushes and syncs staged bytes, and atomically replaces the destination only after conversion and signature validation. Failed publication removes its staging file and leaves an existing destination intact.
