@@ -55,12 +55,9 @@ class SLDNodeEntityBuilder:
                 layer="SLD_SYMBOLS",
                 geometry={
                     "symbol_id": symbol.symbol_id,
-                    "insert": {
-                        "x": float(node.x),
-                        "y": float(node.y),
-                        "scale": float(presentation.scale),
-                        "rotation": float(presentation.rotation),
-                    },
+                    "insert": (float(node.x), float(node.y)),
+                    "scale": float(presentation.scale),
+                    "rotation": float(presentation.rotation),
                 },
                 metadata={
                     "gridforge_node_id": node.node_id,
