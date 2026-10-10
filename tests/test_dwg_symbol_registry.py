@@ -45,3 +45,11 @@ def test_symbol_definition_requires_finite_two_dimensional_base_point():
     primitive = DrawingEntity("body", "LINE", "SYMBOL", {"start": [0, 0], "end": [1, 1]}, {})
     with pytest.raises(ValueError, match="base_point"):
         SymbolDefinition("breaker", SymbolProfile.ANSI_IEEE, (primitive,), base_point=(0, float("inf")))
+
+
+def test_symbol_definition_rejects_invalid_primitive_geometry() -> None:
+    invalid_circle = DrawingEntity(
+        "body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 0}, {},
+    )
+    with pytest.raises(ValueError, match="radius must be positive"):
+        SymbolDefinition("invalid-circle", SymbolProfile.ANSI_IEEE, (invalid_circle,))
