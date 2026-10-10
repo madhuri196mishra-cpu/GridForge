@@ -29,3 +29,6 @@ This is an initial vertical slice, not a complete production export workflow. Th
 - Stable GridForge IDs must be persisted as drawing metadata where supported; CAD handles are not authoritative IDs.
 - Unsupported primitives or conversion failures must fail closed. Never silently omit engineering entities.
 - SLD geometry is a layout hint, never electrical truth. Logical signal mappings must not be invented as physical control wiring.
+
+
+- ODA identity XDATA serialization splits metadata on UTF-8 character boundaries with a conservative per-string byte budget. Entity IDs that exceed the supported XDATA string budget are rejected rather than truncated or written as invalid CAD strings.
