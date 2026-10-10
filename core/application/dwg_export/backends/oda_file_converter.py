@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 import subprocess
 import tempfile
@@ -20,6 +21,14 @@ _DWG_SIGNATURES = {
     "ACAD2007": b"AC1021", "ACAD2004": b"AC1018", "ACAD2000": b"AC1015",
     "ACAD12": b"AC1009",
 }
+
+
+def _plain_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _plain_json(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_plain_json(item) for item in value]
+    return value
 
 
 class ODAFileConverterBackend:
@@ -68,7 +77,7 @@ class ODAFileConverterBackend:
     def _attach_identity(doc: Any, cad_entity: Any, entity: DrawingEntity) -> None:
         if "GRIDFORGE" not in doc.appids:
             doc.appids.add("GRIDFORGE")
-        payload = json.dumps(dict(entity.metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        payload = json.dumps(_plain_json(entity.metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         chunks = [payload[index:index + 240] for index in range(0, len(payload), 240)] or ["{}"]
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity.entity_id), *[(1000, chunk) for chunk in chunks]])
 
@@ -111,7 +120,6 @@ class ODAFileConverterBackend:
                 signature = stream.read(6)
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
-            # Atomic replacement keeps an existing output intact on conversion failure.
             staging = destination.with_name(destination.name + ".gridforge-tmp")
             try:
                 staging.write_bytes(generated.read_bytes())
