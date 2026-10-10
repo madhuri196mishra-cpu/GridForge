@@ -6,6 +6,8 @@ has no explicit profile-specific CAD mapping.
 """
 from __future__ import annotations
 
+import re
+
 from ui.canvas.sld_canvas_projection import SLDCanvasSnapshot
 
 from .drawing_plan import DrawingEntity, SymbolProfile
@@ -94,7 +96,14 @@ class SLDNodeEntityBuilder:
             if len(points) < 2:
                 points = ((float(source.x), float(source.y)), (float(target.x), float(target.y)))
             kind = connection.connection_kind or "unspecified"
-            layer = "SLD_CONNECTIONS" if kind == "unspecified" else f"SLD_{kind.upper()}"
+            # CAD layer names reject reserved punctuation; normalize only the
+            # presentation layer label, preserving the original kind in metadata.
+            normalized_kind = re.sub(r'[<>/\\":;?*|=,\s]+', "_", kind.upper()).strip("._")
+            layer = (
+                "SLD_CONNECTIONS"
+                if not normalized_kind or normalized_kind == "UNSPECIFIED"
+                else f"SLD_{normalized_kind}"[:255]
+            )
             entities.append(DrawingEntity(
                 entity_id=f"sld-connection:{connection.connection_id}",
                 kind="LWPOLYLINE",
