@@ -43,6 +43,18 @@ class SymbolDefinition:
             raise ValueError("symbol primitives may contain only LINE, CIRCLE, ARC, TEXT, or LWPOLYLINE")
         if len({item.entity_id for item in primitives}) != len(primitives):
             raise ValueError("symbol primitive entity_id values must be unique within a definition")
+        # Symbol block primitives bypass the top-level DrawingPlan entity list,
+        # so validate them here using the same canonical geometry contract.
+        from .validation import validate_drawing_plan
+        from .drawing_plan import DrawingPlan
+        validate_drawing_plan(DrawingPlan(
+            project_id="symbol-definition",
+            export_id=f"symbol:{self.symbol_id}",
+            source_revision="symbol-registry",
+            symbol_profile=profile,
+            drawing_types=("symbol",),
+            entities=primitives,
+        ))
         point = tuple(self.base_point)
         if len(point) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in point):
             raise ValueError("base_point must contain exactly two numeric coordinates")
