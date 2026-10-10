@@ -34,9 +34,8 @@ def test_drawing_entity_recursively_freezes_nested_geometry() -> None:
 
 
 def test_plan_rejects_non_finite_geometry() -> None:
-    entity = DrawingEntity("e1", "LINE", "WIRE", {"start": [0.0, float("nan")]}, {})
     with pytest.raises(ValueError, match="non-finite"):
-        _plan(entity)
+        DrawingEntity("e1", "LINE", "WIRE", {"start": [0.0, float("nan")]}, {})
 
 
 def test_validator_rejects_duplicate_stable_entity_ids() -> None:
