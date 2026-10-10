@@ -182,6 +182,69 @@ DEFAULT_TOLERANCE = 90.0
 
 ANGLE_RANGE = 360.0
 
+# A sealed, immutable evaluation-cycle snapshot. The private seal prevents
+# ordinary ProtectionContext metadata from impersonating Application-resolved
+# measurement provenance.
+_DIRECTIONAL_SNAPSHOT_SEAL = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthoritativeDirectionalSnapshot:
+    _seal: object
+    element_id: str
+    voltage_value: complex
+    current_value: complex
+    voltage_angle: float
+    current_angle: float
+    voltage_channel_id: str
+    current_channel_id: str
+    voltage_channel_identity: int
+    current_channel_identity: int
+    sample_timestamp: float
+    project_id: str
+    activation_generation: int
+    configuration_identity: int
+    runtime_identity: int
+
+
+def _create_authoritative_directional_snapshot(
+    *,
+    element_id: str,
+    voltage_value: complex,
+    current_value: complex,
+    voltage_angle: float,
+    current_angle: float,
+    voltage_channel_id: str,
+    current_channel_id: str,
+    voltage_channel_identity: int,
+    current_channel_identity: int,
+    sample_timestamp: float,
+    project_id: str,
+    activation_generation: int,
+    configuration_identity: int,
+    runtime_identity: int,
+) -> _AuthoritativeDirectionalSnapshot:
+    """Create a sealed snapshot after Application validates channel provenance."""
+    return _AuthoritativeDirectionalSnapshot(
+        _seal=_DIRECTIONAL_SNAPSHOT_SEAL,
+        element_id=element_id,
+        voltage_value=voltage_value,
+        current_value=current_value,
+        voltage_angle=float(voltage_angle),
+        current_angle=float(current_angle),
+        voltage_channel_id=voltage_channel_id,
+        current_channel_id=current_channel_id,
+        voltage_channel_identity=voltage_channel_identity,
+        current_channel_identity=current_channel_identity,
+        sample_timestamp=float(sample_timestamp),
+        project_id=project_id,
+        activation_generation=activation_generation,
+        configuration_identity=configuration_identity,
+        runtime_identity=runtime_identity,
+    )
+
+
+
 
 # =====================================================================
 # DIRECTIONAL SETTINGS
@@ -308,6 +371,7 @@ class DirectionalRelay(RelayBase):
     FUNCTION_NAME = FUNCTION_NAME
 
     CURRENT_INPUT = CURRENT_INPUT
+    VOLTAGE_INPUT = VOLTAGE_INPUT
 
     # ================================================================
     # INITIALIZATION
@@ -616,85 +680,48 @@ class DirectionalRelay(RelayBase):
     # CONTEXT ANGLES
     # ================================================================
 
-    def _context_angles(
+    def _authoritative_snapshot(
         self,
         context: ProtectionContext | None,
-    ) -> tuple[float, float]:
-        """
-        Extract voltage/current phase angles from ProtectionContext.
-
-        Expected metadata:
-
-            {
-                "voltage_angle": <degrees>,
-                "current_angle": <degrees>,
-            }
-        """
-
-        if context is None:
-            raise ValueError(
-                "Directional protection requires a "
-                "ProtectionContext containing "
-                "'voltage_angle' and 'current_angle'."
-            )
-
-        metadata = getattr(
-            context,
-            "metadata",
-            None,
-        )
-
+    ) -> _AuthoritativeDirectionalSnapshot:
+        """Require an Application-sealed, element-specific phasor snapshot."""
+        metadata = getattr(context, "metadata", None) if context is not None else None
         if not isinstance(metadata, Mapping):
+            raise ValueError("ProtectionContext metadata is missing authoritative directional samples.")
+        snapshots = metadata.get("directional_measurement_snapshots_by_element")
+        if not isinstance(snapshots, Mapping):
             raise ValueError(
-                "ProtectionContext.metadata must provide "
-                "directional phase-angle data."
+                "ANSI 67 requires an Application-created authoritative measurement snapshot; "
+                "caller-supplied angles or provenance are not accepted."
             )
-
-        per_element = metadata.get("directional_angles_by_element")
-        if isinstance(per_element, Mapping):
-            selected = per_element.get(self.element_id)
-            if not isinstance(selected, Mapping):
-                raise ValueError(
-                    f"Directional protection context has no authoritative angle entry for element {self.element_id!r}."
-                )
-            metadata = selected
-
-        missing = [
-            name
-            for name in ("voltage_angle", "current_angle")
-            if name not in metadata
-        ]
-
-        if missing:
-            raise ValueError(
-                "Directional protection context is missing "
-                f"required angle metadata: {missing}."
-            )
-
-        try:
-            voltage_angle = float(
-                metadata["voltage_angle"]
-            )
-            current_angle = float(
-                metadata["current_angle"]
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                "Directional protection phase angles "
-                "must be numeric."
-            ) from exc
-
-        if not math.isfinite(voltage_angle):
-            raise ValueError(
-                "voltage_angle must be finite."
-            )
-
-        if not math.isfinite(current_angle):
-            raise ValueError(
-                "current_angle must be finite."
-            )
-
-        return voltage_angle, current_angle
+        snapshot = snapshots.get(self.element_id)
+        if not isinstance(snapshot, _AuthoritativeDirectionalSnapshot):
+            raise ValueError(f"No authoritative measurement snapshot exists for element {self.element_id!r}.")
+        if snapshot._seal is not _DIRECTIONAL_SNAPSHOT_SEAL:
+            raise ValueError("Directional measurement snapshot seal is invalid.")
+        if snapshot.element_id != self.element_id:
+            raise ValueError("Directional measurement snapshot element identity mismatch.")
+        if not snapshot.project_id or not snapshot.voltage_channel_id or not snapshot.current_channel_id:
+            raise ValueError("Directional measurement snapshot is missing project/channel provenance.")
+        if snapshot.voltage_channel_id == snapshot.current_channel_id:
+            raise ValueError("Directional voltage and current channel identities must be distinct.")
+        if snapshot.voltage_channel_identity == snapshot.current_channel_identity:
+            raise ValueError("Directional voltage and current channel objects must be distinct.")
+        if not math.isfinite(snapshot.sample_timestamp):
+            raise ValueError("Directional measurement snapshot timestamp is non-finite.")
+        for name, value in (
+            ("voltage", snapshot.voltage_value),
+            ("current", snapshot.current_value),
+        ):
+            if not isinstance(value, complex) or not (
+                math.isfinite(value.real) and math.isfinite(value.imag)
+            ):
+                raise ValueError(f"Authoritative {name} sample is not a finite complex phasor.")
+            if abs(value) == 0.0:
+                raise ValueError(f"Authoritative {name} phasor has no defined angle.")
+        if not math.isfinite(snapshot.voltage_angle) or not math.isfinite(snapshot.current_angle):
+            raise ValueError("Authoritative directional phasor angles must be finite.")
+        return snapshot
 
     # ================================================================
     # EVALUATION
@@ -776,7 +803,11 @@ class DirectionalRelay(RelayBase):
         # --------------------------------------------------------------
 
         try:
-            current = self.current_value()
+            snapshot = self._authoritative_snapshot(context)
+            current = self._complex_measurement(
+                snapshot.current_value,
+                name="Authoritative directional current",
+            )
 
         except (TypeError, ValueError) as exc:
 
@@ -872,11 +903,10 @@ class DirectionalRelay(RelayBase):
 
         try:
 
-            voltage_angle, current_angle = (
-                self._context_angles(
-                    context
-                )
-            )
+            # Both pickup and angular discrimination use the same immutable
+            # samples validated for this evaluation cycle.
+            voltage_angle = snapshot.voltage_angle
+            current_angle = snapshot.current_angle
 
             direction = self.direction_from_angles(
                 voltage_angle=voltage_angle,

@@ -62,6 +62,7 @@ from .services.measurement_channel_service import MeasurementChannelService
 from .protection_execution import ProtectionExecutionResult, ProtectionExecutionService
 from core.protection.context import ProtectionContext
 from core.protection.runtime import ProtectionRuntime
+from core.protection.directional.directional_relay import _create_authoritative_directional_snapshot
 from core.protection.input_contracts import validate_protection_input_contracts, validate_directional_context, validate_sample_representation, input_contract_for
 from core.measurement.measurement_channel import MeasurementQuality, MeasurementValidity
 from math import isfinite, atan2, degrees
@@ -470,7 +471,7 @@ class Application:
                     continue
                 validated_sample_values[(element.element_id, input_name)] = (channel, value, timestamp)
 
-        directional_metadata: dict[str, dict[str, Any]] = {}
+        directional_snapshots: dict[str, Any] = {}
         for element in runtime.configuration.elements:
             if not element.enabled or str(element.function_code).strip().upper() != "67":
                 continue
@@ -521,16 +522,24 @@ class Application:
             if not isfinite(voltage_angle) or not isfinite(current_angle):
                 diagnostics.append(f"{prefix}: derived phasor angle is non-finite.")
                 continue
-            directional_metadata[element.element_id] = {
-                "voltage_angle": voltage_angle,
-                "current_angle": current_angle,
-                "angle_provenance": {
-                    "voltage_channel_id": voltage_id,
-                    "current_channel_id": current_id,
-                    "reference_convention": "complex engineering phasor; atan2(imaginary, real); degrees; angle_difference=V-I",
-                    "sample_timestamp": voltage_timestamp,
-                },
-            }
+            # Seal the exact validated samples and their internally-derived angles.
+            # The relay consumes current from this snapshot, never a later live RelayInput read.
+            directional_snapshots[element.element_id] = _create_authoritative_directional_snapshot(
+                element_id=element.element_id,
+                voltage_value=voltage_value,
+                current_value=current_value,
+                voltage_angle=voltage_angle,
+                current_angle=current_angle,
+                voltage_channel_id=voltage_id,
+                current_channel_id=current_id,
+                voltage_channel_identity=id(voltage_channel),
+                current_channel_identity=id(current_channel),
+                sample_timestamp=voltage_timestamp,
+                project_id=str(project.project_id),
+                activation_generation=lifecycle.activation_generation,
+                configuration_identity=id(runtime.configuration),
+                runtime_identity=id(runtime),
+            )
 
         if diagnostics:
             return ProtectionExecutionResult(diagnostics=tuple(diagnostics))
@@ -540,24 +549,16 @@ class Application:
             "project_id": project.project_id,
             "activation_generation": lifecycle.activation_generation,
         })
-        # Internally derived angles override any caller-supplied values. Each
-        # ANSI 67 element receives a fresh context so metadata cannot cross-bind
-        # angles between protection elements.
-        context = ProtectionContext(
-            time=evaluation_time,
-            metadata=context_metadata,
-        )
-        # Keep one immutable evaluation context while carrying per-element
-        # internally-derived phasor angles. DirectionalRelay selects only its
-        # own element entry, preventing cross-binding in multi-element systems.
+        # Only Application-created sealed snapshots authorize ANSI 67. Caller
+        # metadata remains ordinary context and cannot supply phasors or provenance.
         for element in runtime.configuration.elements:
             if element.enabled and str(element.function_code).strip().upper() == "67":
-                if element.element_id not in directional_metadata:
+                if element.element_id not in directional_snapshots:
                     return ProtectionExecutionResult(
-                        diagnostics=(f"project={project.project_id!r}, element={element.element_id!r}: authoritative directional phasor derivation is unavailable.",)
+                        diagnostics=(f"project={project.project_id!r}, element={element.element_id!r}: authoritative directional phasor snapshot is unavailable.",)
                     )
-        if directional_metadata:
-            context_metadata["directional_angles_by_element"] = directional_metadata
+        if directional_snapshots:
+            context_metadata["directional_measurement_snapshots_by_element"] = directional_snapshots
         context = ProtectionContext(time=evaluation_time, metadata=context_metadata)
         decisions = runtime.system.evaluate(context)
         if action_resolver is None:
