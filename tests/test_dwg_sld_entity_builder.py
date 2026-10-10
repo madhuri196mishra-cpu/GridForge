@@ -39,9 +39,9 @@ def test_sld_node_builder_uses_persisted_symbol_identity_and_transform() -> None
     assert entity.kind == "INSERT"
     assert entity.entity_id == "sld-node:node-7"
     assert entity.geometry["symbol_id"] == "breaker"
-    assert entity.geometry["insert"] == {
-        "x": 120.0, "y": 240.0, "scale": 1.5, "rotation": 90.0,
-    }
+    assert entity.geometry["insert"] == (120.0, 240.0)
+    assert entity.geometry["scale"] == 1.5
+    assert entity.geometry["rotation"] == 90.0
     assert entity.metadata["gridforge_node_id"] == "node-7"
     assert entity.metadata["equipment_id"] == "equipment-7"
 
