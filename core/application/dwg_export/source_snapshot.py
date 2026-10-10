@@ -7,7 +7,6 @@ model objects, Qt objects, canvases, or renderer instances.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
 
 from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile
 from .validation import validate_drawing_plan
