@@ -63,3 +63,21 @@ def test_sld_connection_with_missing_node_fails_closed() -> None:
     import pytest
     with pytest.raises(ValueError, match="missing projected node"):
         SLDNodeEntityBuilder.build_connections(projection)
+
+
+def test_connection_kind_is_normalized_for_cad_layer_name() -> None:
+    projection = SLDCanvasSnapshot(
+        nodes=(
+            SLDCanvasNode("a", None, 0, 0, {}, None),
+            SLDCanvasNode("b", None, 10, 10, {}, None),
+        ),
+        connections=(
+            SLDCanvasConnection(
+                "connection-2", "a", "b", None, None, SLDRoute(),
+                'wire;bad/name:*', None, None, {},
+            ),
+        ),
+    )
+    entity = SLDNodeEntityBuilder.build_connections(projection)[0]
+    assert entity.layer == "SLD_WIRE_BAD_NAME"
+    assert entity.metadata["connection_kind"] == 'wire;bad/name:*'
