@@ -82,12 +82,12 @@ class ODAFileConverterBackend:
             return msp.add_lwpolyline(points, close=bool(g.get("closed", False)), dxfattribs=attrs)
         raise ValueError(f"Unsupported primitive {entity.kind!r} for ODA backend")
 
-    def _add_insert(self, doc: Any, entity: DrawingEntity, defined_blocks: set[str]) -> Any:
+    def _add_insert(self, doc: Any, entity: DrawingEntity, defined_blocks: set[str], profile: Any) -> Any:
         g = entity.geometry
         symbol_id = g.get("symbol_id")
         if not isinstance(symbol_id, str) or not symbol_id.strip():
             raise ValueError(f"INSERT {entity.entity_id} requires geometry.symbol_id")
-        definition = self._symbols.resolve(symbol_id, doc._gridforge_symbol_profile)
+        definition = self._symbols.resolve(symbol_id, profile)
         if definition.block_name not in defined_blocks:
             block = doc.blocks.new(name=definition.block_name, base_point=definition.base_point)
             for primitive in definition.primitives:
@@ -146,14 +146,12 @@ class ODAFileConverterBackend:
             doc = ezdxf.new("R2018")
             doc.header["$INSUNITS"] = 4
             doc.header["$PROJECTNAME"] = plan.project_id[:255]
-            # Keep the profile local to this export document; never mutate the plan.
-            doc._gridforge_symbol_profile = plan.symbol_profile
             defined_blocks: set[str] = set()
             for entity in plan.entities:
                 if entity.layer not in doc.layers:
                     doc.layers.new(entity.layer)
                 if entity.kind.upper() == "INSERT":
-                    cad_entity = self._add_insert(doc, entity, defined_blocks)
+                    cad_entity = self._add_insert(doc, entity, defined_blocks, plan.symbol_profile)
                 else:
                     cad_entity = self._add_entity(doc.modelspace(), entity)
                 self._attach_identity(doc, cad_entity, entity)
