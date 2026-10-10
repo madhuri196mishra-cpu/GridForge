@@ -53,7 +53,7 @@ def test_validator_rejects_unknown_primitive() -> None:
 
 def test_insert_requires_a_block_name() -> None:
     entity = DrawingEntity("e1", "INSERT", "SYMBOL", {"point": [0, 0]}, {})
-    with pytest.raises(DrawingPlanValidationError, match="block_name"):
+    with pytest.raises(DrawingPlanValidationError, match="symbol_id"):
         validate_drawing_plan(_plan(entity))
 
 
