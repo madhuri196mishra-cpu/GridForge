@@ -60,5 +60,70 @@ class SLDProjectionDrawingSnapshotAdapter:
             entities=entities,
         )
 
+    def capture_from_document_lifecycle(
+        self,
+        application: object,
+        document_manager: object,
+        projection_factory: object,
+        *,
+        project_id: str,
+        document_id: str,
+        model: object,
+        entity_builder: Callable[[SLDCanvasSnapshot], tuple[DrawingEntity, ...]],
+        drawing_types: tuple[str, ...] = ("sld",),
+        symbol_profile: SymbolProfile = SymbolProfile.ANSI_IEEE,
+    ) -> ApplicationDrawingSnapshot:
+        """Capture an SLD projection only while its owning lifecycle identity and revision remain stable.
+
+        The active document registry is the identity authority; Application.revision
+        is the project revision authority. This is a fail-closed before/after guard,
+        not a lock: callers must still invoke it on the lifecycle's serialized
+        execution thread to prevent concurrent document mutation.
+        """
+        from ui.workspace.document_manager import DocumentManager
+        from ui.workspace.document import Document
+        from ui.sld.sld_model import SLDModel
+        from ui.canvas.sld_canvas_projection import SLDCanvasProjection
+
+        if not hasattr(application, "revision") or not hasattr(application, "project"):
+            raise TypeError("application must expose revision and project context")
+        if not isinstance(document_manager, DocumentManager):
+            raise TypeError("document_manager must be a DocumentManager")
+        if not isinstance(projection_factory, SLDCanvasProjection):
+            raise TypeError("projection_factory must be an SLDCanvasProjection")
+        if not isinstance(model, SLDModel):
+            raise TypeError("model must be the active document's SLDModel")
+        active = document_manager.active_document
+        if not isinstance(active, Document) or active.document_id != document_id:
+            raise RuntimeError("requested document is not the DocumentManager active document")
+        if active.document_type.lower() not in {"sld", "single_line_diagram", "single-line-diagram"}:
+            raise RuntimeError("active document is not an SLD document")
+        if active.project_id is not None and active.project_id != project_id:
+            raise RuntimeError("active document belongs to a different project")
+        context = application.project
+        if context is None or context.project_id != project_id:
+            raise RuntimeError("project_id does not match the active Application project")
+
+        revision_before = str(application.revision)
+        active_id_before = document_manager.active_document_id
+        projection = projection_factory.project(model)
+        snapshot = self.capture(
+            projection,
+            project_id=project_id,
+            document_id=document_id,
+            source_revision=revision_before,
+            drawing_types=drawing_types,
+            symbol_profile=symbol_profile,
+            entity_builder=entity_builder,
+        )
+        revision_after = str(application.revision)
+        if revision_after != revision_before:
+            raise RuntimeError("Application revision changed during SLD projection capture")
+        if document_manager.active_document_id != active_id_before:
+            raise RuntimeError("active document changed during SLD projection capture")
+        if document_manager.get(document_id) is not active:
+            raise RuntimeError("active document registration changed during SLD projection capture")
+        return snapshot
+
 
 __all__ = ["SLDProjectionDrawingSnapshotAdapter"]
