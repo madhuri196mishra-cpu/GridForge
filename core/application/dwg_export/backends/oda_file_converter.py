@@ -119,12 +119,35 @@ class ODAFileConverterBackend:
         )
 
     @staticmethod
+    def _utf8_xdata_chunks(payload: str, *, max_bytes: int = 240) -> list[str]:
+        """Split metadata on Unicode character boundaries under DXF's byte limit."""
+        chunks: list[str] = []
+        current: list[str] = []
+        current_bytes = 0
+        for character in payload:
+            size = len(character.encode("utf-8"))
+            if size > max_bytes:
+                raise ValueError("Metadata contains a character too large for a DXF XDATA string")
+            if current and current_bytes + size > max_bytes:
+                chunks.append("".join(current))
+                current = []
+                current_bytes = 0
+            current.append(character)
+            current_bytes += size
+        if current:
+            chunks.append("".join(current))
+        return chunks or ["{}"]
+
+    @staticmethod
     def _attach_identity(doc: Any, cad_entity: Any, entity: DrawingEntity) -> None:
+        entity_id = entity.entity_id
+        if len(entity_id.encode("utf-8")) > 240:
+            raise ValueError(f"Drawing entity ID {entity_id!r} exceeds the safe DXF XDATA string length")
         if "GRIDFORGE" not in doc.appids:
             doc.appids.add("GRIDFORGE")
         payload = json.dumps(_plain_json(entity.metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        chunks = [payload[index:index + 240] for index in range(0, len(payload), 240)] or ["{}"]
-        cad_entity.set_xdata("GRIDFORGE", [(1000, entity.entity_id), *[(1000, chunk) for chunk in chunks]])
+        chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
+        cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
 
     def export(self, plan: DrawingPlan, destination: Path, *, target_version: str | None = None) -> ExportResult:
         try:
