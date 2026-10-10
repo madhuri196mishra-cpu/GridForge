@@ -5,6 +5,7 @@ This package defines the Application-owned boundary for exporting engineering dr
 ## Current implementation
 
 - Immutable drawing-plan DTOs with stable GridForge entity IDs.
+- `ApplicationDrawingSnapshot` and `DrawingPlanFactory` contracts that assemble a validated plan from detached, immutable Application-level data. They do not access Core, Qt, QGraphics, or renderer objects.
 - Fail-closed validation for duplicate IDs, supported primitive kinds, finite numeric geometry, and required INSERT/TEXT properties.
 - An Application service that validates plans and enforces declared backend formats/results.
 - A validated, profile-specific `SymbolRegistry` with stable deterministic block names, local-space vector primitives, base points, and fail-closed resolution by symbol ID plus ANSI/IEEE or IEC 60617 profile.
@@ -14,7 +15,7 @@ This package defines the Application-owned boundary for exporting engineering dr
 
 ## Important limitations
 
-This is an initial vertical slice, not a complete production export workflow. The current ODA backend supports LINE, CIRCLE, ARC, TEXT, LWPOLYLINE and registry-backed INSERT entities. The registry is a rendering contract only: it does not supply electrical meaning, wiring, or operational state. Registry definitions must be injected by the caller; this slice does not yet ship a standards-reviewed symbol catalogue. The backend currently supports millimetre units and a fixed set of target versions. Full SLD, control wiring, and protection/measurement plan builders, authoritative Application read-model adapters, round-trip tests, and actual converter integration tests remain outstanding. Do not advertise the complete export feature as production-ready until those gates pass.
+This is an initial vertical slice, not a complete production export workflow. The current ODA backend supports LINE, CIRCLE, ARC, TEXT, LWPOLYLINE and registry-backed INSERT entities. The registry is a rendering contract only: it does not supply electrical meaning, wiring, or operational state. Registry definitions must be injected by the caller; this slice does not yet ship a standards-reviewed symbol catalogue. The backend currently supports millimetre units and a fixed set of target versions. The snapshot contract is present, but concrete adapters from the repository’s actual Application read models and approved SLD projections have not yet been connected; no current UI or Core model should be passed directly. Full SLD, control wiring, and protection/measurement plan builders, round-trip tests, and actual converter integration tests remain outstanding. Do not advertise the complete export feature as production-ready until those gates pass.
 
 ## Architecture rules
 
