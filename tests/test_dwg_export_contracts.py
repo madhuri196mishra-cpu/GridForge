@@ -81,3 +81,25 @@ def test_service_rejects_wrong_output_suffix(tmp_path: Path) -> None:
     service = DWGExportService(DwgBackend())
     with pytest.raises(ValueError, match="extension must be .dwg"):
         service.export(_plan(), tmp_path / "drawing.dxf")
+
+
+@pytest.mark.parametrize(
+    ("kind", "geometry", "message"),
+    [
+        ("LINE", {"start": [1, 1], "end": [1, 1]}, "distinct endpoints"),
+        ("CIRCLE", {"center": [0, 0], "radius": 0}, "radius must be positive"),
+        ("ARC", {"center": [0, 0], "radius": 1, "start_angle": 20, "end_angle": 20}, "angles must differ"),
+        ("LWPOLYLINE", {"points": [[0, 0], [0, 0]]}, "distinct points"),
+        ("INSERT", {"symbol_id": "breaker", "insert": {"x": 0, "y": 0}, "scale": 0}, "scale must be finite and positive"),
+    ],
+)
+def test_validator_rejects_invalid_supported_geometry(kind, geometry, message) -> None:
+    entity = DrawingEntity("e1", kind, "SYMBOL", geometry, {})
+    with pytest.raises(DrawingPlanValidationError, match=message):
+        validate_drawing_plan(_plan(entity))
+
+
+def test_validator_rejects_malformed_polyline_point_dimension() -> None:
+    entity = DrawingEntity("e1", "LWPOLYLINE", "WIRE", {"points": [[0, 0, 1], [1, 1, 1]]}, {})
+    with pytest.raises(DrawingPlanValidationError, match="2D point"):
+        validate_drawing_plan(_plan(entity))
