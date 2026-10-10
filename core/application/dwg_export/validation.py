@@ -99,7 +99,19 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
             if not isinstance(symbol_id, str) or not symbol_id.strip():
                 raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} requires geometry.symbol_id")
             insert = geometry.get("insert")
-            _point(insert, "geometry.insert", entity.entity_id)
+            if not isinstance(insert, (tuple, list)) or len(insert) not in (2, 3):
+                raise DrawingPlanValidationError(
+                    f"INSERT entity {entity.entity_id} requires geometry.insert as a 2D or 3D point"
+                )
+            for axis, coordinate in zip(("x", "y", "z"), insert):
+                if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)):
+                    raise DrawingPlanValidationError(
+                        f"INSERT entity {entity.entity_id} requires numeric geometry.insert.{axis}"
+                    )
+                if not math.isfinite(float(coordinate)):
+                    raise DrawingPlanValidationError(
+                        f"INSERT entity {entity.entity_id} geometry.insert.{axis} must be finite"
+                    )
             scale = geometry.get("scale", (1.0, 1.0, 1.0))
             if isinstance(scale, (int, float)) and not isinstance(scale, bool):
                 scale_values = (float(scale),)
