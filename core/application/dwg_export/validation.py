@@ -45,8 +45,12 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
         kind = entity.kind.upper()
         if kind not in _SUPPORTED_KINDS:
             raise DrawingPlanValidationError(f"Unsupported drawing primitive {entity.kind!r} on {entity.entity_id}")
-        if kind == "INSERT" and not entity.geometry.get("block_name"):
-            raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} requires geometry.block_name")
+        if kind == "INSERT":
+            if not isinstance(entity.geometry.get("symbol_id"), str) or not entity.geometry.get("symbol_id", "").strip():
+                raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} requires geometry.symbol_id")
+            insert = entity.geometry.get("insert")
+            if not isinstance(insert, (tuple, list)) or len(insert) not in (2, 3):
+                raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} requires a 2D or 3D geometry.insert point")
         if kind == "TEXT" and "text" not in entity.geometry:
             raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} requires geometry.text")
         _finite_numbers(entity.geometry, f"entities[{entity.entity_id}].geometry")
