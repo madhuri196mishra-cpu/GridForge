@@ -192,11 +192,30 @@ class ODAFileConverterBackend:
                 signature = stream.read(6)
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
-            staging = destination.with_name(destination.name + ".gridforge-tmp")
+            # Stage in the destination directory so os.replace remains atomic.
+            # A unique name avoids collisions between concurrent exports and stale
+            # files left by an interrupted process.
+            staging_path: Path | None = None
             try:
-                staging.write_bytes(generated.read_bytes())
-                os.replace(staging, destination)
+                with tempfile.NamedTemporaryFile(
+                    mode="wb",
+                    prefix=f".{destination.name}.gridforge-",
+                    suffix=".tmp",
+                    dir=destination.parent,
+                    delete=False,
+                ) as staging:
+                    staging_path = Path(staging.name)
+                    with generated.open("rb") as source:
+                        while chunk := source.read(1024 * 1024):
+                            staging.write(chunk)
+                    staging.flush()
+                    os.fsync(staging.fileno())
+                os.replace(staging_path, destination)
+                staging_path = None
             finally:
-                if staging.exists():
-                    staging.unlink()
+                if staging_path is not None:
+                    try:
+                        staging_path.unlink()
+                    except FileNotFoundError:
+                        pass
         return ExportResult(destination, "dwg", len(plan.entities), self.backend_id)
