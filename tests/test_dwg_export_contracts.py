@@ -90,7 +90,7 @@ def test_service_rejects_wrong_output_suffix(tmp_path: Path) -> None:
         ("CIRCLE", {"center": [0, 0], "radius": 0}, "radius must be positive"),
         ("ARC", {"center": [0, 0], "radius": 1, "start_angle": 20, "end_angle": 20}, "angles must differ"),
         ("LWPOLYLINE", {"points": [[0, 0], [0, 0]]}, "distinct points"),
-        ("INSERT", {"symbol_id": "breaker", "insert": {"x": 0, "y": 0}, "scale": 0}, "scale must be finite and positive"),
+        ("INSERT", {"symbol_id": "breaker", "insert": [0, 0], "scale": 0}, "scale values must be finite and non-zero"),
     ],
 )
 def test_validator_rejects_invalid_supported_geometry(kind, geometry, message) -> None:
@@ -103,3 +103,11 @@ def test_validator_rejects_malformed_polyline_point_dimension() -> None:
     entity = DrawingEntity("e1", "LWPOLYLINE", "WIRE", {"points": [[0, 0, 1], [1, 1, 1]]}, {})
     with pytest.raises(DrawingPlanValidationError, match="2D point"):
         validate_drawing_plan(_plan(entity))
+
+
+def test_validator_accepts_backend_supported_three_axis_insert_scale() -> None:
+    entity = DrawingEntity(
+        "e1", "INSERT", "SYMBOL",
+        {"symbol_id": "breaker", "insert": [0, 0], "scale": [1.0, -1.0, 0.5]}, {},
+    )
+    validate_drawing_plan(_plan(entity))
