@@ -149,6 +149,33 @@ class ODAFileConverterBackend:
         chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
 
+    @staticmethod
+    def _publish_atomically(generated: Path, destination: Path) -> None:
+        """Publish a completed DWG using unique same-directory staging."""
+        staging_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                prefix=f".{destination.name}.gridforge-",
+                suffix=".tmp",
+                dir=destination.parent,
+                delete=False,
+            ) as staging:
+                staging_path = Path(staging.name)
+                with generated.open("rb") as source:
+                    while chunk := source.read(1024 * 1024):
+                        staging.write(chunk)
+                staging.flush()
+                os.fsync(staging.fileno())
+            os.replace(staging_path, destination)
+            staging_path = None
+        finally:
+            if staging_path is not None:
+                try:
+                    staging_path.unlink()
+                except FileNotFoundError:
+                    pass
+
     def export(self, plan: DrawingPlan, destination: Path, *, target_version: str | None = None) -> ExportResult:
         try:
             import ezdxf
@@ -192,30 +219,5 @@ class ODAFileConverterBackend:
                 signature = stream.read(6)
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
-            # Stage in the destination directory so os.replace remains atomic.
-            # A unique name avoids collisions between concurrent exports and stale
-            # files left by an interrupted process.
-            staging_path: Path | None = None
-            try:
-                with tempfile.NamedTemporaryFile(
-                    mode="wb",
-                    prefix=f".{destination.name}.gridforge-",
-                    suffix=".tmp",
-                    dir=destination.parent,
-                    delete=False,
-                ) as staging:
-                    staging_path = Path(staging.name)
-                    with generated.open("rb") as source:
-                        while chunk := source.read(1024 * 1024):
-                            staging.write(chunk)
-                    staging.flush()
-                    os.fsync(staging.fileno())
-                os.replace(staging_path, destination)
-                staging_path = None
-            finally:
-                if staging_path is not None:
-                    try:
-                        staging_path.unlink()
-                    except FileNotFoundError:
-                        pass
+            self._publish_atomically(generated, destination)
         return ExportResult(destination, "dwg", len(plan.entities), self.backend_id)
