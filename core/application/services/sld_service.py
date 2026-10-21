@@ -178,6 +178,53 @@ class SLDService:
         return tuple(diagnostics)
 
     def reconcile_simple_wire_projection(self, network: Any) -> Callable[[], None]:
+        """Reconcile Simple Wire projections with failure-safe partial-mutation recovery."""
+        previous = tuple(connection.to_dict() for connection in self.document.model.connections)
+        previous_by_id = {str(item["connection_id"]): item for item in previous}
+        previous_modified = bool(self.document.modified)
+        try:
+            return self._reconcile_simple_wire_projection(network)
+        except BaseException as primary:
+            current_by_id = {
+                str(connection.connection_id): connection.to_dict()
+                for connection in self.document.model.connections
+            }
+            changed_ids = {
+                connection_id
+                for connection_id in set(previous_by_id) | set(current_by_id)
+                if previous_by_id.get(connection_id) != current_by_id.get(connection_id)
+            }
+            recovery_errors: list[tuple[str, BaseException]] = []
+            for connection_id in changed_ids:
+                try:
+                    if self.document.model.get_connection_optional(connection_id) is not None:
+                        self.document.model.remove_connection(connection_id)
+                except BaseException as recovery_error:
+                    recovery_errors.append((f"remove partially reconciled connection {connection_id!r}", recovery_error))
+            for connection_id in changed_ids:
+                snapshot = previous_by_id.get(connection_id)
+                if snapshot is None:
+                    continue
+                try:
+                    if self.document.model.get_connection_optional(connection_id) is None:
+                        self._restore_connection_snapshot(snapshot)
+                except BaseException as recovery_error:
+                    recovery_errors.append((f"restore prior connection {connection_id!r}", recovery_error))
+            try:
+                if previous_modified:
+                    self.document.mark_modified()
+                else:
+                    self.document.mark_clean()
+            except BaseException as recovery_error:
+                recovery_errors.append(("restore document dirty marker", recovery_error))
+            if recovery_errors:
+                add_note = getattr(primary, "add_note", None)
+                if callable(add_note):
+                    for label, recovery_error in recovery_errors:
+                        add_note(f"SLD reconciliation recovery failed ({label}): {recovery_error!r}")
+            raise
+
+    def _reconcile_simple_wire_projection(self, network: Any) -> Callable[[], None]:
         """Reconcile persistent projection companions against authoritative Core Simple Wires.
         
         This is a project-activation boundary operation. It does not create a
