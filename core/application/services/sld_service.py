@@ -1563,15 +1563,16 @@ class SLDService:
 
         self._require_engineer_owned_connection(connection)
         snapshot = connection.to_dict()
-        self.document.model.remove_connection(connection_id)
-        self.document.mark_modified()
 
         def restore() -> None:
             restored_id = snapshot["connection_id"]
-            if self.document.model.get_connection_optional(restored_id) is not None:
-                raise ValueError(
-                    f"Cannot restore removed SLD connection; identity already exists: {restored_id!r}."
-                )
+            existing = self.document.model.get_connection_optional(restored_id)
+            if existing is not None:
+                if existing.to_dict() != snapshot:
+                    raise ValueError(
+                        f"Cannot restore removed SLD connection; identity changed independently: {restored_id!r}."
+                    )
+                return
             self.document.model.create_connection(
                 connection_id=restored_id,
                 source_node_id=snapshot["source_node_id"],
@@ -1584,6 +1585,8 @@ class SLDService:
             self.document.mark_modified()
 
         transaction.record_undo(restore)
+        self.document.model.remove_connection(connection_id)
+        self.document.mark_modified()
         return ApplicationResult.success_result(
             message="SLD connection removed.",
             metadata={"presentation_operation": "remove_connection", "connection_id": connection_id},
