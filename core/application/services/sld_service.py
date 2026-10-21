@@ -1335,37 +1335,33 @@ class SLDService:
             for connection in self.document.model.connections
             if connection.source_node_id == node_id or connection.target_node_id == node_id
         )
-        self.document.model.remove_node(node_id)
-        self.document.mark_modified()
-
         def restore() -> None:
-            # Refuse to overwrite identities that may have been created by an
-            # independent mutation after this removal. A failed restoration
-            # must surface through Transaction.rollback()/CommandManager.undo().
-            if self.document.model.get_node_optional(node_snapshot["node_id"]) is not None:
+            # Recovery is idempotent for identities that still match the
+            # pre-mutation snapshot, but refuses to overwrite unrelated edits.
+            restored_node = self.document.model.get_node_optional(node_snapshot["node_id"])
+            if restored_node is None:
+                self.document.model.create_node(
+                    node_id=node_snapshot["node_id"],
+                    equipment_id=node_snapshot.get("equipment_id"),
+                    x=node_snapshot.get("x", 0.0),
+                    y=node_snapshot.get("y", 0.0),
+                    presentation=node_snapshot.get("presentation"),
+                    properties=deepcopy(node_snapshot.get("properties", {})),
+                )
+            elif restored_node.to_dict() != node_snapshot:
                 raise ValueError(
-                    f"Cannot restore removed SLD node; identity already exists: "
+                    f"Cannot restore removed SLD node; identity changed independently: "
                     f"{node_snapshot['node_id']!r}."
                 )
-            existing_connections = {
-                item["connection_id"]
-                for item in connection_snapshots
-                if self.document.model.get_connection_optional(item["connection_id"]) is not None
-            }
-            if existing_connections:
-                raise ValueError(
-                    "Cannot restore removed SLD node; connection identities already "
-                    f"exist: {sorted(existing_connections)!r}."
-                )
-            self.document.model.create_node(
-                node_id=node_snapshot["node_id"],
-                equipment_id=node_snapshot.get("equipment_id"),
-                x=node_snapshot.get("x", 0.0),
-                y=node_snapshot.get("y", 0.0),
-                presentation=node_snapshot.get("presentation"),
-                properties=node_snapshot.get("properties", {}),
-            )
             for snapshot in connection_snapshots:
+                existing = self.document.model.get_connection_optional(snapshot["connection_id"])
+                if existing is not None:
+                    if existing.to_dict() != snapshot:
+                        raise ValueError(
+                            "Cannot restore removed SLD node; connection identity changed independently: "
+                            f"{snapshot['connection_id']!r}."
+                        )
+                    continue
                 self.document.model.create_connection(
                     connection_id=snapshot["connection_id"],
                     source_node_id=snapshot["source_node_id"],
@@ -1373,11 +1369,15 @@ class SLDService:
                     source_endpoint=snapshot.get("source_endpoint"),
                     target_endpoint=snapshot.get("target_endpoint"),
                     route=snapshot.get("route"),
-                    properties=snapshot.get("properties", {}),
+                    properties=deepcopy(snapshot.get("properties", {})),
                 )
             self.document.mark_modified()
 
+        # Register before removal so a partially applied model mutation can
+        # be compensated if remove_node raises after changing persistent state.
         transaction.record_undo(restore)
+        self.document.model.remove_node(node_id)
+        self.document.mark_modified()
         return ApplicationResult.success_result(
             message="SLD node removed.",
             metadata={"presentation_operation": "remove_node", "node_id": node_id},
