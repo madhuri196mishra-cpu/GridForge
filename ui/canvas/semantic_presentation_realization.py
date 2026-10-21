@@ -14,7 +14,7 @@ from ui.equipment.symbol.symbol_base import SymbolBase
 from ui.equipment.symbol.symbol_factory import SymbolFactory
 from ui.equipment.symbol.symbol_registry import SymbolRegistry
 from ui.sld.sld_equipment_identity import equipment_type_for_semantic
-from ui.sld.sld_vocabulary import semantic_type
+from ui.sld.sld_vocabulary import SLD_SEMANTIC_TYPES, semantic_type
 
 from .sld_canvas_projection import SLDCanvasNode
 
@@ -46,6 +46,14 @@ class SemanticPresentationRealization:
             raise TypeError("symbol_registry must be a SymbolRegistry")
         self._equipment_registry = equipment_registry
         self._symbol_registry = symbol_registry
+        # Validate the complete advertised SLD vocabulary at composition time.
+        # This keeps the vocabulary, EquipmentRegistry identity bridge, and
+        # SymbolRegistry in lockstep instead of discovering missing coverage
+        # only after a persisted node reaches the canvas renderer.
+        for semantic in SLD_SEMANTIC_TYPES:
+            equipment_type = equipment_type_for_semantic(semantic)
+            definition = self._equipment_registry.require(equipment_type)
+            self._symbol_registry.require(definition.symbol_id)
         # Use the canonical SymbolFactory with the already-composed registry.
         # The factory creates only renderer-neutral instances; SymbolRegistry
         # remains the sole symbol-definition authority.
