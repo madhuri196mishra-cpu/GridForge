@@ -178,6 +178,53 @@ class SLDService:
         return tuple(diagnostics)
 
     def reconcile_simple_wire_projection(self, network: Any) -> Callable[[], None]:
+        """Reconcile Simple Wire projections with failure-safe partial-mutation recovery."""
+        previous = tuple(connection.to_dict() for connection in self.document.model.connections)
+        previous_by_id = {str(item["connection_id"]): item for item in previous}
+        previous_modified = bool(self.document.modified)
+        try:
+            return self._reconcile_simple_wire_projection(network)
+        except BaseException as primary:
+            current_by_id = {
+                str(connection.connection_id): connection.to_dict()
+                for connection in self.document.model.connections
+            }
+            changed_ids = {
+                connection_id
+                for connection_id in set(previous_by_id) | set(current_by_id)
+                if previous_by_id.get(connection_id) != current_by_id.get(connection_id)
+            }
+            recovery_errors: list[tuple[str, BaseException]] = []
+            for connection_id in changed_ids:
+                try:
+                    if self.document.model.get_connection_optional(connection_id) is not None:
+                        self.document.model.remove_connection(connection_id)
+                except BaseException as recovery_error:
+                    recovery_errors.append((f"remove partially reconciled connection {connection_id!r}", recovery_error))
+            for connection_id in changed_ids:
+                snapshot = previous_by_id.get(connection_id)
+                if snapshot is None:
+                    continue
+                try:
+                    if self.document.model.get_connection_optional(connection_id) is None:
+                        self._restore_connection_snapshot(snapshot)
+                except BaseException as recovery_error:
+                    recovery_errors.append((f"restore prior connection {connection_id!r}", recovery_error))
+            try:
+                if previous_modified:
+                    self.document.mark_modified()
+                else:
+                    self.document.mark_clean()
+            except BaseException as recovery_error:
+                recovery_errors.append(("restore document dirty marker", recovery_error))
+            if recovery_errors:
+                add_note = getattr(primary, "add_note", None)
+                if callable(add_note):
+                    for label, recovery_error in recovery_errors:
+                        add_note(f"SLD reconciliation recovery failed ({label}): {recovery_error!r}")
+            raise
+
+    def _reconcile_simple_wire_projection(self, network: Any) -> Callable[[], None]:
         """Reconcile persistent projection companions against authoritative Core Simple Wires.
         
         This is a project-activation boundary operation. It does not create a
@@ -188,6 +235,8 @@ class SLDService:
             raise TypeError("network must expose the authoritative connectivity aggregate")
 
         previous = tuple(connection.to_dict() for connection in self.document.model.connections)
+        previous_by_id = {str(item["connection_id"]): item for item in previous}
+        previous_modified = bool(self.document.modified)
         core_connections = tuple(network.connectivity.connections)
         core_by_id = {str(connection.connection_id): connection for connection in core_connections}
 
@@ -304,11 +353,31 @@ class SLDService:
         if changed:
             self.document.mark_modified()
 
+        current_by_id = {
+            str(connection.connection_id): connection.to_dict()
+            for connection in self.document.model.connections
+        }
+        changed_ids = {
+            connection_id
+            for connection_id in set(previous_by_id) | set(current_by_id)
+            if previous_by_id.get(connection_id) != current_by_id.get(connection_id)
+        }
+
         def rollback() -> None:
-            for connection in tuple(self.document.model.connections):
-                self.document.model.remove_connection(connection.connection_id)
-            for snapshot in previous:
-                self._restore_connection_snapshot(snapshot)
+            # Restore only connection identities touched by this reconciliation.
+            # Unrelated engineer-owned connections must not be removed/recreated
+            # as a side effect of activation compensation.
+            for connection_id in changed_ids:
+                if self.document.model.get_connection_optional(connection_id) is not None:
+                    self.document.model.remove_connection(connection_id)
+            for connection_id in changed_ids:
+                snapshot = previous_by_id.get(connection_id)
+                if snapshot is not None:
+                    self._restore_connection_snapshot(snapshot)
+            if previous_modified:
+                self.document.mark_modified()
+            else:
+                self.document.mark_clean()
 
         return rollback
 
@@ -445,10 +514,22 @@ class SLDService:
         p = command.payload
         node = self.document.model.get_node(p["node_id"])
         previous = None if node.presentation is None else node.presentation.to_dict()
-        previous_properties = dict(node.properties)
+        previous_properties = deepcopy(node.properties)
+        requested = deepcopy(dict(p["presentation"])) if isinstance(p["presentation"], Mapping) else p["presentation"]
+        updated_properties = deepcopy(previous_properties)
+        updated_properties["symbol_owner"] = "engineer"
+        updated_properties.setdefault(
+            "presentation_owner",
+            "projection" if updated_properties.get("projection_source") else "engineer",
+        )
+        if previous is not None and previous == requested and updated_properties == previous_properties:
+            return ApplicationResult.success_result(
+                message="SLD node presentation is unchanged.",
+                metadata={"presentation_operation": "set_node_presentation", "node_id": p["node_id"]},
+            )
         node.set_presentation(p["presentation"])
-        node.properties["symbol_owner"] = "engineer"
-        node.properties.setdefault("presentation_owner", "projection" if node.properties.get("projection_source") else "engineer")
+        node.properties.clear()
+        node.properties.update(updated_properties)
         self.document.mark_modified()
         def restore() -> None:
             target = self.document.model.get_node(p["node_id"])
@@ -457,7 +538,7 @@ class SLDService:
             else:
                 target.set_presentation(previous)
             target.properties.clear()
-            target.properties.update(previous_properties)
+            target.properties.update(deepcopy(previous_properties))
             self.document.mark_modified()
         transaction.record_undo(restore)
         return ApplicationResult.success_result(
@@ -1254,37 +1335,33 @@ class SLDService:
             for connection in self.document.model.connections
             if connection.source_node_id == node_id or connection.target_node_id == node_id
         )
-        self.document.model.remove_node(node_id)
-        self.document.mark_modified()
-
         def restore() -> None:
-            # Refuse to overwrite identities that may have been created by an
-            # independent mutation after this removal. A failed restoration
-            # must surface through Transaction.rollback()/CommandManager.undo().
-            if self.document.model.get_node_optional(node_snapshot["node_id"]) is not None:
+            # Recovery is idempotent for identities that still match the
+            # pre-mutation snapshot, but refuses to overwrite unrelated edits.
+            restored_node = self.document.model.get_node_optional(node_snapshot["node_id"])
+            if restored_node is None:
+                self.document.model.create_node(
+                    node_id=node_snapshot["node_id"],
+                    equipment_id=node_snapshot.get("equipment_id"),
+                    x=node_snapshot.get("x", 0.0),
+                    y=node_snapshot.get("y", 0.0),
+                    presentation=node_snapshot.get("presentation"),
+                    properties=deepcopy(node_snapshot.get("properties", {})),
+                )
+            elif restored_node.to_dict() != node_snapshot:
                 raise ValueError(
-                    f"Cannot restore removed SLD node; identity already exists: "
+                    f"Cannot restore removed SLD node; identity changed independently: "
                     f"{node_snapshot['node_id']!r}."
                 )
-            existing_connections = {
-                item["connection_id"]
-                for item in connection_snapshots
-                if self.document.model.get_connection_optional(item["connection_id"]) is not None
-            }
-            if existing_connections:
-                raise ValueError(
-                    "Cannot restore removed SLD node; connection identities already "
-                    f"exist: {sorted(existing_connections)!r}."
-                )
-            self.document.model.create_node(
-                node_id=node_snapshot["node_id"],
-                equipment_id=node_snapshot.get("equipment_id"),
-                x=node_snapshot.get("x", 0.0),
-                y=node_snapshot.get("y", 0.0),
-                presentation=node_snapshot.get("presentation"),
-                properties=node_snapshot.get("properties", {}),
-            )
             for snapshot in connection_snapshots:
+                existing = self.document.model.get_connection_optional(snapshot["connection_id"])
+                if existing is not None:
+                    if existing.to_dict() != snapshot:
+                        raise ValueError(
+                            "Cannot restore removed SLD node; connection identity changed independently: "
+                            f"{snapshot['connection_id']!r}."
+                        )
+                    continue
                 self.document.model.create_connection(
                     connection_id=snapshot["connection_id"],
                     source_node_id=snapshot["source_node_id"],
@@ -1292,11 +1369,15 @@ class SLDService:
                     source_endpoint=snapshot.get("source_endpoint"),
                     target_endpoint=snapshot.get("target_endpoint"),
                     route=snapshot.get("route"),
-                    properties=snapshot.get("properties", {}),
+                    properties=deepcopy(snapshot.get("properties", {})),
                 )
             self.document.mark_modified()
 
+        # Register before removal so a partially applied model mutation can
+        # be compensated if remove_node raises after changing persistent state.
         transaction.record_undo(restore)
+        self.document.model.remove_node(node_id)
+        self.document.mark_modified()
         return ApplicationResult.success_result(
             message="SLD node removed.",
             metadata={"presentation_operation": "remove_node", "node_id": node_id},
@@ -1320,6 +1401,9 @@ class SLDService:
         connection_id = p["connection_id"]
         if self.document.model.get_connection_optional(connection_id) is not None:
             raise ValueError(f"SLD connection identity collision: {connection_id!r}.")
+        connection_id = p["connection_id"]
+        if self.document.model.get_connection_optional(connection_id) is not None:
+            raise ValueError(f"SLD connection identity collision: {connection_id!r}.")
         core_connection_id = p.get("core_connection_id")
         if core_connection_id is not None:
             core_connection_id = str(core_connection_id).strip()
@@ -1332,8 +1416,17 @@ class SLDService:
             properties["lifecycle_state"] = "BOUND"
         if isinstance(route, Mapping) and route.get("ownership") == "engineer":
             properties["route_owner"] = "engineer"
+        def undo_added_connection() -> None:
+            # Register compensation before model mutation, and undo only the
+            # identity owned by this command. A pre-existing identity was
+            # rejected above, so a partial create can be safely compensated.
+            if self.document.model.get_connection_optional(connection_id) is not None:
+                self.document.model.remove_connection(connection_id)
+                self.document.mark_modified()
+
+        transaction.record_undo(undo_added_connection)
         self.document.model.create_connection(
-            connection_id=p["connection_id"],
+            connection_id=connection_id,
             source_node_id=p["source_node_id"],
             target_node_id=p["target_node_id"],
             source_endpoint=source_endpoint,
@@ -1342,14 +1435,6 @@ class SLDService:
             properties=properties,
         )
         self.document.mark_modified()
-        def undo_added_connection() -> None:
-            # Undo only the identity created by this command. If it has already
-            # disappeared, treat compensation as an idempotent no-op.
-            if self.document.model.get_connection_optional(p["connection_id"]) is not None:
-                self.document.model.remove_connection(p["connection_id"])
-                self.document.mark_modified()
-
-        transaction.record_undo(undo_added_connection)
         return ApplicationResult.success_result(
             message="SLD connection added.",
             metadata={"presentation_operation": "add_connection", "connection_id": p["connection_id"]},
@@ -1478,15 +1563,16 @@ class SLDService:
 
         self._require_engineer_owned_connection(connection)
         snapshot = connection.to_dict()
-        self.document.model.remove_connection(connection_id)
-        self.document.mark_modified()
 
         def restore() -> None:
             restored_id = snapshot["connection_id"]
-            if self.document.model.get_connection_optional(restored_id) is not None:
-                raise ValueError(
-                    f"Cannot restore removed SLD connection; identity already exists: {restored_id!r}."
-                )
+            existing = self.document.model.get_connection_optional(restored_id)
+            if existing is not None:
+                if existing.to_dict() != snapshot:
+                    raise ValueError(
+                        f"Cannot restore removed SLD connection; identity changed independently: {restored_id!r}."
+                    )
+                return
             self.document.model.create_connection(
                 connection_id=restored_id,
                 source_node_id=snapshot["source_node_id"],
@@ -1499,6 +1585,8 @@ class SLDService:
             self.document.mark_modified()
 
         transaction.record_undo(restore)
+        self.document.model.remove_connection(connection_id)
+        self.document.mark_modified()
         return ApplicationResult.success_result(
             message="SLD connection removed.",
             metadata={"presentation_operation": "remove_connection", "connection_id": connection_id},
