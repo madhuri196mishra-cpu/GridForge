@@ -514,10 +514,22 @@ class SLDService:
         p = command.payload
         node = self.document.model.get_node(p["node_id"])
         previous = None if node.presentation is None else node.presentation.to_dict()
-        previous_properties = dict(node.properties)
+        previous_properties = deepcopy(node.properties)
+        requested = deepcopy(dict(p["presentation"])) if isinstance(p["presentation"], Mapping) else p["presentation"]
+        updated_properties = deepcopy(previous_properties)
+        updated_properties["symbol_owner"] = "engineer"
+        updated_properties.setdefault(
+            "presentation_owner",
+            "projection" if updated_properties.get("projection_source") else "engineer",
+        )
+        if previous is not None and previous == requested and updated_properties == previous_properties:
+            return ApplicationResult.success_result(
+                message="SLD node presentation is unchanged.",
+                metadata={"presentation_operation": "set_node_presentation", "node_id": p["node_id"]},
+            )
         node.set_presentation(p["presentation"])
-        node.properties["symbol_owner"] = "engineer"
-        node.properties.setdefault("presentation_owner", "projection" if node.properties.get("projection_source") else "engineer")
+        node.properties.clear()
+        node.properties.update(updated_properties)
         self.document.mark_modified()
         def restore() -> None:
             target = self.document.model.get_node(p["node_id"])
@@ -526,7 +538,7 @@ class SLDService:
             else:
                 target.set_presentation(previous)
             target.properties.clear()
-            target.properties.update(previous_properties)
+            target.properties.update(deepcopy(previous_properties))
             self.document.mark_modified()
         transaction.record_undo(restore)
         return ApplicationResult.success_result(
