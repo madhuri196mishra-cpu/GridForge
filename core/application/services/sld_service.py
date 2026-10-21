@@ -188,6 +188,8 @@ class SLDService:
             raise TypeError("network must expose the authoritative connectivity aggregate")
 
         previous = tuple(connection.to_dict() for connection in self.document.model.connections)
+        previous_by_id = {str(item["connection_id"]): item for item in previous}
+        previous_modified = bool(self.document.modified)
         core_connections = tuple(network.connectivity.connections)
         core_by_id = {str(connection.connection_id): connection for connection in core_connections}
 
@@ -304,11 +306,31 @@ class SLDService:
         if changed:
             self.document.mark_modified()
 
+        current_by_id = {
+            str(connection.connection_id): connection.to_dict()
+            for connection in self.document.model.connections
+        }
+        changed_ids = {
+            connection_id
+            for connection_id in set(previous_by_id) | set(current_by_id)
+            if previous_by_id.get(connection_id) != current_by_id.get(connection_id)
+        }
+
         def rollback() -> None:
-            for connection in tuple(self.document.model.connections):
-                self.document.model.remove_connection(connection.connection_id)
-            for snapshot in previous:
-                self._restore_connection_snapshot(snapshot)
+            # Restore only connection identities touched by this reconciliation.
+            # Unrelated engineer-owned connections must not be removed/recreated
+            # as a side effect of activation compensation.
+            for connection_id in changed_ids:
+                if self.document.model.get_connection_optional(connection_id) is not None:
+                    self.document.model.remove_connection(connection_id)
+            for connection_id in changed_ids:
+                snapshot = previous_by_id.get(connection_id)
+                if snapshot is not None:
+                    self._restore_connection_snapshot(snapshot)
+            if previous_modified:
+                self.document.mark_modified()
+            else:
+                self.document.mark_clean()
 
         return rollback
 
@@ -1320,6 +1342,9 @@ class SLDService:
         connection_id = p["connection_id"]
         if self.document.model.get_connection_optional(connection_id) is not None:
             raise ValueError(f"SLD connection identity collision: {connection_id!r}.")
+        connection_id = p["connection_id"]
+        if self.document.model.get_connection_optional(connection_id) is not None:
+            raise ValueError(f"SLD connection identity collision: {connection_id!r}.")
         core_connection_id = p.get("core_connection_id")
         if core_connection_id is not None:
             core_connection_id = str(core_connection_id).strip()
@@ -1332,8 +1357,17 @@ class SLDService:
             properties["lifecycle_state"] = "BOUND"
         if isinstance(route, Mapping) and route.get("ownership") == "engineer":
             properties["route_owner"] = "engineer"
+        def undo_added_connection() -> None:
+            # Register compensation before model mutation, and undo only the
+            # identity owned by this command. A pre-existing identity was
+            # rejected above, so a partial create can be safely compensated.
+            if self.document.model.get_connection_optional(connection_id) is not None:
+                self.document.model.remove_connection(connection_id)
+                self.document.mark_modified()
+
+        transaction.record_undo(undo_added_connection)
         self.document.model.create_connection(
-            connection_id=p["connection_id"],
+            connection_id=connection_id,
             source_node_id=p["source_node_id"],
             target_node_id=p["target_node_id"],
             source_endpoint=source_endpoint,
@@ -1342,14 +1376,6 @@ class SLDService:
             properties=properties,
         )
         self.document.mark_modified()
-        def undo_added_connection() -> None:
-            # Undo only the identity created by this command. If it has already
-            # disappeared, treat compensation as an idempotent no-op.
-            if self.document.model.get_connection_optional(p["connection_id"]) is not None:
-                self.document.model.remove_connection(p["connection_id"])
-                self.document.mark_modified()
-
-        transaction.record_undo(undo_added_connection)
         return ApplicationResult.success_result(
             message="SLD connection added.",
             metadata={"presentation_operation": "add_connection", "connection_id": p["connection_id"]},
