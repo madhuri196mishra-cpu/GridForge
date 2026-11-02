@@ -138,3 +138,33 @@ def test_lifecycle_capture_rejects_sld_document_mutation_during_entity_build() -
             model=active.model,
             entity_builder=mutate_document,
         )
+
+
+def test_lifecycle_capture_binds_revision_to_the_active_sld_document() -> None:
+    from types import SimpleNamespace
+
+    from ui.sld.sld_document import SLDDocument
+    from ui.workspace.document_manager import DocumentManager
+
+    active = SLDDocument("document-1", project_id="project-1")
+    manager = DocumentManager()
+    manager.register(active)
+    application = SimpleNamespace(
+        revision="revision-42",
+        project=SimpleNamespace(project_id="project-1"),
+        presentation=active,
+    )
+
+    snapshot = SLDProjectionDrawingSnapshotAdapter().capture_from_document_lifecycle(
+        application,
+        manager,
+        SLDCanvasProjection(),
+        project_id="project-1",
+        document_id="document-1",
+        model=active.model,
+        entity_builder=lambda projection: (),
+    )
+
+    assert snapshot.source_revision == "revision-42"
+    assert snapshot.source_id == "document-1"
+    assert snapshot.entities == ()
