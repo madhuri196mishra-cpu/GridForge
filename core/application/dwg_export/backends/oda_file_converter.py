@@ -17,6 +17,7 @@ from typing import Any
 from ..drawing_plan import DrawingEntity, DrawingPlan
 from ..service import ExportResult
 from ..symbol_registry import SymbolRegistry
+from ..validation import validate_drawing_plan
 
 _DWG_SIGNATURES = {
     "ACAD2018": b"AC1032", "ACAD2013": b"AC1027", "ACAD2010": b"AC1024",
@@ -177,6 +178,11 @@ class ODAFileConverterBackend:
                     pass
 
     def export(self, plan: DrawingPlan, destination: Path, *, target_version: str | None = None) -> ExportResult:
+        # The backend is also a public callable implementation of the export
+        # protocol; enforce the same contract when it is used without
+        # DWGExportService, before importing optional CAD dependencies or
+        # creating output directories/files.
+        validate_drawing_plan(plan)
         try:
             import ezdxf
         except ImportError as exc:
