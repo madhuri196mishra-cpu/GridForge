@@ -81,12 +81,14 @@ class SLDProjectionDrawingSnapshotAdapter:
         execution thread to prevent concurrent document mutation.
         """
         from ui.workspace.document_manager import DocumentManager
-        from ui.workspace.document import Document
+        from ui.sld.sld_document import SLDDocument
         from ui.sld.sld_model import SLDModel
         from ui.canvas.sld_canvas_projection import SLDCanvasProjection
 
         if not hasattr(application, "revision") or not hasattr(application, "project"):
             raise TypeError("application must expose revision and project context")
+        if not hasattr(application, "presentation"):
+            raise TypeError("application must expose its active presentation")
         if not isinstance(document_manager, DocumentManager):
             raise TypeError("document_manager must be a DocumentManager")
         if not isinstance(projection_factory, SLDCanvasProjection):
@@ -94,10 +96,12 @@ class SLDProjectionDrawingSnapshotAdapter:
         if not isinstance(model, SLDModel):
             raise TypeError("model must be the active document's SLDModel")
         active = document_manager.active_document
-        if not isinstance(active, Document) or active.document_id != document_id:
-            raise RuntimeError("requested document is not the DocumentManager active document")
-        if active.document_type.lower() not in {"sld", "single_line_diagram", "single-line-diagram"}:
-            raise RuntimeError("active document is not an SLD document")
+        if not isinstance(active, SLDDocument) or active.document_id != document_id:
+            raise RuntimeError("requested document is not the active SLDDocument in DocumentManager")
+        if active.model is not model:
+            raise RuntimeError("supplied SLDModel is not owned by the active SLDDocument")
+        if application.presentation is not active:
+            raise RuntimeError("active DocumentManager SLDDocument is not the Application presentation")
         if active.project_id is not None and active.project_id != project_id:
             raise RuntimeError("active document belongs to a different project")
         context = application.project
@@ -106,6 +110,7 @@ class SLDProjectionDrawingSnapshotAdapter:
 
         revision_before = str(application.revision)
         active_id_before = document_manager.active_document_id
+        document_state_before = active.to_dict()
         projection = projection_factory.project(model)
         snapshot = self.capture(
             projection,
@@ -123,6 +128,10 @@ class SLDProjectionDrawingSnapshotAdapter:
             raise RuntimeError("active document changed during SLD projection capture")
         if document_manager.get(document_id) is not active:
             raise RuntimeError("active document registration changed during SLD projection capture")
+        if application.presentation is not active or active.model is not model:
+            raise RuntimeError("active SLD document/model ownership changed during projection capture")
+        if active.to_dict() != document_state_before:
+            raise RuntimeError("SLD document content changed during projection capture")
         return snapshot
 
 
