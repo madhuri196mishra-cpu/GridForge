@@ -377,6 +377,7 @@ def _build_application_impl(resources: dict[str, object]) -> tuple[QApplication,
     project_workspace_adapter = ProjectWorkspaceApplicationAdapter(
         application=gridforge_application,
         lifecycle=project_workspace_lifecycle,
+        default_symbol_presentation_factory=presentation_bootstrap.default_symbol_presentation,
     )
     resources["project_workspace_adapter"] = project_workspace_adapter
     project_workspace_adapter.configure_presentation_activation_bridge(workspace_surface_host.set_sld_document)
