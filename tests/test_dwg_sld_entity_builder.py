@@ -67,3 +67,108 @@ def test_sld_node_builder_rejects_nodes_without_persisted_presentation() -> None
         SLDNodeEntityBuilder(_registry()).build(
             projection, profile=SymbolProfile.ANSI_IEEE,
         )
+
+
+@pytest.mark.parametrize(
+    ("route_points", "expected"),
+    [
+        ((), ((10.0, 20.0), (90.0, 80.0))),
+        (((50.0, 20.0),), ((10.0, 20.0), (50.0, 20.0), (90.0, 80.0))),
+        (
+            ((50.0, 20.0), (50.0, 80.0), (70.0, 80.0)),
+            ((10.0, 20.0), (50.0, 20.0), (50.0, 80.0), (70.0, 80.0), (90.0, 80.0)),
+        ),
+    ],
+)
+def test_sld_connection_builder_preserves_endpoints_around_route_bends(
+    route_points: tuple[tuple[float, float], ...],
+    expected: tuple[tuple[float, float], ...],
+) -> None:
+    from ui.canvas.sld_canvas_projection import SLDCanvasConnection
+    from ui.sld.sld_model import SLDRoute
+
+    connection = SLDCanvasConnection(
+        connection_id="connection-1",
+        source_node_id="source",
+        target_node_id="target",
+        source_endpoint=None,
+        target_endpoint=None,
+        route=SLDRoute(points=route_points),
+        connection_kind="wire",
+        presentation_owner="engineer",
+        projection_source="persisted",
+        properties={},
+    )
+    projection = SLDCanvasSnapshot(
+        nodes=(
+            SLDCanvasNode("source", None, 10, 20, {}, None),
+            SLDCanvasNode("target", None, 90, 80, {}, None),
+        ),
+        connections=(connection,),
+    )
+
+    entities = SLDNodeEntityBuilder.build_connections(projection)
+
+    assert len(entities) == 1
+    assert entities[0].geometry["points"] == expected
+    assert entities[0].geometry["points"][0] == (10.0, 20.0)
+    assert entities[0].geometry["points"][-1] == (90.0, 80.0)
+
+
+def test_sld_connection_builder_removes_only_consecutive_duplicate_points() -> None:
+    from ui.canvas.sld_canvas_projection import SLDCanvasConnection
+    from ui.sld.sld_model import SLDRoute
+
+    connection = SLDCanvasConnection(
+        connection_id="connection-duplicate",
+        source_node_id="source",
+        target_node_id="target",
+        source_endpoint=None,
+        target_endpoint=None,
+        route=SLDRoute(points=((10, 20), (50, 20), (50, 20), (10, 20))),
+        connection_kind="wire",
+        presentation_owner="engineer",
+        projection_source="persisted",
+        properties={},
+    )
+    projection = SLDCanvasSnapshot(
+        nodes=(
+            SLDCanvasNode("source", None, 10, 20, {}, None),
+            SLDCanvasNode("target", None, 90, 80, {}, None),
+        ),
+        connections=(connection,),
+    )
+
+    entity = SLDNodeEntityBuilder.build_connections(projection)[0]
+
+    assert entity.geometry["points"] == (
+        (10.0, 20.0), (50.0, 20.0), (10.0, 20.0), (90.0, 80.0),
+    )
+
+
+def test_sld_connection_builder_rejects_geometry_without_distinct_endpoints() -> None:
+    from ui.canvas.sld_canvas_projection import SLDCanvasConnection
+    from ui.sld.sld_model import SLDRoute
+
+    connection = SLDCanvasConnection(
+        connection_id="connection-zero-length",
+        source_node_id="source",
+        target_node_id="target",
+        source_endpoint=None,
+        target_endpoint=None,
+        route=SLDRoute(),
+        connection_kind="wire",
+        presentation_owner="engineer",
+        projection_source="persisted",
+        properties={},
+    )
+    projection = SLDCanvasSnapshot(
+        nodes=(
+            SLDCanvasNode("source", None, 10, 20, {}, None),
+            SLDCanvasNode("target", None, 10, 20, {}, None),
+        ),
+        connections=(connection,),
+    )
+
+    with pytest.raises(ValueError, match="no distinct source-to-target presentation geometry"):
+        SLDNodeEntityBuilder.build_connections(projection)
