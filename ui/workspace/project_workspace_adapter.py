@@ -38,11 +38,20 @@ PresentationActivationBridge = Callable[[Document | None], None]
 class ProjectWorkspaceApplicationAdapter:
     """Bridge Application lifecycle success into the coordinated UI workspace transaction."""
 
-    def __init__(self, application: Application, lifecycle: ProjectWorkspaceLifecycle) -> None:
+    def __init__(
+        self,
+        application: Application,
+        lifecycle: ProjectWorkspaceLifecycle,
+        *,
+        default_symbol_presentation_factory: Callable[[str], Mapping[str, object]] | None = None,
+    ) -> None:
         if not isinstance(application, Application): raise TypeError("application must be an Application.")
         if not isinstance(lifecycle, ProjectWorkspaceLifecycle): raise TypeError("lifecycle must be a ProjectWorkspaceLifecycle.")
+        if default_symbol_presentation_factory is not None and not callable(default_symbol_presentation_factory):
+            raise TypeError("default_symbol_presentation_factory must be callable or None.")
         self._application = application
         self._lifecycle = lifecycle
+        self._default_symbol_presentation_factory = default_symbol_presentation_factory
         self._handlers: list[WorkspaceUpdateHandler] = []
         self._presentation_activation_bridge: PresentationActivationBridge | None = None
         self._document_transition_guard: Callable[[], None] | None = None
@@ -185,6 +194,7 @@ class ProjectWorkspaceApplicationAdapter:
                 document_id=f"{context.project_id}:sld",
                 name=f"{context.name} SLD",
                 project_id=context.project_id,
+                default_symbol_presentation_factory=self._default_symbol_presentation_factory,
             )
 
         def serializer(value: Document):
@@ -206,12 +216,18 @@ class ProjectWorkspaceApplicationAdapter:
                 "active_document_id": collection.active_document_id,
             }
 
+        def deserialize_document(data):
+            return SLDDocument.from_dict(
+                data,
+                default_symbol_presentation_factory=self._default_symbol_presentation_factory,
+            )
+
         def collection_deserializer(data):
             if not isinstance(data, dict):
                 raise TypeError("presentation collection payload must be a mapping.")
             documents = []
             for item in data.get("documents", ()):
-                documents.append(SLDDocument.from_dict(item))
+                documents.append(deserialize_document(item))
             return ProjectPresentationCollection.ordered(
                 documents,
                 data.get("active_document_id"),
@@ -233,7 +249,7 @@ class ProjectWorkspaceApplicationAdapter:
         self._application.configure_project_presentation_contract(
             factory=factory,
             serializer=serializer,
-            deserializer=SLDDocument.from_dict,
+            deserializer=deserialize_document,
         )
         self._application.project_lifecycle.configure_presentation_collection_contract(
             serializer=collection_serializer,
