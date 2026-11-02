@@ -206,6 +206,7 @@ class SLDService:
             str(connection.connection_id): connection
             for connection in original_connections
         }
+        previous_modified = bool(self.document.modified)
         core_connections = tuple(network.connectivity.connections)
         core_by_id = {str(connection.connection_id): connection for connection in core_connections}
         created_connections = {}
@@ -261,16 +262,27 @@ class SLDService:
                 else:
                     collisions.append(connection_id)
 
+            # Restore only original identities whose serialized state actually
+            # changed or disappeared. Untouched engineer-owned connections keep
+            # both their object identity and all externally held references.
             for connection_id, snapshot in previous.items():
                 original = original_by_id[connection_id]
                 current = self.document.model.get_connection_optional(connection_id)
-                if current is None:
+                if current is original:
+                    if current.to_dict() != snapshot:
+                        restore_original_fields(current, snapshot)
+                elif current is None:
                     self._restore_connection_snapshot(snapshot)
-                elif current is not original:
-                    collisions.append(connection_id)
                 else:
-                    restore_original_fields(current, snapshot)
-            self.document.mark_modified()
+                    collisions.append(connection_id)
+
+            # Reconciliation is a projection repair. Its compensation must
+            # restore the document's pre-activation dirty marker, not make an
+            # otherwise clean document dirty merely because rollback ran.
+            if previous_modified:
+                self.document.mark_modified()
+            else:
+                self.document.mark_clean()
             if collisions:
                 raise ValueError(
                     "SLD wire reconciliation rollback encountered conflicting identity owners: "
