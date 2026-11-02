@@ -88,13 +88,27 @@ class SLDNodeEntityBuilder:
                 raise ValueError(
                     f"SLD connection {connection.connection_id!r} references a missing projected node"
                 )
-            # A persisted route is authoritative presentation. For an un-routed
-            # explicit connection, node coordinates provide only its visible line
-            # endpoints; the existence/meaning of the connection comes from the
-            # persisted SLDConnection, never from geometric proximity.
-            points = tuple(connection.route.points)
+            # Route points are interior bends, not connection endpoints.
+            # Always anchor the exported path to the explicit semantic endpoint
+            # nodes; the connection itself, never geometric proximity, establishes
+            # that these two nodes are connected.
+            candidates = (
+                (float(source.x), float(source.y)),
+                *tuple(connection.route.points),
+                (float(target.x), float(target.y)),
+            )
+            # Remove only consecutive duplicate coordinates. Non-consecutive
+            # repeats may represent an intentional return path.
+            normalized_points: list[tuple[float, float]] = []
+            for point in candidates:
+                if not normalized_points or point != normalized_points[-1]:
+                    normalized_points.append(point)
+            points = tuple(normalized_points)
             if len(points) < 2:
-                points = ((float(source.x), float(source.y)), (float(target.x), float(target.y)))
+                raise ValueError(
+                    f"SLD connection {connection.connection_id!r} has no distinct "
+                    "source-to-target presentation geometry"
+                )
             kind = connection.connection_kind or "unspecified"
             # CAD layer names reject reserved punctuation; normalize only the
             # presentation layer label, preserving the original kind in metadata.
