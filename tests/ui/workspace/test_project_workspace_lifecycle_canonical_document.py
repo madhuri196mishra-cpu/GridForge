@@ -48,3 +48,39 @@ def test_new_project_uses_supplied_document_without_replacement():
     assert lifecycle.document is document
     assert lifecycle.document.project_id == "project-1"
     assert lifecycle.document.document_type == "sld"
+
+
+
+def test_collection_deserializer_uses_configured_symbol_presentation_factory(monkeypatch):
+    factory = lambda identifier: {"identifier": identifier}
+    captured = {}
+
+    def from_dict(cls, data, *, default_symbol_presentation_factory=None):
+        captured["factory"] = default_symbol_presentation_factory
+        return SLDDocument(
+            document_id=data["document_id"],
+            project_id=data["project_id"],
+        )
+
+    monkeypatch.setattr(SLDDocument, "from_dict", classmethod(from_dict))
+    lifecycle = ProjectWorkspaceLifecycle(_WorkspaceControllerStub())
+    adapter = ProjectWorkspaceApplicationAdapter(
+        create_application(Network()),
+        lifecycle,
+        default_symbol_presentation_factory=factory,
+    )
+    adapter.new_project(name="GridForge Project", project_id="project-1")
+
+    payload = SLDDocument(
+        document_id="restored-sld",
+        project_id="project-1",
+        name="Restored SLD",
+    ).to_dict()
+    collection_deserializer = adapter.project_lifecycle._presentation_collection_deserializer
+    restored = collection_deserializer({
+        "documents": [payload],
+        "active_document_id": "restored-sld",
+    })
+
+    assert captured["factory"] is factory
+    assert restored.active_document.document_id == "restored-sld"
