@@ -32,3 +32,25 @@ def test_oda_backend_rejects_unsupported_target_version_before_conversion(tmp_pa
     )
     with pytest.raises(ValueError, match="Unsupported ODA target version"):
         backend.export(plan, tmp_path / "drawing.dwg", target_version="ACAD2030")
+
+
+def test_oda_backend_validates_plan_when_called_without_export_service(tmp_path: Path) -> None:
+    from core.application.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile
+    from core.application.dwg_export.validation import DrawingPlanValidationError
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    backend = ODAFileConverterBackend(executable)
+    invalid = DrawingEntity(
+        "invalid-line", "LINE", "SLD", {"start": [0, 0], "end": [0, 0]}, {},
+    )
+    plan = DrawingPlan(
+        project_id="p", export_id="e", source_revision="r",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",), entities=(invalid,),
+    )
+
+    with pytest.raises(DrawingPlanValidationError, match="distinct endpoints"):
+        backend.export(plan, tmp_path / "drawing.dwg")
+
+    assert not (tmp_path / "drawing.dwg").exists()
