@@ -134,6 +134,8 @@ class SLDAnnotationExportSnapshot:
         object.__setattr__(self, "y", float(self.y))
         if not (math.isfinite(self.x) and math.isfinite(self.y)):
             raise ValueError("annotation coordinates must be finite")
+        if not isinstance(self.visible, bool):
+            raise TypeError("annotation visible must be boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,7 +148,7 @@ class SLDExportSnapshot:
     annotations: tuple[SLDAnnotationExportSnapshot, ...] = ()
     snapshot_id: str = field(default_factory=lambda: str(uuid4()))
     coordinate_system: str = "sld-document-local"
-    units: str = "mm"
+    units: str = "sld-unit"
 
     def __post_init__(self) -> None:
         for name in ("project_id", "document_id", "source_revision", "snapshot_id", "coordinate_system", "units"):
