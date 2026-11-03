@@ -56,8 +56,10 @@ class SymbolDefinition:
             if value is not None:
                 object.__setattr__(self, name, value.strip())
         if self.review_status == "reviewed":
-            if not all((self.reviewer, self.reviewed_on, self.review_reference)):
-                raise ValueError("reviewed definitions require reviewer, reviewed_on, and review_reference")
+            if not all((self.reviewer, self.reviewed_on, self.review_reference, self.standard_reference)):
+                raise ValueError(
+                    "reviewed definitions require reviewer, reviewed_on, review_reference, and standard_reference"
+                )
             try:
                 date.fromisoformat(self.reviewed_on)
             except ValueError as exc:
