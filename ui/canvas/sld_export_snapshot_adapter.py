@@ -43,8 +43,13 @@ class SLDExportSnapshotCapture:
         self, application: object, document_manager: DocumentManager,
         projection: SLDCanvasProjection, *, project_id: str, document_id: str,
     ) -> SLDExportSnapshot:
-        if not all(hasattr(application, name) for name in ("revision", "project", "presentation")):
-            raise TypeError("application must expose revision, project, and presentation")
+        if not all(hasattr(application, name) for name in ("revision", "presentation", "project_lifecycle")):
+            raise TypeError("application must expose revision, presentation, and project_lifecycle")
+        lifecycle = application.project_lifecycle
+        if lifecycle is None or not all(
+            hasattr(lifecycle, name) for name in ("context", "activation_generation")
+        ):
+            raise TypeError("application.project_lifecycle must expose context and activation_generation")
         if not isinstance(document_manager, DocumentManager):
             raise TypeError("document_manager must be DocumentManager")
         if not isinstance(projection, SLDCanvasProjection):
@@ -57,9 +62,10 @@ class SLDExportSnapshotCapture:
             raise RuntimeError("active SLD document has no valid persisted SLDModel")
         if application.presentation is not active:
             raise RuntimeError("Application presentation does not match active SLD document")
-        context = application.project
+        context = lifecycle.context
         if context is None or context.project_id != project_id:
             raise RuntimeError("requested project does not match active Application project")
+        activation_generation_before = lifecycle.activation_generation
         if active.project_id is not None and active.project_id != project_id:
             raise RuntimeError("active SLD document belongs to another project")
 
@@ -127,8 +133,13 @@ class SLDExportSnapshotCapture:
             raise RuntimeError("active document identity changed during SLD export snapshot capture")
         if active.model is not model or active.to_dict() != state_before:
             raise RuntimeError("persisted SLD document changed during export snapshot capture")
-        if application.project is not context or context.project_id != project_id:
-            raise RuntimeError("active project identity changed during SLD export snapshot capture")
+        if (
+            application.project_lifecycle is not lifecycle
+            or lifecycle.context is not context
+            or lifecycle.activation_generation != activation_generation_before
+            or context.project_id != project_id
+        ):
+            raise RuntimeError("active project identity or activation changed during SLD export snapshot capture")
         return snapshot
 
 
