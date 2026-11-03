@@ -97,6 +97,8 @@ class SLDExportSnapshotCapture:
             source_endpoint=_plain_mapping(item.source_endpoint),
             target_endpoint=_plain_mapping(item.target_endpoint),
             route_points=tuple(tuple(point) for point in item.route.points),
+            route_routing_mode=item.route.routing_mode,
+            route_ownership=item.route.ownership,
             connection_kind=item.connection_kind,
             presentation_owner=item.presentation_owner,
             projection_source=item.projection_source,

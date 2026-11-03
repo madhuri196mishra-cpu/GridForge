@@ -31,7 +31,8 @@ def _plan(route_points: tuple[tuple[float, float], ...]) -> SLDExportSnapshot:
         connection_id="wire-9", source_node_id="a", target_node_id="b",
         source_endpoint={"terminal_id": "terminal-a"},
         target_endpoint={"terminal_id": "terminal-b"},
-        route_points=route_points, connection_kind="SIMPLE_WIRE",
+        route_points=route_points, route_routing_mode="manual",
+        route_ownership="engineer", connection_kind="SIMPLE_WIRE",
         presentation_owner="engineer", projection_source="persisted",
         properties={"core_connection_id": "core-wire-9"},
     )
@@ -48,7 +49,10 @@ def test_explicit_connection_route_is_preserved_without_topology_inference() -> 
     )
     entity = next(item for item in entities if item.kind == "LWPOLYLINE")
     assert entity.kind == "LWPOLYLINE"
-    assert entity.geometry["points"] == ((0.0, 0.0), (1.0, 2.0), (30.0, 2.0), (30.0, 45.0), (100.0, 50.0))
+    assert entity.geometry["points"] == ((1.0, 2.0), (30.0, 2.0), (30.0, 45.0))
+    assert entity.metadata["route_ownership"] == "engineer"
+    assert entity.metadata["route_routing_mode"] == "manual"
+    assert entity.metadata["route_geometry_source"] == "persisted_route"
     assert entity.metadata["gridforge_connection_id"] == "wire-9"
     assert entity.metadata["properties"]["core_connection_id"] == "core-wire-9"
 
@@ -59,6 +63,7 @@ def test_unrouted_explicit_connection_uses_positions_only_as_display_endpoints()
     )
     entity = next(item for item in entities if item.kind == "LWPOLYLINE")
     assert entity.geometry["points"] == ((0.0, 0.0), (100.0, 50.0))
+    assert entity.metadata["route_geometry_source"] == "node_position_display_fallback"
 
 
 def test_connection_with_missing_endpoint_node_fails_closed() -> None:

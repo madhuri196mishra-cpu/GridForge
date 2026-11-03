@@ -96,6 +96,8 @@ class SLDConnectionExportSnapshot:
     connection_kind: str | None
     presentation_owner: str | None
     projection_source: str | None
+    route_routing_mode: str = "orthogonal"
+    route_ownership: str = "auto"
     properties: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -108,9 +110,23 @@ class SLDConnectionExportSnapshot:
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, _freeze(value, name))
+        if self.route_routing_mode not in {"direct", "orthogonal", "manual"}:
+            raise ValueError(f"connection {self.connection_id!r} has unsupported route routing_mode")
+        if self.route_ownership not in {"auto", "engineer"}:
+            raise ValueError(f"connection {self.connection_id!r} has unsupported route ownership")
+        for endpoint_name, endpoint, node_id in (
+            ("source_endpoint", self.source_endpoint, self.source_node_id),
+            ("target_endpoint", self.target_endpoint, self.target_node_id),
+        ):
+            if endpoint is not None and "node_id" in endpoint and endpoint["node_id"] != node_id:
+                raise ValueError(
+                    f"connection {self.connection_id!r} {endpoint_name} node_id does not match its connection node"
+                )
         points = tuple((float(point[0]), float(point[1])) for point in self.route_points)
         if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in points):
             raise ValueError(f"connection {self.connection_id!r} has non-finite route geometry")
+        if any(len(point) != 2 for point in self.route_points):
+            raise ValueError(f"connection {self.connection_id!r} route points must be 2D")
         object.__setattr__(self, "route_points", points)
         object.__setattr__(self, "properties", _freeze(self.properties, "connection.properties"))
 

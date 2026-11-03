@@ -60,6 +60,8 @@ class SLDNodeEntityBuilder:
                     "symbol_definition_id": symbol.symbol_definition_id,
                     "representation_id": symbol.representation_id,
                     "symbol_profile": profile.value,
+                    "symbol_instance_properties": dict(symbol.properties),
+                    "presentation_properties": dict(node.properties),
                     "engineering_attributes": dict(node.engineering_attributes),
                     "engineering_units": dict(node.engineering_units),
                     "source_project_id": snapshot.project_id,
@@ -76,15 +78,16 @@ class SLDNodeEntityBuilder:
                 raise ValueError(
                     f"SLD connection {connection.connection_id!r} references a missing node"
                 )
-            # Only a persisted connection establishes connectivity. Node positions
-            # supply display endpoints only when no authored route is present.
+            # The persisted connection establishes connectivity. Preserve its
+            # authored route verbatim; do not prepend node positions or fabricate
+            # bends. A direct display chord is used only when the persisted route
+            # contains no points, and is explicitly identified as a fallback.
+            has_authored_route = bool(connection.route_points)
             candidates = (
                 tuple(connection.route_points)
-                if connection.route_points
+                if has_authored_route
                 else ((source.x, source.y), (target.x, target.y))
             )
-            if connection.route_points:
-                candidates = ((source.x, source.y), *candidates, (target.x, target.y))
             points: list[tuple[float, float]] = []
             for point in candidates:
                 normalized = (float(point[0]), float(point[1]))
@@ -109,9 +112,13 @@ class SLDNodeEntityBuilder:
                     "source_endpoint": None if connection.source_endpoint is None else dict(connection.source_endpoint),
                     "target_endpoint": None if connection.target_endpoint is None else dict(connection.target_endpoint),
                     "connection_kind": connection.connection_kind,
+                    "route_routing_mode": connection.route_routing_mode,
+                    "route_ownership": connection.route_ownership,
+                    "route_geometry_source": "persisted_route" if has_authored_route else "node_position_display_fallback",
                     "presentation_owner": connection.presentation_owner,
                     "projection_source": connection.projection_source,
-                    "properties": dict(connection.properties),
+                    "persisted_connection_properties": dict(connection.properties),
+                    "core_connection_id": connection.properties.get("core_connection_id"),
                     "source_project_id": snapshot.project_id,
                     "source_document_id": snapshot.document_id,
                     "source_revision": snapshot.source_revision,
