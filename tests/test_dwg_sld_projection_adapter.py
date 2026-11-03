@@ -10,6 +10,7 @@ def _snapshot() -> SLDExportSnapshot:
     return SLDExportSnapshot(
         project_id="project-1", document_id="document-1",
         source_revision="revision-42", nodes=(), connections=(),
+        coordinate_system="sld-document-local", units="sld-unit",
     )
 
 
@@ -24,7 +25,8 @@ def test_application_adapter_accepts_only_detached_sld_snapshot() -> None:
     assert snapshot.source_id == "document-1"
     assert snapshot.source_revision == "revision-42"
     assert snapshot.symbol_profile is SymbolProfile.IEC_60617
-    assert snapshot.units == "mm"
+    assert snapshot.units == "sld-unit"
+    assert snapshot.coordinate_system == "sld-document-local"
 
 
 def test_application_adapter_rejects_ui_projection_objects() -> None:

@@ -43,6 +43,7 @@ class SLDProjectionDrawingSnapshotAdapter:
             drawing_types=("sld",),
             entities=entities,
             units=snapshot.units,
+            coordinate_system=snapshot.coordinate_system,
         )
 
 

@@ -25,9 +25,10 @@ class ApplicationDrawingSnapshot:
     drawing_types: tuple[str, ...]
     entities: tuple[DrawingEntity, ...]
     units: str = "mm"
+    coordinate_system: str = "world"
 
     def __post_init__(self) -> None:
-        for field_name in ("project_id", "export_id", "source_revision", "source_kind", "source_id", "units"):
+        for field_name in ("project_id", "export_id", "source_revision", "source_kind", "source_id", "units", "coordinate_system"):
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{field_name} must be a non-empty string")
@@ -62,6 +63,7 @@ class DrawingPlanFactory:
             drawing_types=snapshot.drawing_types,
             entities=snapshot.entities,
             units=snapshot.units,
+            coordinate_system=snapshot.coordinate_system,
         )
         validate_drawing_plan(plan)
         return plan
