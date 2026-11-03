@@ -487,8 +487,10 @@ class PowerFlowPreparation:
             for record in self.topology_snapshot.equipment_bus_attachments
         }
         bus_id = str(bus.id)
-        q_min: float | None = None
-        q_max: float | None = None
+        q_min_total = 0.0
+        q_max_total = 0.0
+        q_min_seen = q_max_seen = False
+        q_min_unbounded = q_max_unbounded = False
         for collection_name in self._INJECTION_COLLECTIONS:
             for equipment in getattr(self.network, collection_name, ()):
                 if not isinstance(equipment, Injection) or not getattr(equipment, "in_service", True):
@@ -502,14 +504,54 @@ class PowerFlowPreparation:
                 p += self._finite(ep, f"Injection '{getattr(equipment, 'id', equipment)}' active power")
                 q += self._finite(eq, f"Injection '{getattr(equipment, 'id', equipment)}' reactive power")
                 if hasattr(equipment, "q_min"):
-                    value = self._finite(getattr(equipment, "q_min"), f"Injection '{getattr(equipment, 'id', equipment)}' q_min")
-                    q_min = value if q_min is None else q_min + value
+                    value = self._optional_reactive_limit(
+                        getattr(equipment, "q_min"),
+                        f"Injection '{getattr(equipment, 'id', equipment)}' q_min",
+                        lower=True,
+                    )
+                    q_min_seen = True
+                    if value is None:
+                        q_min_unbounded = True
+                    else:
+                        q_min_total += value
                 if hasattr(equipment, "q_max"):
-                    value = self._finite(getattr(equipment, "q_max"), f"Injection '{getattr(equipment, 'id', equipment)}' q_max")
-                    q_max = value if q_max is None else q_max + value
+                    value = self._optional_reactive_limit(
+                        getattr(equipment, "q_max"),
+                        f"Injection '{getattr(equipment, 'id', equipment)}' q_max",
+                        lower=False,
+                    )
+                    q_max_seen = True
+                    if value is None:
+                        q_max_unbounded = True
+                    else:
+                        q_max_total += value
+
+        # A bus aggregate is bounded on one side only when every
+        # contributing capability model supplies a finite bound on that side.
+        q_min = q_min_total if q_min_seen and not q_min_unbounded else None
+        q_max = q_max_total if q_max_seen and not q_max_unbounded else None
         if q_min is not None and q_max is not None and q_min > q_max:
             raise ValueError(f"Aggregated reactive limits at bus '{bus.id}' are invalid.")
         return p, q, q_min, q_max
+
+    @staticmethod
+    def _optional_reactive_limit(value: Any, name: str, *, lower: bool) -> float | None:
+        """Normalize an explicitly unbounded Q-limit side to the solver's None contract."""
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{name} must be numeric or None.") from exc
+        if math.isnan(numeric):
+            raise ValueError(f"{name} cannot be NaN.")
+        if lower and numeric == -math.inf:
+            return None
+        if not lower and numeric == math.inf:
+            return None
+        if not math.isfinite(numeric):
+            raise ValueError(f"{name} uses infinity in the wrong bound direction.")
+        return numeric
 
     @staticmethod
     def _finite(value: Any, name: str) -> float:
