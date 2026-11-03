@@ -325,3 +325,21 @@ The automatically triggered startup-verification workflow found that importing `
 The same workflow's DraftNetwork regression job failed on a missing `canonical_contract` argument and invalid current-transformer measurement-terminal definitions. Direct SHA comparison confirms `core/application/creation_schema.py`, `core/application/bootstrap.py`, and `tests/core/application/test_draft_core_commit_boundary.py` are byte-for-byte the same on `main` and this branch. Those failures predate this PR branch's changes and are not changed here; they require a separate focused correction rather than an unrelated mutation inside the SDK PR.
 
 Verification boundary: workflow logs establish the observed failures. The package/source correction has been committed but must be checked by the next automatic workflow run. Do not claim the workflow passes until a new run confirms it.
+
+
+## 22. Second non-UI engineering-plugin consumer — DWG Export (2026-11-03)
+
+Static reconciliation of PR #19 confirms that `plugins/dwg_export` now implements the existing engineering lifecycle contract through `GridForgePlugin`, `PluginDescriptor`, and `EngineeringPluginHost`. It is materially distinct from Motor Dynamics: it owns CAD drawing-plan validation, reviewed symbol definitions, and an optional ODA File Converter backend rather than a study handler, motor command registration, or telemetry publisher.
+
+The plugin reuses the canonical `EngineeringPluginHost`; it does not use `ui.plugins.PluginManager`, create a second discovery/activation framework, or add a Core dependency on CAD. The host still requires explicit instance activation and supplied services. DWG requires the explicit `dwg_export_configuration` service with an installed ODA executable and a `SymbolRegistry`. No such production configuration or complete reviewed symbol catalogue is currently supplied by `main.py`, so the composition root does not auto-activate DWG. This is intentional fail-closed optional behavior, not evidence of an enabled production export action.
+
+The renderer-independent SLD snapshot remains in `core.application.sld_export_snapshot`; lifecycle capture remains in the UI adapter; CAD-specific implementation is owned by `plugins.dwg_export`. The plugin's import path loads no `ezdxf` module at package import time; the optional dependency is imported only during backend export. The ODA executable is validated during explicit plugin activation.
+
+### Acceptance status
+
+- Second distinct non-UI lifecycle consumer: implemented in source.
+- Reuse of canonical host activation/rollback/teardown contract: statically inspected; focused activation/teardown test added.
+- Automatic discovery, activation, or UI action: intentionally not added; no configuration source or reviewed catalogue exists.
+- Runtime lifecycle, syntax/import, tests, CI, and actual ODA conversion: not run. The SDK remains provisional until its documented verification gates are completed.
+
+No Core, Application, or UI lifecycle owner was duplicated. No changes were made to the established UI plugin manager.
