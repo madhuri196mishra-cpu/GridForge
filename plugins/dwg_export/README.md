@@ -33,7 +33,7 @@ The plugin is an engineering plugin, not a `ui.plugins` composition plugin. UI a
 - Plugin-level plan validation and backend format/result checks, including project/source/revision/document provenance returned with each export result.
 - Top-level DrawingPlan serialization carries source kind, source ID and (for SLD) an explicit source document ID; the export service rejects backend results that lose or alter that provenance.
 - Schema-versioned, catalogue-versioned `SymbolRegistry` definitions with stable IDs, definition versions, explicit base points and vector primitives. A deterministic content fingerprint detects builder/backend registry drift even when version labels match.
-- Export resolution is fail-closed for unreviewed symbols. Reviewed definitions require reviewer, ISO review date and a review-evidence reference; provenance is carried into entity metadata.
+- Export resolution is fail-closed for unreviewed symbols. Reviewed definitions require reviewer, ISO review date, review-evidence reference and standard reference; these are recorded provenance fields, not authenticated evidence or certification.
 - An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
 - Stable entity identity and metadata are written as GRIDFORGE XDATA where supported.
 - ODA publication uses unique staging files, a timeout, process status checks, DWG signature checks and atomic replacement.
@@ -57,7 +57,7 @@ Persisted symbol instances are represented as INSERT entities. Explicit persiste
 
 ## Symbol profiles and standards
 
-The registry has an explicit schema version and catalogue version; each symbol has a semantic definition version. It supports ANSI/IEEE and IEC 60617 profile keys. Definitions are keyed by profile and stable symbol ID, and their CAD block names are stable for a particular definition version. Export resolution rejects unreviewed definitions. A reviewed definition must carry a reviewer, ISO review date and review-evidence reference; optional standard references are provenance only. SLD INSERT metadata records the definition, registry-schema and catalogue versions; the ODA backend rejects a registry whose versions do not match the versions captured by the builder. Review status does not certify conformance to ANSI/IEEE, IEC 60617 or any other standard. No complete catalogue is shipped and no standards-conformance assessment is claimed. Add definitions only after their source geometry and review evidence are supplied.
+The registry has an explicit schema version and catalogue version; each symbol has a semantic definition version. It supports ANSI/IEEE and IEC 60617 profile keys. Definitions are keyed by profile and stable symbol ID, and their CAD block names are stable for a particular definition version. Export resolution rejects unreviewed definitions. A reviewed definition must carry a reviewer, ISO review date and review-evidence reference; required standard references are provenance only. SLD INSERT metadata records the definition, registry-schema and catalogue versions; the ODA backend rejects a registry whose versions do not match the versions captured by the builder. Review status does not certify conformance to ANSI/IEEE, IEC 60617 or any other standard. No complete catalogue is shipped and no standards-conformance assessment is claimed. Add definitions only after their source geometry and review evidence are supplied.
 
 ## ODA configuration and limitations
 
