@@ -1,21 +1,16 @@
-"""Build CAD-neutral SLD entities from persisted symbol presentation and the export symbol registry.
-
-This builder serializes only authored SLD presentation. It does not create electrical
-connections from node coordinates and deliberately fails when a symbol definition
-has no explicit profile-specific CAD mapping.
-"""
+"""Build CAD-neutral SLD entities from detached persisted SLD snapshots."""
 from __future__ import annotations
 
 import re
 
-from ui.canvas.sld_canvas_projection import SLDCanvasSnapshot
+from core.application.sld_export_snapshot import SLDExportSnapshot
 
 from .drawing_plan import DrawingEntity, SymbolProfile
 from .symbol_registry import SymbolRegistry
 
 
 class SLDNodeEntityBuilder:
-    """Translate persisted node presentation into stable CAD INSERT entities."""
+    """Translate stable SLD identities and authored presentation into CAD entities."""
 
     def __init__(self, registry: SymbolRegistry) -> None:
         if not isinstance(registry, SymbolRegistry):
@@ -24,119 +19,125 @@ class SLDNodeEntityBuilder:
 
     def build(
         self,
-        projection: SLDCanvasSnapshot,
+        snapshot: SLDExportSnapshot,
         *,
         profile: SymbolProfile,
         include_hidden: bool = False,
     ) -> tuple[DrawingEntity, ...]:
-        if not isinstance(projection, SLDCanvasSnapshot):
-            raise TypeError("projection must be an SLDCanvasSnapshot")
+        if not isinstance(snapshot, SLDExportSnapshot):
+            raise TypeError("snapshot must be an SLDExportSnapshot")
         try:
             profile = profile if isinstance(profile, SymbolProfile) else SymbolProfile(profile)
         except (TypeError, ValueError) as exc:
             raise ValueError("profile must be ansi_ieee or iec_60617") from exc
 
         entities: list[DrawingEntity] = []
-        for node in projection.nodes:
-            presentation = node.presentation
-            if presentation is None:
+        nodes = {node.node_id: node for node in snapshot.nodes}
+        for node in sorted(snapshot.nodes, key=lambda item: item.node_id):
+            symbol = node.symbol
+            if symbol is None:
                 raise ValueError(
-                    f"SLD node {node.node_id!r} has no persisted symbol presentation; "
-                    "refusing to guess a CAD symbol"
+                    f"SLD node {node.node_id!r} has no persisted symbol definition; "
+                    "refusing to infer a CAD symbol"
                 )
-            if not include_hidden and not presentation.visible:
+            if not include_hidden and not symbol.visible:
                 continue
-
-            # definition_id is the persisted link to the symbol definition. Resolve
-            # that exact identity; never infer a symbol from equipment_id or node name.
-            symbol = self._registry.resolve(presentation.definition_id, profile)
-            entity_id = f"sld-node:{node.node_id}"
+            definition = self._registry.resolve(symbol.symbol_definition_id, profile)
             entities.append(DrawingEntity(
-                entity_id=entity_id,
+                entity_id=f"sld-node:{node.node_id}",
                 kind="INSERT",
                 layer="SLD_SYMBOLS",
                 geometry={
-                    "symbol_id": symbol.symbol_id,
-                    "insert": (float(node.x), float(node.y)),
-                    "scale": float(presentation.scale),
-                    "rotation": float(presentation.rotation),
+                    "symbol_id": definition.symbol_id,
+                    "insert": (node.x, node.y),
+                    "scale": symbol.scale,
+                    "rotation": symbol.rotation_degrees,
                 },
                 metadata={
                     "gridforge_node_id": node.node_id,
                     "equipment_id": node.equipment_id,
-                    "symbol_instance_id": presentation.symbol_id,
-                    "symbol_definition_id": presentation.definition_id,
-                    "representation_id": presentation.representation_id,
+                    "symbol_instance_id": symbol.symbol_instance_id,
+                    "symbol_definition_id": symbol.symbol_definition_id,
+                    "representation_id": symbol.representation_id,
                     "symbol_profile": profile.value,
+                    "engineering_attributes": dict(node.engineering_attributes),
+                    "engineering_units": dict(node.engineering_units),
+                    "source_project_id": snapshot.project_id,
+                    "source_document_id": snapshot.document_id,
+                    "source_revision": snapshot.source_revision,
                     "source_kind": "persisted_sld_presentation",
                 },
             ))
-        entities.extend(self.build_connections(projection))
-        return tuple(entities)
 
-    @staticmethod
-    def build_connections(projection: SLDCanvasSnapshot) -> tuple[DrawingEntity, ...]:
-        """Export explicit persisted SLD connection geometry without inventing topology."""
-        if not isinstance(projection, SLDCanvasSnapshot):
-            raise TypeError("projection must be an SLDCanvasSnapshot")
-        nodes = {node.node_id: node for node in projection.nodes}
-        entities: list[DrawingEntity] = []
-        for connection in projection.connections:
+        for connection in sorted(snapshot.connections, key=lambda item: item.connection_id):
             source = nodes.get(connection.source_node_id)
             target = nodes.get(connection.target_node_id)
             if source is None or target is None:
                 raise ValueError(
-                    f"SLD connection {connection.connection_id!r} references a missing projected node"
+                    f"SLD connection {connection.connection_id!r} references a missing node"
                 )
-            # Route points are interior bends, not connection endpoints.
-            # Always anchor the exported path to the explicit semantic endpoint
-            # nodes; the connection itself, never geometric proximity, establishes
-            # that these two nodes are connected.
+            # Only a persisted connection establishes connectivity. Node positions
+            # supply display endpoints only when no authored route is present.
             candidates = (
-                (float(source.x), float(source.y)),
-                *tuple(connection.route.points),
-                (float(target.x), float(target.y)),
+                tuple(connection.route_points)
+                if connection.route_points
+                else ((source.x, source.y), (target.x, target.y))
             )
-            # Remove only consecutive duplicate coordinates. Non-consecutive
-            # repeats may represent an intentional return path.
-            normalized_points: list[tuple[float, float]] = []
+            if connection.route_points:
+                candidates = ((source.x, source.y), *candidates, (target.x, target.y))
+            points: list[tuple[float, float]] = []
             for point in candidates:
-                if not normalized_points or point != normalized_points[-1]:
-                    normalized_points.append(point)
-            points = tuple(normalized_points)
+                normalized = (float(point[0]), float(point[1]))
+                if not points or normalized != points[-1]:
+                    points.append(normalized)
             if len(points) < 2:
                 raise ValueError(
-                    f"SLD connection {connection.connection_id!r} has no distinct "
-                    "source-to-target presentation geometry"
+                    f"SLD connection {connection.connection_id!r} has no usable persisted route geometry"
                 )
             kind = connection.connection_kind or "unspecified"
-            # CAD layer names reject reserved punctuation; normalize only the
-            # presentation layer label, preserving the original kind in metadata.
             normalized_kind = re.sub(r'[<>/\\":;?*|=,\s]+', "_", kind.upper()).strip("._")
-            layer = (
-                "SLD_CONNECTIONS"
-                if not normalized_kind or normalized_kind == "UNSPECIFIED"
-                else f"SLD_{normalized_kind}"[:255]
-            )
+            layer = "SLD_CONNECTIONS" if not normalized_kind or normalized_kind == "UNSPECIFIED" else f"SLD_{normalized_kind}"[:255]
             entities.append(DrawingEntity(
                 entity_id=f"sld-connection:{connection.connection_id}",
                 kind="LWPOLYLINE",
                 layer=layer,
-                geometry={"points": points, "closed": False},
+                geometry={"points": tuple(points), "closed": False},
                 metadata={
                     "gridforge_connection_id": connection.connection_id,
                     "source_node_id": connection.source_node_id,
                     "target_node_id": connection.target_node_id,
+                    "source_endpoint": None if connection.source_endpoint is None else dict(connection.source_endpoint),
+                    "target_endpoint": None if connection.target_endpoint is None else dict(connection.target_endpoint),
                     "connection_kind": connection.connection_kind,
                     "presentation_owner": connection.presentation_owner,
                     "projection_source": connection.projection_source,
-                    "route_ownership": connection.route.ownership,
-                    "routing_mode": connection.route.routing_mode,
-                    "core_connection_id": connection.properties.get("core_connection_id"),
+                    "properties": dict(connection.properties),
+                    "source_project_id": snapshot.project_id,
+                    "source_document_id": snapshot.document_id,
+                    "source_revision": snapshot.source_revision,
                     "source_kind": "persisted_sld_connection",
                 },
             ))
-        return tuple(entities)
+
+        for annotation in sorted(snapshot.annotations, key=lambda item: item.annotation_id):
+            if not annotation.visible or not annotation.text:
+                continue
+            if annotation.node_id not in nodes:
+                raise ValueError(f"SLD annotation {annotation.annotation_id!r} references a missing node")
+            entities.append(DrawingEntity(
+                entity_id=f"sld-annotation:{annotation.annotation_id}",
+                kind="TEXT",
+                layer="SLD_ANNOTATIONS",
+                geometry={"insert": (annotation.x, annotation.y), "text": annotation.text, "height": 2.5},
+                metadata={
+                    "gridforge_annotation_id": annotation.annotation_id,
+                    "node_id": annotation.node_id,
+                    "source_project_id": snapshot.project_id,
+                    "source_document_id": snapshot.document_id,
+                    "source_revision": snapshot.source_revision,
+                },
+            ))
+        return tuple(sorted(entities, key=lambda item: item.entity_id))
 
 
 __all__ = ["SLDNodeEntityBuilder"]
