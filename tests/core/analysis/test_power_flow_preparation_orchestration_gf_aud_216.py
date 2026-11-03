@@ -69,8 +69,10 @@ def test_generator_finite_q_limits_are_normalized_on_the_study_base() -> None:
     )
     prepared = PowerFlowPreparation.prepare(network, configuration)
 
-    assert prepared.input.q_min == (None, pytest.approx(-0.6))
-    assert prepared.input.q_max == (None, pytest.approx(0.8))
+    assert prepared.input.q_min[0] is None
+    assert prepared.input.q_min[1] == pytest.approx(-0.6)
+    assert prepared.input.q_max[0] is None
+    assert prepared.input.q_max[1] == pytest.approx(0.8)
 
 
 def test_generator_aggregate_limit_is_unbounded_when_any_generator_side_is_unbounded() -> None:
