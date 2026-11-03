@@ -1,5 +1,5 @@
-from core.application.dwg_export import DrawingEntity
-from core.application.dwg_export.backends.oda_file_converter import ODAFileConverterBackend
+from plugins.dwg_export import DrawingEntity
+from plugins.dwg_export.backends.oda_file_converter import ODAFileConverterBackend
 
 
 class _AppIds:
@@ -65,7 +65,7 @@ def test_xdata_rejects_entity_ids_that_exceed_safe_utf8_length():
 
 
 def test_xdata_includes_top_level_plan_provenance():
-    from core.application.dwg_export import DrawingPlan, SymbolProfile
+    from plugins.dwg_export import DrawingPlan, SymbolProfile
 
     document = _Document()
     cad_entity = _CadEntity()
@@ -89,7 +89,7 @@ def test_xdata_includes_top_level_plan_provenance():
 
 
 def test_xdata_rejects_entity_metadata_conflicting_with_plan_provenance():
-    from core.application.dwg_export import DrawingPlan, SymbolProfile
+    from plugins.dwg_export import DrawingPlan, SymbolProfile
     import pytest
 
     document = _Document()

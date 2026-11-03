@@ -73,6 +73,13 @@ class EngineeringParameterEditor:
                 + ", ".join(sorted(unknown))
             )
 
+        for parameter_id in changes:
+            paired_with = editable[parameter_id].validation.get("paired_with")
+            if paired_with and paired_with not in changes:
+                raise ValueError(
+                    f"{parameter_id} must be edited together with {paired_with}."
+                )
+
         typed_values: dict[str, Any] = {}
         for parameter_id, value in changes.items():
             parameter = editable[parameter_id]

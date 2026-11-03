@@ -1,6 +1,6 @@
 import pytest
 
-from core.application.dwg_export import DrawingEntity, SymbolDefinition, SymbolProfile, SymbolRegistry
+from plugins.dwg_export import DrawingEntity, SymbolDefinition, SymbolProfile, SymbolRegistry
 
 
 def _definition(symbol_id="breaker", profile=SymbolProfile.ANSI_IEEE):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import pytest
 
-from core.application.dwg_export import (
+from plugins.dwg_export import (
     DrawingEntity, DrawingPlan, DrawingPlanValidationError, SymbolProfile,
     serialize_drawing_plan, validate_drawing_plan,
 )

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from core.application.dwg_export.backends.oda_file_converter import ODAFileConverterBackend
+from plugins.dwg_export.backends.oda_file_converter import ODAFileConverterBackend
 
 
 def test_atomic_publication_replaces_destination_with_complete_output(tmp_path: Path) -> None:
@@ -26,7 +26,7 @@ def test_atomic_publication_failure_preserves_existing_destination_and_cleans_st
     def fail_replace(source, target):
         raise OSError("simulated replace failure")
 
-    monkeypatch.setattr("core.application.dwg_export.backends.oda_file_converter.os.replace", fail_replace)
+    monkeypatch.setattr("plugins.dwg_export.backends.oda_file_converter.os.replace", fail_replace)
     with pytest.raises(OSError, match="simulated replace failure"):
         ODAFileConverterBackend._publish_atomically(generated, destination)
 

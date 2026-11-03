@@ -5,7 +5,7 @@ import pytest
 from core.application.sld_export_snapshot import (
     SLDExportSnapshot, SLDNodeExportSnapshot, SLDSymbolPlacementSnapshot,
 )
-from core.application.dwg_export import (
+from plugins.dwg_export import (
     DrawingEntity, SLDNodeEntityBuilder, SymbolDefinition, SymbolProfile, SymbolRegistry,
 )
 

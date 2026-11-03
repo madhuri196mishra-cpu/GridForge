@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from core.application.dwg_export import (
+from plugins.dwg_export import (
     DrawingEntity,
     DrawingPlan,
     DrawingPlanValidationError,

@@ -83,7 +83,7 @@ _CORE_ELEMENT_TYPES = {
 
 _FIELD_CONTRACTS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "buses": (("nominal_voltage_kv", ("nominal_voltage_kv",)), ("voltage_pu", ("voltage_pu",)), ("angle_deg", ("angle_deg",)), ("frequency_hz", ("frequency_hz",)), ("in_service", ("in_service",))),
-    "lines": (("resistance_ohm", ("resistance_ohm", "r")), ("reactance_ohm", ("reactance_ohm", "x")), ("shunt_susceptance_siemens", ("shunt_susceptance_siemens", "b")), ("rate_mva", ("rate_mva", "rated_power")), ("in_service", ("in_service",))),
+    "lines": (("resistance_ohm", ("resistance_ohm", "r")), ("reactance_ohm", ("reactance_ohm", "x")), ("shunt_susceptance_siemens", ("shunt_susceptance_siemens", "b")), ("zero_sequence_resistance_ohm", ("zero_sequence_resistance_ohm",)), ("zero_sequence_reactance_ohm", ("zero_sequence_reactance_ohm",)), ("rate_mva", ("rate_mva", "rated_power")), ("in_service", ("in_service",))),
     "cables": (("length_km", ("length_km",)), ("rated_voltage_kv", ("rated_voltage_kv",)), ("rated_current_a", ("rated_current_a",)), ("r1_ohm_per_km", ("r1_ohm_per_km", "r1")), ("x1_ohm_per_km", ("x1_ohm_per_km", "x1")), ("b1_us_per_km", ("b1_us_per_km", "b1")), ("r0_ohm_per_km", ("r0_ohm_per_km", "r0")), ("x0_ohm_per_km", ("x0_ohm_per_km", "x0")), ("b0_us_per_km", ("b0_us_per_km", "b0")), ("thermal_limit_mva", ("thermal_limit_mva",)), ("conductor_count", ("conductor_count",)), ("in_service", ("in_service",))),
     "transformers": (("r", ("r",)), ("x", ("x",)), ("b", ("b",)), ("impedance_basis", ("impedance_basis",)), ("impedance_base_mva", ("impedance_base_mva",)), ("impedance_base_voltage_kv", ("impedance_base_voltage_kv",)), ("rate_mva", ("rate_mva", "rated_power")), ("tap", ("tap",)), ("tap_ratio", ("tap_ratio",)), ("turns_ratio", ("turns_ratio",)), ("shift", ("shift",)), ("phase_shift_rad", ("phase_shift_rad",)), ("phase_shift_deg", ("phase_shift_deg",)), ("in_service", ("in_service",))),
     "switches": (("closed", ("closed",)), ("in_service", ("in_service",)), ("normally_closed", ("normally_closed",)), ("rated_voltage_kv", ("rated_voltage_kv",)), ("rated_current_a", ("rated_current_a",))),
@@ -110,6 +110,11 @@ _REQUIRED_FIELDS = {element_type: frozenset(canonical for canonical, _ in fields
 # Grid short-circuit strength and sequence impedances are optional Core
 # engineering values. Keep them in the projection vocabulary when present,
 # but do not reject a valid Grid when they have not yet been configured.
+# Line zero-sequence values are an optional coupled pair in Core.
+_REQUIRED_FIELDS["lines"] = frozenset({
+    "resistance_ohm", "reactance_ohm", "shunt_susceptance_siemens",
+    "rate_mva", "in_service",
+})
 _REQUIRED_FIELDS["grids"] = frozenset({
     "nominal_voltage_kv",
     "frequency_hz",
@@ -132,9 +137,27 @@ _PARAMETER_METADATA: dict[str, dict[str, Any]] = {
     "resistance_ohm": {"unit": "ohm", "datatype": "float", "editable": True, "study_impact": True},
     "reactance_ohm": {"unit": "ohm", "datatype": "float", "editable": True, "study_impact": True},
     "shunt_susceptance_siemens": {"unit": "S", "datatype": "float", "editable": True, "study_impact": True},
+    "zero_sequence_resistance_ohm": {
+        "unit": "ohm", "datatype": "float", "editable": True, "study_impact": True,
+        "coupling_group": "line_zero_sequence",
+        "validation": {"authoritative": "Core", "paired_with": "zero_sequence_reactance_ohm"},
+    },
+    "zero_sequence_reactance_ohm": {
+        "unit": "ohm", "datatype": "float", "editable": True, "study_impact": True,
+        "coupling_group": "line_zero_sequence",
+        "validation": {"authoritative": "Core", "paired_with": "zero_sequence_resistance_ohm"},
+    },
     "length_km": {"unit": "km", "datatype": "float", "editable": True, "study_impact": True},
     "thermal_limit_mva": {"unit": "MVA", "datatype": "float", "editable": True, "study_impact": True, "validation": {"authoritative": "Core", "non_negative": True}},
     "conductor_count": {"datatype": "int", "editable": True, "study_impact": True, "validation": {"authoritative": "Core", "minimum": 1}},
+    "conductor_system_summary": {
+        "datatype": "mapping", "editable": False, "derived": True, "study_impact": True,
+        "validation": {"description": "Read-only inventory and impedance-matrix summary; edit through the typed Cable conductor configuration workflow."},
+    },
+    "transformer_configuration_summary": {
+        "datatype": "mapping", "editable": False, "derived": True, "study_impact": True,
+        "validation": {"description": "Read-only winding, neutral, vector-group, zero-sequence test and multiport evidence summary. Configuration changes require the dedicated typed Transformer configurator (#939)."},
+    },
     "rated_voltage_kv": {"unit": "kV", "datatype": "float", "editable": True, "study_impact": True},
     "rated_current_a": {"unit": "A", "datatype": "float", "editable": True, "study_impact": True},
     "r1_ohm_per_km": {"unit": "ohm/km", "datatype": "float", "editable": True, "study_impact": True},
@@ -153,6 +176,16 @@ _PARAMETER_METADATA: dict[str, dict[str, Any]] = {
     "shift": {"unit": "rad", "datatype": "float", "study_impact": True},
     "phase_shift_rad": {"unit": "rad", "datatype": "float", "derived": True, "study_impact": True},
     "phase_shift_deg": {"unit": "deg", "datatype": "float", "derived": True, "study_impact": True},
+    "q_min": {
+        "unit": "MVAr", "datatype": "float", "editable": True, "study_impact": True,
+        "coupling_group": "generator_q_limits",
+        "validation": {"authoritative": "Core", "paired_with": "q_max"},
+    },
+    "q_max": {
+        "unit": "MVAr", "datatype": "float", "editable": True, "study_impact": True,
+        "coupling_group": "generator_q_limits",
+        "validation": {"authoritative": "Core", "paired_with": "q_min"},
+    },
     "in_service": {"datatype": "bool", "topology_impact": True, "study_impact": True},
     # Instrument-transformer engineering contracts.  Core remains the
     # authoritative validator; these descriptors only describe presentation.
@@ -303,6 +336,54 @@ class NetworkReadService(ReadService):
             if isinstance(value, (str, int, float, bool, complex)): attributes[canonical] = value
             elif canonical in _REQUIRED_FIELDS.get(element_type, ()): missing_required.append(canonical)
         if missing_required: raise ValueError(f"Missing required Application field(s) for {element_type}: {', '.join(missing_required)}")
+        if element_type == "cables":
+            conductor_system = getattr(model, "conductor_system", None)
+            attributes["conductor_system_summary"] = (
+                conductor_system.summary() if conductor_system is not None else None
+            )
+        if element_type == "transformers":
+            enum_value = lambda value: value.value if hasattr(value, "value") else value
+            vector_group = getattr(model, "vector_group_configuration", None)
+            test_configuration = getattr(model, "zero_sequence_test_configuration", None)
+            multiport = getattr(model, "phase_domain_terminal_admittance_siemens", None)
+            evidence = getattr(model, "zero_sequence_multiport_evidence", None)
+            attributes["transformer_configuration_summary"] = {
+                "hv_winding_connection": enum_value(getattr(model, "hv_winding_connection", None)),
+                "lv_winding_connection": enum_value(getattr(model, "lv_winding_connection", None)),
+                "hv_terminal_role": getattr(model, "hv_terminal_role", None),
+                "lv_terminal_role": getattr(model, "lv_terminal_role", None),
+                "hv_neutral_terminal_role": getattr(model, "hv_neutral_terminal_role", None),
+                "lv_neutral_terminal_role": getattr(model, "lv_neutral_terminal_role", None),
+                "hv_neutral_grounding_impedance_ohm": getattr(model, "hv_neutral_grounding_impedance_ohm", None),
+                "lv_neutral_grounding_impedance_ohm": getattr(model, "lv_neutral_grounding_impedance_ohm", None),
+                "impedance_reference_winding": getattr(model, "impedance_reference_winding", None),
+                "zero_sequence_resistance_ohm": getattr(model, "zero_sequence_resistance_ohm", None),
+                "zero_sequence_reactance_ohm": getattr(model, "zero_sequence_reactance_ohm", None),
+                "core_construction": enum_value(getattr(model, "core_construction", None)),
+                "zero_sequence_test_basis": getattr(model, "zero_sequence_test_basis", None),
+                "vector_group": ({
+                    "connection": enum_value(vector_group.connection),
+                    "clock_number": vector_group.clock_number,
+                    "hv_polarity": enum_value(vector_group.hv_polarity),
+                    "lv_polarity": enum_value(vector_group.lv_polarity),
+                    "phase_displacement_deg": vector_group.phase_displacement_deg,
+                } if vector_group is not None else None),
+                "zero_sequence_test": ({
+                    "energized_winding": enum_value(test_configuration.energized_winding),
+                    "other_winding_condition": enum_value(test_configuration.other_winding_condition),
+                    "neutral_return_included": test_configuration.neutral_return_included,
+                } if test_configuration is not None else None),
+                "two_winding_test_data_available": getattr(model, "zero_sequence_two_winding_test_data", None) is not None,
+                "physical_conductor_construction_available": getattr(model, "physical_conductor_construction", None) is not None,
+                "phase_domain_terminal_count": len(multiport) if multiport is not None else None,
+                "phase_domain_multiport_tap_ratio": getattr(model, "phase_domain_multiport_tap_ratio", None),
+                "phase_domain_multiport_phase_shift_rad": getattr(model, "phase_domain_multiport_phase_shift_rad", None),
+                "zero_sequence_multiport_evidence_available": evidence is not None,
+                "zero_sequence_multiport_evidence_reference": (
+                    getattr(evidence, "core_zero_sequence_test_reference", None) if evidence is not None else None
+                ),
+                "delta_loop_state_count": len(getattr(model, "phase_domain_delta_loop_states", ())),
+            }
         if element_type == "fuses" and "in_service" in attributes and "blown" in attributes: attributes["conducts"] = bool(attributes["in_service"] and not attributes["blown"])
         if element_type == "disconnectors" and "closed" in attributes: attributes["conducts"] = bool(attributes["closed"] and attributes.get("in_service", True))
         if element_type == "reactors" and "reactive_power_injection_mvar" in attributes: attributes["absorption_mvar"] = abs(float(attributes["reactive_power_injection_mvar"]))
@@ -355,6 +436,12 @@ class NetworkReadService(ReadService):
                 metadata["editable"] = True
             if element_type == "lines" and parameter_id == "in_service":
                 metadata["editable"] = True
+            if element_type == "cables" and parameter_id == "conductor_count" and attributes.get("conductor_system_summary") is not None:
+                metadata["editable"] = False
+                metadata["validation"] = {
+                    **dict(metadata.get("validation", {})),
+                    "reason": "Conductor count is owned by the explicit physical conductor inventory.",
+                }
             if element_type == "capacitive_voltage_transformers" and parameter_id == "polarity":
                 metadata["choices"] = tuple(value.value for value in CVTPolarity)
                 metadata["datatype"] = "enum"

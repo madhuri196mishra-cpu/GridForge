@@ -1,4 +1,4 @@
-from core.application.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile, validate_drawing_plan
+from plugins.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile, validate_drawing_plan
 
 
 def _plan(entity):

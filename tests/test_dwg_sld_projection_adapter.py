@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.application.sld_export_snapshot import SLDExportSnapshot
-from core.application.dwg_export import DrawingEntity, SLDProjectionDrawingSnapshotAdapter, SymbolProfile
+from plugins.dwg_export import DrawingEntity, SLDProjectionDrawingSnapshotAdapter, SymbolProfile
 
 
 def _snapshot() -> SLDExportSnapshot:

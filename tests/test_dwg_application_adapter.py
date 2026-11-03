@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.application.read_models import NetworkReadModel
-from core.application.dwg_export import (
+from plugins.dwg_export import (
     ApplicationDrawingSnapshotAdapter,
     DrawingEntity,
     SymbolProfile,

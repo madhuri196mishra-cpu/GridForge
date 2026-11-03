@@ -1,4 +1,4 @@
-"""Application-owned, backend-neutral CAD export contracts for GridForge."""
+"""Optional GridForge engineering plugin for backend-neutral DWG export."""
 from .drawing_plan import (
     DrawingEntity, DrawingPlan, SymbolProfile,
     drawing_plan_to_dict, serialize_drawing_plan,
@@ -10,12 +10,15 @@ from .application_adapter import ApplicationDrawingSnapshotAdapter
 from .sld_projection_adapter import SLDProjectionDrawingSnapshotAdapter
 from .sld_entity_builder import SLDNodeEntityBuilder
 from .validation import DrawingPlanValidationError, validate_drawing_plan
+from .backends import ODAFileConverterBackend
+from .plugin import DWGExportConfiguration, DWGExportPlugin, PLUGIN_DESCRIPTOR
 
 __all__ = [
     "DrawingEntity", "DrawingPlan", "SymbolProfile", "drawing_plan_to_dict",
-    "serialize_drawing_plan", "DWGExportService",
-    "ExportResult", "DrawingPlanValidationError", "validate_drawing_plan",
-    "SymbolDefinition", "SymbolRegistry", "ApplicationDrawingSnapshot",
-    "DrawingPlanFactory", "ApplicationDrawingSnapshotAdapter",
-    "SLDProjectionDrawingSnapshotAdapter", "SLDNodeEntityBuilder",
+    "serialize_drawing_plan", "DWGExportService", "ExportResult",
+    "DrawingPlanValidationError", "validate_drawing_plan", "SymbolDefinition",
+    "SymbolRegistry", "ApplicationDrawingSnapshot", "DrawingPlanFactory",
+    "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter",
+    "SLDNodeEntityBuilder", "ODAFileConverterBackend",
+    "DWGExportConfiguration", "DWGExportPlugin", "PLUGIN_DESCRIPTOR",
 ]

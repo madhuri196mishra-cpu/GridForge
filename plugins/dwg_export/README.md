@@ -1,25 +1,49 @@
-# GridForge DWG Export Foundation
+# GridForge DWG Export Plugin
 
-This package defines an Application-owned, backend-neutral drawing-plan boundary.
-It does not create a second engineering model and does not mutate Core.
+This optional engineering plugin owns CAD drawing plans, validation, symbol definitions, backend adapters, and export orchestration. It implements GridForge's existing `core.plugin_sdk` lifecycle contract; it does not add a plugin manager, command manager, event bus, engineering model, or Core mutation path.
+
+## Plugin activation
+
+`DWGExportPlugin` is activated explicitly through `EngineeringPluginHost`. The host supplies a `DWGExportConfiguration` in `PluginContext.services['dwg_export_configuration']`; that configuration must name an installed ODA File Converter executable and an explicit `SymbolRegistry`. There is no default executable, implicit PATH lookup, default reviewed catalogue, or automatic activation. The plugin exposes its configured `DWGExportService` to its caller and releases its references on shutdown. It does not register Application commands or mutate Core.
+
+```python
+from core.plugin_sdk import EngineeringPluginHost
+from plugins.dwg_export import DWGExportConfiguration, DWGExportPlugin, SymbolRegistry
+
+plugin = DWGExportPlugin()
+host = EngineeringPluginHost(application)
+host.activate(
+    plugin,
+    services={
+        "dwg_export_configuration": DWGExportConfiguration(
+            executable=oda_executable,
+            symbol_registry=SymbolRegistry(reviewed_definitions),
+        )
+    },
+)
+# A caller may use plugin.export_service with a validated DrawingPlan.
+# host.deactivate(plugin.plugin_id) owns teardown.
+```
+
+The plugin is an engineering plugin, not a `ui.plugins` composition plugin. UI adapters may call it through the existing plugin host/context boundary; the CAD implementation remains outside `core` and `ui`.
 
 ## Implemented foundation
 
 - Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs, canonical entity ordering and deterministic JSON serialization.
-- Application-level plan validation and backend format/result checks, including project/source/revision/document provenance returned with each export result.
+- Plugin-level plan validation and backend format/result checks, including project/source/revision/document provenance returned with each export result.
 - Top-level DrawingPlan serialization carries source kind, source ID and (for SLD) an explicit source document ID; the export service rejects backend results that lose or alter that provenance.
 - Schema-versioned, catalogue-versioned `SymbolRegistry` definitions with stable IDs, definition versions, explicit base points and vector primitives. A deterministic content fingerprint detects builder/backend registry drift even when version labels match.
 - Export resolution is fail-closed for unreviewed symbols. Reviewed definitions require reviewer, ISO review date and a review-evidence reference; provenance is carried into entity metadata.
 - An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
 - Stable entity identity and metadata are written as GRIDFORGE XDATA where supported.
 - ODA publication uses unique staging files, a timeout, process status checks, DWG signature checks and atomic replacement.
-- The optional Python extra is installed with `pip install -e '.[cad-export]'`; ODA File Converter is installed and configured separately. Neither dependency is required by the base GridForge installation.
+- The optional Python extra is installed with `pip install -e '.[dwg-export]'`; ODA File Converter is installed and configured separately. Neither dependency is required by the base GridForge installation.
 
 ## SLD snapshot boundary
 
 The renderer-independent DTOs live in `core.application.sld_export_snapshot`. They contain project/document identity, source revision, coordinate-system and unit labels, stable node/equipment IDs, symbol identity/profile inputs, placement/transforms, engineering attributes/units, explicit connection identity/endpoints, authored route points and persisted annotations.
 
-`ui.canvas.sld_export_snapshot_adapter.SLDExportSnapshotCapture` is the lifecycle-side adapter. It reads the active `SLDDocument` through the existing `DocumentManager`, uses `SLDCanvasProjection` to detach persisted presentation, and checks project/document identity, Application revision and serialized document content before and after capture. The Application export modules consume only the detached DTO and do not import UI packages.
+`ui.canvas.sld_export_snapshot_adapter.SLDExportSnapshotCapture` is the lifecycle-side adapter. It reads the active `SLDDocument` through the existing `DocumentManager`, uses `SLDCanvasProjection` to detach persisted presentation, and checks project/document identity, Application revision and serialized document content before and after capture. The plugin consumes only the detached DTO and does not import UI packages.
 
 **Consistency limitation:** these checks are fail-closed before/after guards, not an atomic snapshot or a lock. Capture must be invoked from the serialized workspace/document lifecycle operation. The current implementation does not prove atomicity against concurrent mutation outside that serialization boundary. If the revision, active document, project, or serialized SLD document changes during capture, export is rejected.
 
@@ -43,10 +67,15 @@ The implementation currently recognizes target versions ACAD12, ACAD2000, ACAD20
 
 ## Explicitly unsupported
 
-- No complete SLD export workflow is claimed until the coordinate/unit mapping and production composition-root integration are completed. The current SLD capture, builder, plan factory and backend are separate contracts; no production user action is wired to orchestrate them yet.
+- No complete SLD export workflow is claimed until a reviewed coordinate/unit mapping and a real UI/application caller are supplied. The SLD capture adapter, plugin builder, plan factory and backend are separate contracts; no production user action is wired to orchestrate them yet.
 - Control drawing plans are unsupported until authoritative Control read models and persisted drawing semantics are available. Control logic/interlocks are never inferred from SLD wiring.
 - Protection drawing plans are unsupported until authoritative Protection read models and persisted CT/PT, relay, zone and trip-target relationships are available. None are inferred from drawing proximity.
 - No physical wiring, logical control relationship, protection relationship, junction or terminal is invented.
 - No complete standards catalogue, DWG round-trip compatibility or production readiness is claimed.
 
 DXF is only the intermediate representation used by the ODA backend. A DXF file is never reported as a DWG deliverable.
+
+
+## Plugin boundary
+
+All CAD-specific implementation lives under `plugins.dwg_export`. `core.application.sld_export_snapshot` remains the renderer-independent Application DTO contract, and `ui.canvas.sld_export_snapshot_adapter` remains the lifecycle-side capture adapter. Core does not import the DWG plugin. The plugin does not import Qt or infer electrical meaning from graphics.

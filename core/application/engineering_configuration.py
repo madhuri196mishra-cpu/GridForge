@@ -76,6 +76,19 @@ class EngineeringUpdatePreparer:
         if entry is None:
             raise KeyError(f"No Application engineering update command for {element_type!r}.")
         command_class, id_field = entry
+        if element_type == "generator":
+            limit_fields = ("q_min", "q_max")
+            supplied_limit_fields = tuple(field for field in limit_fields if field in values)
+            if supplied_limit_fields:
+                if supplied_limit_fields != limit_fields:
+                    raise ValueError(
+                        "Generator reactive-power limits must be updated together by supplying q_min and q_max."
+                    )
+                if "q_limits" in values:
+                    raise ValueError(
+                        "Specify Generator q_min/q_max or q_limits, not both."
+                    )
+                values["q_limits"] = (values.pop("q_min"), values.pop("q_max"))
         if element_type == "grid":
             base_fields = ("impedance_base_mva", "impedance_base_voltage_kv")
             supplied_base_fields = tuple(field for field in base_fields if field in values)

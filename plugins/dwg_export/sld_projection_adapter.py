@@ -1,4 +1,4 @@
-"""Application-side conversion from detached SLD snapshots to export snapshots.
+"""Plugin-side conversion from detached SLD snapshots to export snapshots.
 
 This module intentionally imports no UI, document manager, canvas, Qt, or CAD
 backend implementation. Capture and lifecycle coordination belong to the UI
@@ -16,7 +16,7 @@ from .source_snapshot import ApplicationDrawingSnapshot
 
 
 class SLDProjectionDrawingSnapshotAdapter:
-    """Convert an immutable SLD export snapshot into the common Application DTO."""
+    """Convert an immutable SLD export snapshot into the plugin-owned detached export DTO."""
 
     def capture(
         self,

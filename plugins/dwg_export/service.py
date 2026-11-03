@@ -1,4 +1,4 @@
-"""Application-level orchestration for backend-neutral drawing export."""
+"""Plugin-owned orchestration for backend-neutral drawing export."""
 from __future__ import annotations
 
 from dataclasses import dataclass

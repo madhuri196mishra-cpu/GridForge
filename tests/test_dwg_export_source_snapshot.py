@@ -1,6 +1,6 @@
 import pytest
 
-from core.application.dwg_export import (
+from plugins.dwg_export import (
     ApplicationDrawingSnapshot,
     DrawingEntity,
     DrawingPlanFactory,
@@ -76,7 +76,7 @@ def test_sld_snapshot_promotes_document_identity_to_plan_provenance():
 
 
 def test_sld_plan_requires_explicit_document_identity():
-    from core.application.dwg_export import DrawingPlan
+    from plugins.dwg_export import DrawingPlan
     with pytest.raises(ValueError, match="source_document_id"):
         DrawingPlan(
             project_id="p", export_id="e", source_revision="r",

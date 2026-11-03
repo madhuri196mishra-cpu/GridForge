@@ -1,4 +1,4 @@
-"""Application-boundary snapshots and plan assembly for CAD export.
+"""Detached source snapshots and plan assembly for the DWG export plugin.
 
 Adapters may construct these values from authoritative Application read models
 and approved presentation projections. This module intentionally accepts no Core

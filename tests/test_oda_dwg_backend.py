@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from core.application.dwg_export.backends import ODAFileConverterBackend
+from plugins.dwg_export.backends import ODAFileConverterBackend
 
 
 def test_oda_backend_requires_explicit_existing_executable(tmp_path: Path) -> None:
@@ -24,7 +24,7 @@ def test_oda_backend_rejects_unsupported_target_version_before_conversion(tmp_pa
     executable.write_text("placeholder", encoding="utf-8")
     executable.chmod(0o700)
     backend = ODAFileConverterBackend(executable)
-    from core.application.dwg_export import DrawingPlan, SymbolProfile
+    from plugins.dwg_export import DrawingPlan, SymbolProfile
 
     plan = DrawingPlan(
         project_id="p", export_id="e", source_revision="r",
@@ -35,8 +35,8 @@ def test_oda_backend_rejects_unsupported_target_version_before_conversion(tmp_pa
 
 
 def test_oda_backend_validates_plan_when_called_without_export_service(tmp_path: Path) -> None:
-    from core.application.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile
-    from core.application.dwg_export.validation import DrawingPlanValidationError
+    from plugins.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile
+    from plugins.dwg_export.validation import DrawingPlanValidationError
 
     executable = tmp_path / "converter"
     executable.write_text("placeholder", encoding="utf-8")
@@ -58,7 +58,7 @@ def test_oda_backend_validates_plan_when_called_without_export_service(tmp_path:
 
 
 def test_oda_backend_rejects_registry_content_drift_even_when_versions_match(tmp_path: Path):
-    from core.application.dwg_export import DrawingEntity, DrawingPlan, SymbolDefinition, SymbolProfile, SymbolRegistry
+    from plugins.dwg_export import DrawingEntity, DrawingPlan, SymbolDefinition, SymbolProfile, SymbolRegistry
 
     executable = tmp_path / "converter"
     executable.write_text("placeholder", encoding="utf-8")
