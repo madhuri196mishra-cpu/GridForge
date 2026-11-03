@@ -48,3 +48,32 @@ def test_dwg_export_plugin_shutdown_is_safe_before_activation():
     plugin.shutdown()
     with pytest.raises(RuntimeError, match="not active"):
         _ = plugin.export_service
+
+
+def test_dwg_export_plugin_uses_canonical_host_activation_and_teardown(tmp_path):
+    executable = tmp_path / "oda-file-converter"
+    executable.write_text("configured test executable", encoding="utf-8")
+    executable.chmod(0o755)
+    registry = SymbolRegistry()
+    plugin = DWGExportPlugin()
+    host = EngineeringPluginHost(object())
+
+    host.activate(
+        plugin,
+        services={
+            "dwg_export_configuration": DWGExportConfiguration(
+                executable=executable,
+                symbol_registry=registry,
+            )
+        },
+    )
+
+    assert host.active_plugin_ids == (plugin.plugin_id,)
+    assert plugin.configuration.symbol_registry is registry
+    assert plugin.export_service is not None
+
+    host.shutdown_all()
+
+    assert host.active_plugin_ids == ()
+    with pytest.raises(RuntimeError, match="not active"):
+        _ = plugin.export_service

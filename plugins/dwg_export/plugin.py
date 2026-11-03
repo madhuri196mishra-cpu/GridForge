@@ -83,7 +83,7 @@ class DWGExportPlugin(GridForgePlugin):
         if self._export_service is not None:
             raise RuntimeError("DWG Export plugin is already active")
         if context is None or getattr(context, "application", None) is None:
-            raise TypeError("DWGExportPlugin.initialize requires a host PluginContext and Application")
+            raise TypeError("DWGExportPlugin.initialize requires a host EngineeringPluginContext and Application")
         metadata = getattr(context, "metadata", {})
         services = getattr(context, "services", None)
         if not isinstance(metadata, Mapping) or not isinstance(services, Mapping):
