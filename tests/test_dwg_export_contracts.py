@@ -111,3 +111,24 @@ def test_validator_accepts_backend_supported_three_axis_insert_scale() -> None:
         {"symbol_id": "breaker", "insert": [0, 0], "scale": [1.0, -1.0, 0.5]}, {},
     )
     validate_drawing_plan(_plan(entity))
+
+
+
+def test_service_rejects_backend_result_with_mismatched_source_provenance(tmp_path: Path):
+    class IncorrectProvenanceBackend:
+        backend_id = "test-dwg"
+        supported_formats = frozenset({"dwg"})
+
+        def export(self, plan, destination, *, target_version=None):
+            return ExportResult(
+                destination, "dwg", len(plan.entities), self.backend_id,
+                project_id="different-project",
+                source_revision=plan.source_revision,
+                source_kind=plan.source_kind,
+                source_id=plan.source_id,
+                source_document_id=plan.source_document_id,
+            )
+
+    service = DWGExportService(IncorrectProvenanceBackend())
+    with pytest.raises(RuntimeError, match="provenance mismatch for project_id"):
+        service.export(_plan(), tmp_path / "drawing.dwg")

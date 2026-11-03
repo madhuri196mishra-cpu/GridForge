@@ -251,4 +251,11 @@ class ODAFileConverterBackend:
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
             self._publish_atomically(generated, destination)
-        return ExportResult(destination, "dwg", len(plan.entities), self.backend_id)
+        return ExportResult(
+            destination, "dwg", len(plan.entities), self.backend_id,
+            project_id=plan.project_id,
+            source_revision=plan.source_revision,
+            source_kind=plan.source_kind,
+            source_id=plan.source_id,
+            source_document_id=plan.source_document_id,
+        )

@@ -15,6 +15,11 @@ class ExportResult:
     format: str
     entity_count: int
     backend_id: str
+    project_id: str | None = None
+    source_revision: str | None = None
+    source_kind: str | None = None
+    source_id: str | None = None
+    source_document_id: str | None = None
 
 
 class DrawingExportBackend(Protocol):
@@ -60,4 +65,18 @@ class DWGExportService:
             raise RuntimeError("Backend entity count does not match the validated plan")
         if result.backend_id != self._backend_id:
             raise RuntimeError("Backend identity in ExportResult does not match configured backend")
+        expected_provenance = {
+            "project_id": plan.project_id,
+            "source_revision": plan.source_revision,
+            "source_kind": plan.source_kind,
+            "source_id": plan.source_id,
+            "source_document_id": plan.source_document_id,
+        }
+        for field_name, expected in expected_provenance.items():
+            actual = getattr(result, field_name)
+            if actual != expected:
+                raise RuntimeError(
+                    f"Backend export provenance mismatch for {field_name}: "
+                    f"expected {expected!r}, received {actual!r}"
+                )
         return result

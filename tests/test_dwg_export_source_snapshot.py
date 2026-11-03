@@ -29,6 +29,9 @@ def _snapshot(*entities, source_revision="rev-4"):
 def test_factory_builds_plan_from_detached_application_snapshot():
     plan = DrawingPlanFactory.from_snapshot(_snapshot(_entity()))
     assert plan.source_revision == "rev-4"
+    assert plan.source_kind == "sld_projection"
+    assert plan.source_id == "document-a"
+    assert plan.source_document_id is None
     assert plan.entities == (_entity(),)
     assert plan.drawing_types == ("sld",)
 
@@ -54,4 +57,29 @@ def test_snapshot_requires_source_revision():
             symbol_profile=SymbolProfile.IEC_60617,
             drawing_types=("sld",),
             entities=(),
+        )
+
+
+
+def test_sld_snapshot_promotes_document_identity_to_plan_provenance():
+    snapshot = ApplicationDrawingSnapshot(
+        project_id="project-a", export_id="export-a", source_revision="rev-9",
+        source_kind="sld_export_snapshot", source_id="document-42",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(), units="sld-unit", coordinate_system="sld-document-local",
+    )
+    plan = DrawingPlanFactory.from_snapshot(snapshot)
+    assert plan.source_document_id == "document-42"
+    assert plan.source_id == "document-42"
+    assert plan.coordinate_system == "sld-document-local"
+    assert plan.units == "sld-unit"
+
+
+def test_sld_plan_requires_explicit_document_identity():
+    from core.application.dwg_export import DrawingPlan
+    with pytest.raises(ValueError, match="source_document_id"):
+        DrawingPlan(
+            project_id="p", export_id="e", source_revision="r",
+            symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+            entities=(), source_kind="sld_export_snapshot",
         )

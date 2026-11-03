@@ -79,6 +79,9 @@ class DrawingPlan:
     units: str = "mm"
     schema_version: int = 1
     coordinate_system: str = "world"
+    source_kind: str | None = None
+    source_id: str | None = None
+    source_document_id: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("project_id", "export_id", "source_revision", "units", "coordinate_system"):
@@ -86,6 +89,17 @@ class DrawingPlan:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be a non-empty string")
             object.__setattr__(self, name, value.strip())
+        for name in ("source_kind", "source_id", "source_document_id"):
+            value = getattr(self, name)
+            if value is not None:
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"{name} must be a non-empty string when supplied")
+                object.__setattr__(self, name, value.strip())
+        if self.source_kind == "sld_export_snapshot":
+            if self.source_document_id is None:
+                raise ValueError("SLD export plans require source_document_id")
+            if self.source_id is not None and self.source_id != self.source_document_id:
+                raise ValueError("SLD source_id must match source_document_id")
         if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int) or self.schema_version != 1:
             raise ValueError("schema_version must be the supported integer 1")
         if not isinstance(self.symbol_profile, SymbolProfile):
@@ -116,6 +130,9 @@ def drawing_plan_to_dict(plan: DrawingPlan) -> dict[str, Any]:
         "project_id": plan.project_id,
         "export_id": plan.export_id,
         "source_revision": plan.source_revision,
+        "source_kind": plan.source_kind,
+        "source_id": plan.source_id,
+        "source_document_id": plan.source_document_id,
         "symbol_profile": plan.symbol_profile.value,
         "drawing_types": list(plan.drawing_types),
         "coordinate_system": plan.coordinate_system,

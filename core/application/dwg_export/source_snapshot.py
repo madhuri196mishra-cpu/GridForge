@@ -68,6 +68,9 @@ class DrawingPlanFactory:
             entities=snapshot.entities,
             units=snapshot.units,
             coordinate_system=snapshot.coordinate_system,
+            source_kind=snapshot.source_kind,
+            source_id=snapshot.source_id,
+            source_document_id=(snapshot.source_id if snapshot.source_kind == "sld_export_snapshot" else None),
         )
         validate_drawing_plan(plan)
         return plan
