@@ -130,7 +130,7 @@ class SLDNodeEntityBuilder:
         for annotation in sorted(snapshot.annotations, key=lambda item: item.annotation_id):
             if not annotation.visible or not annotation.text:
                 continue
-            if "\\n" in annotation.text or "\\r" in annotation.text:
+            if "\n" in annotation.text or "\r" in annotation.text:
                 raise ValueError(f"SLD annotation {annotation.annotation_id!r} is multiline; TEXT export cannot preserve it")
             if annotation.node_id not in nodes:
                 raise ValueError(f"SLD annotation {annotation.annotation_id!r} references a missing node")
