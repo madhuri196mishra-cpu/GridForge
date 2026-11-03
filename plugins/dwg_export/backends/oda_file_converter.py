@@ -90,33 +90,46 @@ class ODAFileConverterBackend:
         if not isinstance(symbol_id, str) or not symbol_id.strip():
             raise ValueError(f"INSERT {entity.entity_id} requires geometry.symbol_id")
         definition = self._symbols.resolve(symbol_id, profile)
-        expected_version = entity.metadata.get("symbol_definition_version")
-        if expected_version is not None and expected_version != definition.definition_version:
+        required_provenance = (
+            "symbol_profile",
+            "symbol_definition_version",
+            "symbol_definition_base_point",
+            "symbol_review_status",
+            "symbol_reviewer",
+            "symbol_reviewed_on",
+            "symbol_review_reference",
+            "symbol_registry_schema_version",
+            "symbol_catalogue_version",
+            "symbol_registry_fingerprint",
+        )
+        missing = tuple(name for name in required_provenance if name not in entity.metadata)
+        if missing:
             raise ValueError(
-                f"INSERT {entity.entity_id} requires symbol definition version "
-                f"{expected_version!r}, but the configured registry provides "
-                f"{definition.definition_version!r}"
+                f"INSERT {entity.entity_id} is missing required symbol registry provenance: "
+                f"{', '.join(missing)}"
             )
-        expected_schema = entity.metadata.get("symbol_registry_schema_version")
-        if expected_schema is not None and expected_schema != self._symbols.schema_version:
-            raise ValueError(
-                f"INSERT {entity.entity_id} requires symbol registry schema "
-                f"{expected_schema!r}, but configured schema is {self._symbols.schema_version!r}"
-            )
-        expected_fingerprint = entity.metadata.get("symbol_registry_fingerprint")
-        if expected_fingerprint is not None and expected_fingerprint != self._symbols.fingerprint:
-            raise ValueError(
-                f"INSERT {entity.entity_id} requires symbol registry fingerprint "
-                f"{expected_fingerprint!r}, but configured registry content is "
-                f"{self._symbols.fingerprint!r}"
-            )
-        expected_catalogue = entity.metadata.get("symbol_catalogue_version")
-        if expected_catalogue is not None and expected_catalogue != self._symbols.catalogue_version:
-            raise ValueError(
-                f"INSERT {entity.entity_id} requires symbol catalogue "
-                f"{expected_catalogue!r}, but configured catalogue is "
-                f"{self._symbols.catalogue_version!r}"
-            )
+
+        expected_values = {
+            "symbol_profile": profile.value,
+            "symbol_definition_version": definition.definition_version,
+            "symbol_definition_base_point": definition.base_point,
+            "symbol_review_status": definition.review_status,
+            "symbol_reviewer": definition.reviewer,
+            "symbol_reviewed_on": definition.reviewed_on,
+            "symbol_review_reference": definition.review_reference,
+            "symbol_registry_schema_version": self._symbols.schema_version,
+            "symbol_catalogue_version": self._symbols.catalogue_version,
+            "symbol_registry_fingerprint": self._symbols.fingerprint,
+        }
+        for field_name, expected in expected_values.items():
+            actual = entity.metadata[field_name]
+            if field_name == "symbol_definition_base_point" and isinstance(actual, list):
+                actual = tuple(actual)
+            if actual != expected:
+                raise ValueError(
+                    f"INSERT {entity.entity_id} symbol provenance mismatch for {field_name}: "
+                    f"expected {expected!r}, received {actual!r}"
+                )
         if definition.block_name not in defined_blocks:
             block = doc.blocks.new(name=definition.block_name, base_point=definition.base_point)
             for primitive in definition.primitives:
