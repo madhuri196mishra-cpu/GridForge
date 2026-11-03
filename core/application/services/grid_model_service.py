@@ -56,6 +56,8 @@ class GridModelService(ModelServiceSupport):
         impedance_base_mva: float | None = None,
         impedance_base_voltage_kv: float | None = None,
         neutral_grounding_impedance_ohm: complex | None = None,
+        clear_impedance_base: bool = False,
+        clear_neutral_grounding_impedance: bool = False,
         in_service: bool | None = None,
         grounded: bool | None = None,
         transaction: Transaction,
@@ -65,12 +67,18 @@ class GridModelService(ModelServiceSupport):
         grid = self._get_required("grid", grid_id, "Grid")
         self._require_type(grid, Grid, grid_id, "Grid")
 
+        if not isinstance(clear_impedance_base, bool) or not isinstance(clear_neutral_grounding_impedance, bool):
+            raise TypeError("Grid clear flags must be bool.")
+        if clear_impedance_base and any(value is not None for value in (impedance_base_mva, impedance_base_voltage_kv)):
+            raise ValueError("Specify Grid impedance base values or clear_impedance_base, not both.")
+        if clear_neutral_grounding_impedance and neutral_grounding_impedance_ohm is not None:
+            raise ValueError("Specify neutral_grounding_impedance_ohm or clear_neutral_grounding_impedance, not both.")
         if all(value is None for value in (
             name, nominal_voltage_kv, frequency_hz, voltage_pu,
             angle_deg, p_mw, q_mvar, short_circuit_mva, x_over_r,
             z1_pu, z2_pu, z0_pu, impedance_base_mva, impedance_base_voltage_kv,
             neutral_grounding_impedance_ohm, in_service, grounded,
-        )):
+        )) and not (clear_impedance_base or clear_neutral_grounding_impedance):
             raise DomainError(
                 code="NO_GRID_UPDATE",
                 message="At least one mutable Grid property must be specified.",
@@ -148,11 +156,17 @@ class GridModelService(ModelServiceSupport):
                     z2_pu=grid.z2_pu if z2_pu is None else z2_pu,
                     z0_pu=grid.z0_pu if z0_pu is None else z0_pu,
                 )
-            if impedance_base_mva is not None:
-                grid.impedance_base_mva = impedance_base_mva
-            if impedance_base_voltage_kv is not None:
-                grid.impedance_base_voltage_kv = impedance_base_voltage_kv
-            if neutral_grounding_impedance_ohm is not None:
+            if clear_impedance_base:
+                grid.impedance_base_mva = None
+                grid.impedance_base_voltage_kv = None
+            else:
+                if impedance_base_mva is not None:
+                    grid.impedance_base_mva = impedance_base_mva
+                if impedance_base_voltage_kv is not None:
+                    grid.impedance_base_voltage_kv = impedance_base_voltage_kv
+            if clear_neutral_grounding_impedance:
+                grid.set_neutral_grounding_impedance(None)
+            elif neutral_grounding_impedance_ohm is not None:
                 grid.set_neutral_grounding_impedance(neutral_grounding_impedance_ohm)
             if in_service is not None:
                 grid.set_in_service(in_service)
