@@ -99,7 +99,7 @@ _FIELD_CONTRACTS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "reactors": (("reactive_power_injection_mvar", ("reactive_power_injection_mvar", "q")), ("in_service", ("in_service",))),
     "solar": (("p_mw", ("p_mw", "p")), ("q_mvar", ("q_mvar", "q")), ("p_min_mw", ("p_min_mw",)), ("p_max_mw", ("p_max_mw",)), ("q_min_mvar", ("q_min_mvar",)), ("q_max_mvar", ("q_max_mvar",)), ("in_service", ("in_service",))),
     "batteries": (("p_mw", ("p_mw", "p")), ("q_mvar", ("q_mvar", "q")), ("max_charge_mw", ("max_charge_mw",)), ("max_discharge_mw", ("max_discharge_mw",)), ("energy_capacity_mwh", ("energy_capacity_mwh",)), ("soc", ("soc",)), ("soc_min", ("soc_min",)), ("soc_max", ("soc_max",)), ("in_service", ("in_service",))),
-    "grids": (("nominal_voltage_kv", ("nominal_voltage_kv",)), ("frequency_hz", ("frequency_hz",)), ("voltage_pu", ("voltage_pu",)), ("angle_deg", ("angle_deg",)), ("p_mw", ("p_mw", "p")), ("q_mvar", ("q_mvar", "q")), ("short_circuit_mva", ("short_circuit_mva",)), ("x_over_r", ("x_over_r",)), ("z1_pu", ("z1_pu",)), ("z2_pu", ("z2_pu",)), ("z0_pu", ("z0_pu",)), ("in_service", ("in_service",)), ("grounded", ("grounded",))),
+    "grids": (("nominal_voltage_kv", ("nominal_voltage_kv",)), ("frequency_hz", ("frequency_hz",)), ("voltage_pu", ("voltage_pu",)), ("angle_deg", ("angle_deg",)), ("p_mw", ("p_mw", "p")), ("q_mvar", ("q_mvar", "q")), ("short_circuit_mva", ("short_circuit_mva",)), ("x_over_r", ("x_over_r",)), ("z1_pu", ("z1_pu",)), ("z2_pu", ("z2_pu",)), ("z0_pu", ("z0_pu",)), ("impedance_base_mva", ("impedance_base_mva",)), ("impedance_base_voltage_kv", ("impedance_base_voltage_kv",)), ("neutral_grounding_impedance_ohm", ("neutral_grounding_impedance_ohm",)), ("in_service", ("in_service",)), ("grounded", ("grounded",))),
     "current_transformers": (("primary_rated_current_a", ("primary_rated_current_a",)), ("secondary_rated_current_a", ("secondary_rated_current_a",)), ("ratio", ("ratio",)), ("burden_va", ("burden_va",)), ("accuracy_class", ("accuracy_class",)), ("frequency_hz", ("frequency_hz",)), ("polarity", ("polarity",)), ("in_service", ("in_service",))),
     "potential_transformers": (("primary_voltage_kv", ("primary_voltage_kv",)), ("secondary_voltage_v", ("secondary_voltage_v",)), ("voltage_ratio", ("voltage_ratio", "ratio")), ("accuracy_class", ("accuracy_class",)), ("burden_va", ("burden_va",)), ("phase_displacement_deg", ("phase_displacement_deg",)), ("in_service", ("in_service",))),
     "capacitive_voltage_transformers": (("rated_primary_voltage_kv", ("rated_primary_voltage_kv",)), ("rated_secondary_voltage_v", ("rated_secondary_voltage_v",)), ("voltage_ratio", ("voltage_ratio", "ratio")), ("accuracy_class", ("accuracy_class",)), ("rated_burden_va", ("rated_burden_va",)), ("polarity", ("polarity",)), ("frequency_hz", ("frequency_hz",)), ("in_service", ("in_service",))),
@@ -123,6 +123,9 @@ _REQUIRED_FIELDS["grids"] = frozenset({
 
 _PARAMETER_METADATA: dict[str, dict[str, Any]] = {
     "nominal_voltage_kv": {"unit": "kV", "datatype": "float"},
+    "impedance_base_mva": {"unit": "MVA", "datatype": "float", "editable": True, "study_impact": True},
+    "impedance_base_voltage_kv": {"unit": "kV", "datatype": "float", "editable": True, "study_impact": True},
+    "neutral_grounding_impedance_ohm": {"unit": "ohm", "datatype": "complex", "editable": False, "study_impact": True},
     "voltage_pu": {"unit": "pu", "datatype": "float"},
     "angle_deg": {"unit": "deg", "datatype": "float"},
 
@@ -297,7 +300,7 @@ class NetworkReadService(ReadService):
             if value is None:
                 if canonical in _REQUIRED_FIELDS.get(element_type, ()): missing_required.append(canonical)
                 continue
-            if isinstance(value, (str, int, float, bool)): attributes[canonical] = value
+            if isinstance(value, (str, int, float, bool, complex)): attributes[canonical] = value
             elif canonical in _REQUIRED_FIELDS.get(element_type, ()): missing_required.append(canonical)
         if missing_required: raise ValueError(f"Missing required Application field(s) for {element_type}: {', '.join(missing_required)}")
         if element_type == "fuses" and "in_service" in attributes and "blown" in attributes: attributes["conducts"] = bool(attributes["in_service"] and not attributes["blown"])

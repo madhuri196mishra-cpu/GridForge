@@ -702,6 +702,13 @@ class Grid(ElectricalObject, Injection):
             )
         )
 
+    def set_neutral_grounding_impedance(self, impedance_ohm: complex | None) -> None:
+        """Set the external-source neutral grounding impedance."""
+        self.neutral_grounding_impedance_ohm = self._validate_optional_impedance(
+            impedance_ohm,
+            "neutral_grounding_impedance_ohm",
+        )
+
     def has_sequence_impedance_data(self) -> bool:
         """
         Return whether positive-sequence impedance data exists.
@@ -798,6 +805,10 @@ class Grid(ElectricalObject, Injection):
         )
         self.impedance_base_mva = self._validate_optional_positive(self.impedance_base_mva, "impedance_base_mva")
         self.impedance_base_voltage_kv = self._validate_optional_positive(self.impedance_base_voltage_kv, "impedance_base_voltage_kv")
+        self.neutral_grounding_impedance_ohm = self._validate_optional_impedance(
+            self.neutral_grounding_impedance_ohm,
+            "neutral_grounding_impedance_ohm",
+        )
         if (self.impedance_base_mva is None) != (self.impedance_base_voltage_kv is None):
             raise ValueError("Grid impedance base requires both MVA and voltage bases.")
         if any(value is not None for value in (self.z1_pu, self.z2_pu, self.z0_pu)) and (

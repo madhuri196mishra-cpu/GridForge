@@ -30,11 +30,11 @@ class GridModelService(ModelServiceSupport):
     def network(self) -> Network:
         return self._network
 
-    def create_grid(self, *, grid_id: str, endpoint: Bus | Terminal | None = None, name: str | None = None, nominal_voltage_kv: float = 0.0, frequency_hz: float = 50.0, voltage_pu: float = 1.0, angle_deg: float = 0.0, p_mw: float = 0.0, q_mvar: float = 0.0, short_circuit_mva: float | None = None, x_over_r: float | None = None, z1_pu: complex | None = None, z2_pu: complex | None = None, z0_pu: complex | None = None, in_service: bool = True, grounded: bool = True, transaction: Transaction) -> ApplicationResult[Grid]:
+    def create_grid(self, *, grid_id: str, endpoint: Bus | Terminal | None = None, name: str | None = None, nominal_voltage_kv: float = 0.0, frequency_hz: float = 50.0, voltage_pu: float = 1.0, angle_deg: float = 0.0, p_mw: float = 0.0, q_mvar: float = 0.0, short_circuit_mva: float | None = None, x_over_r: float | None = None, z1_pu: complex | None = None, z2_pu: complex | None = None, z0_pu: complex | None = None, impedance_base_mva: float | None = None, impedance_base_voltage_kv: float | None = None, neutral_grounding_impedance_ohm: complex | None = None, in_service: bool = True, grounded: bool = True, transaction: Transaction) -> ApplicationResult[Grid]:
         self._require_transaction(transaction); self._require_id(grid_id, "grid_id")
         if endpoint is not None: self._validate_endpoint(endpoint, "endpoint")
         self._ensure_not_exists("grid", grid_id, "Grid")
-        grid = Grid(id=grid_id, name="" if name is None else name, endpoint=endpoint, nominal_voltage_kv=nominal_voltage_kv, frequency_hz=frequency_hz, voltage_pu=voltage_pu, angle_deg=angle_deg, p_mw=p_mw, q_mvar=q_mvar, short_circuit_mva=short_circuit_mva, x_over_r=x_over_r, z1_pu=z1_pu, z2_pu=z2_pu, z0_pu=z0_pu, in_service=in_service, grounded=grounded)
+        grid = Grid(id=grid_id, name="" if name is None else name, endpoint=endpoint, nominal_voltage_kv=nominal_voltage_kv, frequency_hz=frequency_hz, voltage_pu=voltage_pu, angle_deg=angle_deg, p_mw=p_mw, q_mvar=q_mvar, short_circuit_mva=short_circuit_mva, x_over_r=x_over_r, z1_pu=z1_pu, z2_pu=z2_pu, z0_pu=z0_pu, impedance_base_mva=impedance_base_mva, impedance_base_voltage_kv=impedance_base_voltage_kv, neutral_grounding_impedance_ohm=neutral_grounding_impedance_ohm, in_service=in_service, grounded=grounded)
         self._network.add_grid(grid); transaction.record_undo(lambda grid=grid: self._network.remove_grid(grid)); return self._success(grid, "grid", grid_id, f"Grid created: {grid_id}")
 
     def update_grid(
@@ -53,6 +53,9 @@ class GridModelService(ModelServiceSupport):
         z1_pu: complex | None = None,
         z2_pu: complex | None = None,
         z0_pu: complex | None = None,
+        impedance_base_mva: float | None = None,
+        impedance_base_voltage_kv: float | None = None,
+        neutral_grounding_impedance_ohm: complex | None = None,
         in_service: bool | None = None,
         grounded: bool | None = None,
         transaction: Transaction,
@@ -65,7 +68,8 @@ class GridModelService(ModelServiceSupport):
         if all(value is None for value in (
             name, nominal_voltage_kv, frequency_hz, voltage_pu,
             angle_deg, p_mw, q_mvar, short_circuit_mva, x_over_r,
-            z1_pu, z2_pu, z0_pu, in_service, grounded,
+            z1_pu, z2_pu, z0_pu, impedance_base_mva, impedance_base_voltage_kv,
+            neutral_grounding_impedance_ohm, in_service, grounded,
         )):
             raise DomainError(
                 code="NO_GRID_UPDATE",
@@ -86,6 +90,9 @@ class GridModelService(ModelServiceSupport):
             "z1_pu": grid.z1_pu,
             "z2_pu": grid.z2_pu,
             "z0_pu": grid.z0_pu,
+            "impedance_base_mva": grid.impedance_base_mva,
+            "impedance_base_voltage_kv": grid.impedance_base_voltage_kv,
+            "neutral_grounding_impedance_ohm": grid.neutral_grounding_impedance_ohm,
             "in_service": grid.in_service,
             "grounded": grid.grounded,
         }
@@ -106,6 +113,9 @@ class GridModelService(ModelServiceSupport):
             grid.z1_pu = old["z1_pu"]
             grid.z2_pu = old["z2_pu"]
             grid.z0_pu = old["z0_pu"]
+            grid.impedance_base_mva = old["impedance_base_mva"]
+            grid.impedance_base_voltage_kv = old["impedance_base_voltage_kv"]
+            grid.neutral_grounding_impedance_ohm = old["neutral_grounding_impedance_ohm"]
             grid.in_service = old["in_service"]
             grid.grounded = old["grounded"]
 
@@ -138,6 +148,12 @@ class GridModelService(ModelServiceSupport):
                     z2_pu=grid.z2_pu if z2_pu is None else z2_pu,
                     z0_pu=grid.z0_pu if z0_pu is None else z0_pu,
                 )
+            if impedance_base_mva is not None:
+                grid.impedance_base_mva = impedance_base_mva
+            if impedance_base_voltage_kv is not None:
+                grid.impedance_base_voltage_kv = impedance_base_voltage_kv
+            if neutral_grounding_impedance_ohm is not None:
+                grid.set_neutral_grounding_impedance(neutral_grounding_impedance_ohm)
             if in_service is not None:
                 grid.set_in_service(in_service)
 

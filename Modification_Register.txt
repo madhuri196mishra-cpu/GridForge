@@ -20539,3 +20539,46 @@ Status:
     IN SOURCE AND RECONCILED WITH CURRENT MAIN; RUNTIME ACCEPTANCE PENDING.
 
 ======================================================================
+
+======================================================================
+GF-ARCH-IMPORT-001 — SHORT-CIRCUIT ANALYSIS/SOLVER PACKAGE IMPORT CYCLE
+======================================================================
+
+Date:
+    2026-11-03
+
+Finding:
+    Importing the Analysis short-circuit facade caused eager initialization
+    of core.solver.short_circuit.phase_domain_solver. That solver module
+    imports immutable preparation snapshot types from core.analysis while
+    core.analysis.__init__ is still initializing, creating a package import
+    cycle.
+
+Correction:
+    - Keep foundational sequence solver, input, result and compatibility
+      exports eager in core.solver.short_circuit.
+    - Resolve the eight phase-domain solver exports lazily through the
+      package __getattr__ boundary on first attribute access.
+    - Cache resolved exports in the package namespace and retain __all__
+      compatibility for wildcard/public API discovery.
+    - Preserve Analysis ownership of phase-domain preparation snapshots;
+      no domain types or numerical algorithms were duplicated or relocated.
+
+Architecture:
+    - Analysis remains the owner of engineering preparation.
+    - Solver consumes prepared immutable inputs and owns numerical execution.
+    - The package facade no longer imports Analysis-backed phase-domain
+      solver implementation while Analysis is importing its own facade.
+
+Verification:
+    - Inspected the import chain and the top-level imports of both phase-domain
+      preparation modules.
+    - Inspected the updated package facade and confirmed phase-domain exports
+      are resolved only on explicit attribute access.
+    - No tests, CI, syntax checks or runtime import experiments were run.
+
+Status:
+    SOURCE-LEVEL CYCLE CORRECTION COMMITTED TO MAIN.
+    RUNTIME IMPORT-INTEGRITY VERIFICATION REMAINS PENDING.
+
+======================================================================
