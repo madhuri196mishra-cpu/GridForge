@@ -7,7 +7,8 @@ It does not create a second engineering model and does not mutate Core.
 
 - Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs, canonical entity ordering and deterministic JSON serialization.
 - Application-level plan validation and backend format/result checks.
-- Profile-aware `SymbolRegistry` definitions with stable IDs, explicit base points and vector primitives.
+- Schema-versioned, catalogue-versioned `SymbolRegistry` definitions with stable IDs, definition versions, explicit base points and vector primitives.
+- Export resolution is fail-closed for unreviewed symbols. Reviewed definitions require reviewer, ISO review date and a review-evidence reference; provenance is carried into entity metadata.
 - An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
 - Stable entity identity and metadata are written as GRIDFORGE XDATA where supported.
 - ODA publication uses unique staging files, a timeout, process status checks, DWG signature checks and atomic replacement.
@@ -31,7 +32,7 @@ Persisted symbol instances are represented as INSERT entities. Explicit persiste
 
 ## Symbol profiles and standards
 
-The registry is versioned/profile-aware and supports ANSI/IEEE and IEC 60617 profile keys. It is a rendering/export mapping, not an electrical authority. Only explicitly registered and reviewed definitions are usable. No complete catalogue is shipped, and the presence of a profile key does not establish standards compliance. Add reviewed symbols incrementally without changing the drawing-plan or backend contract.
+The registry has an explicit schema version and catalogue version; each symbol has a semantic definition version. It supports ANSI/IEEE and IEC 60617 profile keys. Definitions are keyed by profile and stable symbol ID, and their CAD block names are stable for a particular definition version. Export resolution rejects unreviewed definitions. A reviewed definition must carry a reviewer, ISO review date and review-evidence reference; optional standard references are provenance only. Review status does not certify conformance to ANSI/IEEE, IEC 60617 or any other standard. No complete catalogue is shipped and no standards-conformance assessment is claimed. Add definitions only after their source geometry and review evidence are supplied.
 
 ## ODA configuration and limitations
 

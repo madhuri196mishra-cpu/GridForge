@@ -5,7 +5,12 @@ from core.application.dwg_export import DrawingEntity, SymbolDefinition, SymbolP
 
 def _definition(symbol_id="breaker", profile=SymbolProfile.ANSI_IEEE):
     primitive = DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {})
-    return SymbolDefinition(symbol_id, profile, (primitive,), base_point=(0, 0))
+    return SymbolDefinition(
+        symbol_id, profile, (primitive,), base_point=(0, 0),
+        definition_version="1.0.0", review_status="reviewed",
+        reviewer="gridforge-review", reviewed_on="2026-11-03",
+        review_reference="review-record:GF-SYMBOL-001",
+    )
 
 
 def test_registry_resolves_by_symbol_id_and_profile():
@@ -53,3 +58,44 @@ def test_symbol_definition_rejects_invalid_primitive_geometry() -> None:
     )
     with pytest.raises(ValueError, match="radius must be positive"):
         SymbolDefinition("invalid-circle", SymbolProfile.ANSI_IEEE, (invalid_circle,))
+
+
+
+def test_registry_exposes_explicit_schema_and_catalogue_versions():
+    registry = SymbolRegistry((_definition(),), schema_version=1, catalogue_version="2.3.0")
+    assert registry.schema_version == 1
+    assert registry.catalogue_version == "2.3.0"
+
+
+def test_registry_rejects_unreviewed_definitions_at_resolution():
+    definition = SymbolDefinition(
+        "draft-breaker", SymbolProfile.ANSI_IEEE,
+        (_definition().primitives[0],),
+    )
+    registry = SymbolRegistry((definition,))
+    with pytest.raises(ValueError, match="not reviewed"):
+        registry.resolve("draft-breaker", SymbolProfile.ANSI_IEEE)
+
+
+def test_reviewed_definition_requires_complete_review_provenance():
+    with pytest.raises(ValueError, match="require reviewer"):
+        SymbolDefinition(
+            "incomplete-review", SymbolProfile.ANSI_IEEE,
+            (_definition().primitives[0],), review_status="reviewed",
+        )
+
+
+def test_definition_version_changes_stable_block_identity():
+    first = _definition()
+    second = SymbolDefinition(
+        first.symbol_id, first.profile, first.primitives,
+        definition_version="2.0.0", review_status="reviewed",
+        reviewer="gridforge-review", reviewed_on="2026-11-03",
+        review_reference="review-record:GF-SYMBOL-002",
+    )
+    assert first.block_name != second.block_name
+
+
+def test_registry_rejects_unknown_schema_version():
+    with pytest.raises(ValueError, match="schema_version"):
+        SymbolRegistry((), schema_version=2)
