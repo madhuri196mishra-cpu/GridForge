@@ -67,13 +67,13 @@ def test_oda_backend_rejects_registry_content_drift_even_when_versions_match(tmp
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
         definition_version="1.0.0", review_status="reviewed",
-        reviewer="reviewer", reviewed_on="2026-11-03", review_reference="review:1",
+        reviewer="reviewer", reviewed_on="2026-11-03", review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source",
     )
     backend_definition = SymbolDefinition(
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 6}, {}),),
         definition_version="1.0.0", review_status="reviewed",
-        reviewer="reviewer", reviewed_on="2026-11-03", review_reference="review:1",
+        reviewer="reviewer", reviewed_on="2026-11-03", review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source",
     )
     builder_registry = SymbolRegistry((builder_definition,), catalogue_version="1.0.0")
     backend_registry = SymbolRegistry((backend_definition,), catalogue_version="1.0.0")
@@ -111,7 +111,7 @@ def test_oda_backend_rejects_insert_without_registry_provenance(tmp_path: Path):
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
         review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
-        review_reference="review:1",
+        review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source",
     )
     backend = ODAFileConverterBackend(executable, symbol_registry=SymbolRegistry((definition,)))
     entity = DrawingEntity(
@@ -132,7 +132,7 @@ def test_oda_backend_rejects_symbol_base_point_provenance_drift(tmp_path: Path):
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
         base_point=(2.0, 3.0), review_status="reviewed", reviewer="reviewer",
-        reviewed_on="2026-11-03", review_reference="review:1",
+        reviewed_on="2026-11-03", review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source",
     )
     registry = SymbolRegistry((definition,))
     metadata = {
@@ -169,7 +169,7 @@ def test_oda_backend_rejects_symbol_definition_id_drift(tmp_path: Path):
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
         review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
-        review_reference="review:1",
+        review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source",
     )
     registry = SymbolRegistry((definition,))
     metadata = {
@@ -205,7 +205,7 @@ def test_oda_backend_rejects_standard_reference_provenance_drift(tmp_path: Path)
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
         review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
-        review_reference="review:1", standard_reference="IEEE-symbol-reference",
+        review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source", standard_reference="IEEE-symbol-reference",
     )
     registry = SymbolRegistry((definition,))
     metadata = {
