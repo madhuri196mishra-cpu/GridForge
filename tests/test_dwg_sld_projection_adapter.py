@@ -175,3 +175,78 @@ def test_snapshot_capture_rejects_project_activation_during_capture() -> None:
             application, manager, ActivatingProjection(),
             project_id="project-1", document_id="document-1",
         )
+
+
+
+def test_snapshot_capture_detaches_typed_transformer_read_values() -> None:
+    from dataclasses import dataclass
+    from enum import Enum
+    from types import SimpleNamespace
+
+    from ui.canvas.sld_canvas_projection import SLDCanvasProjection
+    from ui.canvas.sld_export_snapshot_adapter import SLDExportSnapshotCapture
+    from ui.sld.sld_document import SLDDocument
+    from ui.workspace.document_manager import DocumentManager
+
+    class Winding(str, Enum):
+        DELTA = "DELTA"
+
+    @dataclass(frozen=True)
+    class TestEvidence:
+        reference: str
+        measured_impedance: complex
+
+    attributes = {
+        "transformer_configuration_summary": {
+            "hv_winding_connection": Winding.DELTA,
+            "zero_sequence_multiport_evidence": TestEvidence(
+                reference="test:multiport", measured_impedance=1.5 + 2.25j
+            ),
+            "phase_domain_terminal_admittance_siemens": (
+                (1.0 + 2.0j, 0.0j),
+                (0.0j, 3.0 - 4.0j),
+            ),
+        }
+    }
+    projected_node = SimpleNamespace(
+        node_id="node-transformer",
+        presentation=None,
+        read_model=SimpleNamespace(attributes=attributes, engineering_parameters=()),
+        x=10.0,
+        y=20.0,
+        properties={},
+    )
+
+    class TransformerProjection(SLDCanvasProjection):
+        def project(self, model, annotation_blocks=()):
+            return SimpleNamespace(
+                nodes=(projected_node,), connections=(), annotations=()
+            )
+
+    active = SLDDocument("document-1", project_id="project-1")
+    manager = DocumentManager()
+    manager.register(active)
+    context = SimpleNamespace(project_id="project-1")
+    lifecycle = SimpleNamespace(context=context, activation_generation=3)
+    application = SimpleNamespace(
+        revision="revision-42",
+        project_lifecycle=lifecycle,
+        presentation=active,
+    )
+
+    captured = SLDExportSnapshotCapture().capture(
+        application, manager, TransformerProjection(),
+        project_id="project-1", document_id="document-1",
+    )
+    summary = captured.nodes[0].engineering_attributes[
+        "transformer_configuration_summary"
+    ]
+    assert summary["hv_winding_connection"] == "DELTA"
+    assert summary["zero_sequence_multiport_evidence"] == {
+        "reference": "test:multiport",
+        "measured_impedance": {"real": 1.5, "imag": 2.25},
+    }
+    assert summary["phase_domain_terminal_admittance_siemens"] == (
+        ({"real": 1.0, "imag": 2.0}, {"real": 0.0, "imag": 0.0}),
+        ({"real": 0.0, "imag": 0.0}, {"real": 3.0, "imag": -4.0}),
+    )
