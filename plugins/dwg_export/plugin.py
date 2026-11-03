@@ -105,7 +105,7 @@ class DWGExportPlugin(GridForgePlugin):
         configuration = services.get("dwg_export_configuration")
         if not isinstance(configuration, DWGExportConfiguration):
             raise RuntimeError(
-                "DWG Export activation requires PluginContext.services['dwg_export_configuration'] "
+                "DWG Export activation requires EngineeringPluginContext.services['dwg_export_configuration'] "
                 "with an explicit ODA executable and SymbolRegistry"
             )
 
