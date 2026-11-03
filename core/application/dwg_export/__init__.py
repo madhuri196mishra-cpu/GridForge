@@ -1,5 +1,8 @@
 """Application-owned, backend-neutral CAD export contracts for GridForge."""
-from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile
+from .drawing_plan import (
+    DrawingEntity, DrawingPlan, SymbolProfile,
+    drawing_plan_to_dict, serialize_drawing_plan,
+)
 from .service import DWGExportService, ExportResult
 from .symbol_registry import SymbolDefinition, SymbolRegistry
 from .source_snapshot import ApplicationDrawingSnapshot, DrawingPlanFactory
@@ -9,7 +12,8 @@ from .sld_entity_builder import SLDNodeEntityBuilder
 from .validation import DrawingPlanValidationError, validate_drawing_plan
 
 __all__ = [
-    "DrawingEntity", "DrawingPlan", "SymbolProfile", "DWGExportService",
+    "DrawingEntity", "DrawingPlan", "SymbolProfile", "drawing_plan_to_dict",
+    "serialize_drawing_plan", "DWGExportService",
     "ExportResult", "DrawingPlanValidationError", "validate_drawing_plan",
     "SymbolDefinition", "SymbolRegistry", "ApplicationDrawingSnapshot",
     "DrawingPlanFactory", "ApplicationDrawingSnapshotAdapter",

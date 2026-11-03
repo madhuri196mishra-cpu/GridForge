@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+
 from .drawing_plan import DrawingPlan
 
 
@@ -11,6 +12,7 @@ class DrawingPlanValidationError(ValueError):
 
 
 _SUPPORTED_KINDS = {"LINE", "CIRCLE", "ARC", "TEXT", "INSERT", "LWPOLYLINE"}
+_FORBIDDEN_LAYER_CHARS = frozenset('<>/\\":;?*|=,')
 
 
 def _finite_numbers(value: object, path: str) -> None:
@@ -31,6 +33,20 @@ def _finite_numbers(value: object, path: str) -> None:
     raise DrawingPlanValidationError(f"{path} contains an unsupported value")
 
 
+def _keys(geometry: Mapping[str, object], required: set[str], optional: set[str], entity_id: str) -> None:
+    actual = set(geometry)
+    missing = required - actual
+    extra = actual - required - optional
+    if missing:
+        raise DrawingPlanValidationError(
+            f"Entity {entity_id} is missing geometry fields: {', '.join(sorted(missing))}"
+        )
+    if extra:
+        raise DrawingPlanValidationError(
+            f"Entity {entity_id} has unsupported geometry fields: {', '.join(sorted(extra))}"
+        )
+
+
 def _number(geometry: Mapping[str, object], key: str, entity_id: str) -> float:
     value = geometry.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -41,80 +57,100 @@ def _number(geometry: Mapping[str, object], key: str, entity_id: str) -> float:
     return number
 
 
-def _point(value: object, path: str, entity_id: str) -> tuple[float, float]:
-    if not isinstance(value, (tuple, list)) or len(value) != 2:
-        raise DrawingPlanValidationError(f"Entity {entity_id} requires {path} as a 2D point")
+def _point(value: object, path: str, entity_id: str, *, dimensions: tuple[int, ...] = (2,)) -> tuple[float, ...]:
+    if not isinstance(value, (tuple, list)) or len(value) not in dimensions:
+        expected = " or ".join(str(size) for size in dimensions)
+        raise DrawingPlanValidationError(
+            f"Entity {entity_id} requires {path} as a {expected}D point"
+        )
     result = []
-    for axis, coordinate in zip(("x", "y"), value):
+    for axis, coordinate in zip(("x", "y", "z"), value):
         if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)):
             raise DrawingPlanValidationError(f"Entity {entity_id} requires numeric {path}.{axis}")
         if not math.isfinite(float(coordinate)):
             raise DrawingPlanValidationError(f"Entity {entity_id} {path}.{axis} must be finite")
         result.append(float(coordinate))
-    return result[0], result[1]
+    return tuple(result)
+
+
+def _validate_layer(entity_id: str, layer: str) -> None:
+    if len(layer) > 255 or any(ord(char) < 32 or char in _FORBIDDEN_LAYER_CHARS for char in layer):
+        raise DrawingPlanValidationError(
+            f"Entity {entity_id} has invalid CAD layer name {layer!r}"
+        )
 
 
 def validate_drawing_plan(plan: DrawingPlan) -> None:
-    """Validate identity, primitive support and geometry before backend writes."""
+    """Validate identity, primitive fields and geometry before backend writes."""
     if not isinstance(plan, DrawingPlan):
         raise TypeError("plan must be a DrawingPlan")
     if plan.schema_version != 1:
         raise DrawingPlanValidationError(f"Unsupported drawing plan schema: {plan.schema_version}")
+    if not plan.coordinate_system.strip() or not plan.units.strip():
+        raise DrawingPlanValidationError("Drawing plan must declare coordinate_system and units")
+
     seen: set[str] = set()
     for entity in plan.entities:
         if entity.entity_id in seen:
             raise DrawingPlanValidationError(f"Duplicate drawing entity ID: {entity.entity_id}")
         seen.add(entity.entity_id)
+        _validate_layer(entity.entity_id, entity.layer)
         kind = entity.kind.upper()
         if kind not in _SUPPORTED_KINDS:
-            raise DrawingPlanValidationError(f"Unsupported drawing primitive {entity.kind!r} on {entity.entity_id}")
+            raise DrawingPlanValidationError(
+                f"Unsupported drawing primitive {entity.kind!r} on {entity.entity_id}"
+            )
         geometry = entity.geometry
         _finite_numbers(geometry, f"entities[{entity.entity_id}].geometry")
+
         if kind == "LINE":
-            start = _point(geometry.get("start"), "geometry.start", entity.entity_id)
-            end = _point(geometry.get("end"), "geometry.end", entity.entity_id)
+            _keys(geometry, {"start", "end"}, set(), entity.entity_id)
+            start = _point(geometry["start"], "geometry.start", entity.entity_id)
+            end = _point(geometry["end"], "geometry.end", entity.entity_id)
             if start == end:
                 raise DrawingPlanValidationError(f"LINE entity {entity.entity_id} must have distinct endpoints")
+
         elif kind == "CIRCLE":
-            _point(geometry.get("center"), "geometry.center", entity.entity_id)
+            _keys(geometry, {"center", "radius"}, set(), entity.entity_id)
+            _point(geometry["center"], "geometry.center", entity.entity_id)
             if _number(geometry, "radius", entity.entity_id) <= 0:
                 raise DrawingPlanValidationError(f"CIRCLE entity {entity.entity_id} radius must be positive")
+
         elif kind == "ARC":
-            _point(geometry.get("center"), "geometry.center", entity.entity_id)
+            _keys(geometry, {"center", "radius", "start_angle", "end_angle"}, set(), entity.entity_id)
+            _point(geometry["center"], "geometry.center", entity.entity_id)
             if _number(geometry, "radius", entity.entity_id) <= 0:
                 raise DrawingPlanValidationError(f"ARC entity {entity.entity_id} radius must be positive")
             start = _number(geometry, "start_angle", entity.entity_id)
             end = _number(geometry, "end_angle", entity.entity_id)
             if start == end:
                 raise DrawingPlanValidationError(f"ARC entity {entity.entity_id} start_angle and end_angle must differ")
+
         elif kind == "LWPOLYLINE":
-            points = geometry.get("points")
+            _keys(geometry, {"points"}, {"closed"}, entity.entity_id)
+            if "closed" in geometry and not isinstance(geometry["closed"], bool):
+                raise DrawingPlanValidationError(f"LWPOLYLINE entity {entity.entity_id} closed must be boolean")
+            points = geometry["points"]
             if not isinstance(points, (tuple, list)) or len(points) < 2:
                 raise DrawingPlanValidationError(f"LWPOLYLINE entity {entity.entity_id} requires at least two points")
-            normalized = tuple(_point(point, f"geometry.points[{index}]", entity.entity_id) for index, point in enumerate(points))
+            normalized = tuple(
+                _point(point, f"geometry.points[{index}]", entity.entity_id)
+                for index, point in enumerate(points)
+            )
             if len(set(normalized)) < 2:
-                raise DrawingPlanValidationError(f"LWPOLYLINE entity {entity.entity_id} requires at least two distinct points")
+                raise DrawingPlanValidationError(
+                    f"LWPOLYLINE entity {entity.entity_id} requires at least two distinct points"
+                )
+
         elif kind == "INSERT":
-            symbol_id = geometry.get("symbol_id")
+            _keys(geometry, {"symbol_id", "insert"}, {"scale", "rotation"}, entity.entity_id)
+            symbol_id = geometry["symbol_id"]
             if not isinstance(symbol_id, str) or not symbol_id.strip():
                 raise DrawingPlanValidationError(f"INSERT entity {entity.entity_id} requires geometry.symbol_id")
-            insert = geometry.get("insert")
-            if not isinstance(insert, (tuple, list)) or len(insert) not in (2, 3):
-                raise DrawingPlanValidationError(
-                    f"INSERT entity {entity.entity_id} requires geometry.insert as a 2D or 3D point"
-                )
-            for axis, coordinate in zip(("x", "y", "z"), insert):
-                if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)):
-                    raise DrawingPlanValidationError(
-                        f"INSERT entity {entity.entity_id} requires numeric geometry.insert.{axis}"
-                    )
-                if not math.isfinite(float(coordinate)):
-                    raise DrawingPlanValidationError(
-                        f"INSERT entity {entity.entity_id} geometry.insert.{axis} must be finite"
-                    )
+            _point(geometry["insert"], "geometry.insert", entity.entity_id, dimensions=(2, 3))
             scale = geometry.get("scale", (1.0, 1.0, 1.0))
             if isinstance(scale, (int, float)) and not isinstance(scale, bool):
-                scale_values = (float(scale),)
+                scale_values = (scale,)
             elif isinstance(scale, (tuple, list)) and len(scale) in (2, 3):
                 scale_values = tuple(scale)
             else:
@@ -133,9 +169,18 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
                 )
             if "rotation" in geometry:
                 _number(geometry, "rotation", entity.entity_id)
+
         elif kind == "TEXT":
-            if not isinstance(geometry.get("text"), str):
+            _keys(geometry, {"text", "insert"}, {"height", "rotation"}, entity.entity_id)
+            if not isinstance(geometry["text"], str):
                 raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} requires string geometry.text")
-            _point(geometry.get("insert"), "geometry.insert", entity.entity_id)
+            if "\\x00" in geometry["text"]:
+                raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} contains a NUL character")
+            _point(geometry["insert"], "geometry.insert", entity.entity_id)
             if "height" in geometry and _number(geometry, "height", entity.entity_id) <= 0:
                 raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} height must be positive")
+            if "rotation" in geometry:
+                _number(geometry, "rotation", entity.entity_id)
+
+
+__all__ = ["DrawingPlanValidationError", "validate_drawing_plan"]
