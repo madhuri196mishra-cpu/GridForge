@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from core.plugin_sdk import (
     SUPPORTED_PLUGIN_API_VERSION,

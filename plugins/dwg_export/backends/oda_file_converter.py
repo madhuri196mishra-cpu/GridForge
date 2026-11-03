@@ -58,7 +58,7 @@ class ODAFileConverterBackend:
             raise TypeError("symbol_registry must be a SymbolRegistry")
         self._executable = path
         self._timeout = float(timeout_seconds)
-        self._symbols = symbol_registry or SymbolRegistry()
+        self._symbols = symbol_registry if symbol_registry is not None else SymbolRegistry()
 
     @staticmethod
     def _add_entity(msp: Any, entity: DrawingEntity) -> Any:
@@ -233,7 +233,7 @@ class ODAFileConverterBackend:
         try:
             import ezdxf
         except ImportError as exc:
-            raise RuntimeError("Direct DWG export requires the optional 'cad-export' dependency (ezdxf)") from exc
+            raise RuntimeError("Direct DWG export requires the optional 'dwg-export' dependency (ezdxf)") from exc
         version = (target_version or "ACAD2018").upper()
         if version not in _DWG_SIGNATURES:
             raise ValueError(f"Unsupported ODA target version {version!r}; supported: {', '.join(sorted(_DWG_SIGNATURES))}")

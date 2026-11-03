@@ -4,7 +4,7 @@ This optional engineering plugin owns CAD drawing plans, validation, symbol defi
 
 ## Plugin activation
 
-`DWGExportPlugin` is activated explicitly through `EngineeringPluginHost`. The host supplies a `DWGExportConfiguration` in `PluginContext.services['dwg_export_configuration']`; that configuration must name an installed ODA File Converter executable and an explicit `SymbolRegistry`. There is no default executable, implicit PATH lookup, default reviewed catalogue, or automatic activation. The plugin exposes its configured `DWGExportService` to its caller and releases its references on shutdown. It does not register Application commands or mutate Core.
+`DWGExportPlugin` is activated explicitly through `EngineeringPluginHost`. The host supplies a `DWGExportConfiguration` in `EngineeringPluginContext.services['dwg_export_configuration']`; that configuration must name an installed ODA File Converter executable and an explicit `SymbolRegistry`. There is no default executable, implicit PATH lookup, default reviewed catalogue, or automatic activation. The plugin exposes its configured `DWGExportService` to its caller and releases its references on shutdown. It does not register Application commands or mutate Core.
 
 ```python
 from core.plugin_sdk import EngineeringPluginHost
