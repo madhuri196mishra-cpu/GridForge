@@ -90,6 +90,26 @@ class ODAFileConverterBackend:
         if not isinstance(symbol_id, str) or not symbol_id.strip():
             raise ValueError(f"INSERT {entity.entity_id} requires geometry.symbol_id")
         definition = self._symbols.resolve(symbol_id, profile)
+        expected_version = entity.metadata.get("symbol_definition_version")
+        if expected_version is not None and expected_version != definition.definition_version:
+            raise ValueError(
+                f"INSERT {entity.entity_id} requires symbol definition version "
+                f"{expected_version!r}, but the configured registry provides "
+                f"{definition.definition_version!r}"
+            )
+        expected_schema = entity.metadata.get("symbol_registry_schema_version")
+        if expected_schema is not None and expected_schema != self._symbols.schema_version:
+            raise ValueError(
+                f"INSERT {entity.entity_id} requires symbol registry schema "
+                f"{expected_schema!r}, but configured schema is {self._symbols.schema_version!r}"
+            )
+        expected_catalogue = entity.metadata.get("symbol_catalogue_version")
+        if expected_catalogue is not None and expected_catalogue != self._symbols.catalogue_version:
+            raise ValueError(
+                f"INSERT {entity.entity_id} requires symbol catalogue "
+                f"{expected_catalogue!r}, but configured catalogue is "
+                f"{self._symbols.catalogue_version!r}"
+            )
         if definition.block_name not in defined_blocks:
             block = doc.blocks.new(name=definition.block_name, base_point=definition.base_point)
             for primitive in definition.primitives:
