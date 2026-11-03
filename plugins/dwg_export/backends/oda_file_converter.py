@@ -92,12 +92,14 @@ class ODAFileConverterBackend:
         definition = self._symbols.resolve(symbol_id, profile)
         required_provenance = (
             "symbol_profile",
+            "symbol_definition_id",
             "symbol_definition_version",
             "symbol_definition_base_point",
             "symbol_review_status",
             "symbol_reviewer",
             "symbol_reviewed_on",
             "symbol_review_reference",
+            "symbol_standard_reference",
             "symbol_registry_schema_version",
             "symbol_catalogue_version",
             "symbol_registry_fingerprint",
@@ -111,12 +113,14 @@ class ODAFileConverterBackend:
 
         expected_values = {
             "symbol_profile": profile.value,
+            "symbol_definition_id": definition.symbol_id,
             "symbol_definition_version": definition.definition_version,
             "symbol_definition_base_point": definition.base_point,
             "symbol_review_status": definition.review_status,
             "symbol_reviewer": definition.reviewer,
             "symbol_reviewed_on": definition.reviewed_on,
             "symbol_review_reference": definition.review_reference,
+            "symbol_standard_reference": definition.standard_reference,
             "symbol_registry_schema_version": self._symbols.schema_version,
             "symbol_catalogue_version": self._symbols.catalogue_version,
             "symbol_registry_fingerprint": self._symbols.fingerprint,
