@@ -72,8 +72,10 @@ class SLDNodeExportSnapshot:
         if not isinstance(self.node_id, str) or not self.node_id.strip():
             raise ValueError("node_id must be non-empty")
         object.__setattr__(self, "node_id", self.node_id.strip())
-        if self.equipment_id is not None and (not isinstance(self.equipment_id, str) or not self.equipment_id.strip()):
-            raise ValueError("equipment_id must be non-empty when supplied")
+        if self.equipment_id is not None:
+            if not isinstance(self.equipment_id, str) or not self.equipment_id.strip():
+                raise ValueError("equipment_id must be non-empty when supplied")
+            object.__setattr__(self, "equipment_id", self.equipment_id.strip())
         object.__setattr__(self, "x", float(self.x))
         object.__setattr__(self, "y", float(self.y))
         if not math.isfinite(self.x) or not math.isfinite(self.y):
@@ -110,9 +112,9 @@ class SLDConnectionExportSnapshot:
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, _freeze(value, name))
-        if self.route_routing_mode not in {"direct", "orthogonal", "manual"}:
+        if not isinstance(self.route_routing_mode, str) or self.route_routing_mode not in {"direct", "orthogonal", "manual"}:
             raise ValueError(f"connection {self.connection_id!r} has unsupported route routing_mode")
-        if self.route_ownership not in {"auto", "engineer"}:
+        if not isinstance(self.route_ownership, str) or self.route_ownership not in {"auto", "engineer"}:
             raise ValueError(f"connection {self.connection_id!r} has unsupported route ownership")
         for endpoint_name, endpoint, node_id in (
             ("source_endpoint", self.source_endpoint, self.source_node_id),
@@ -122,12 +124,21 @@ class SLDConnectionExportSnapshot:
                 raise ValueError(
                     f"connection {self.connection_id!r} {endpoint_name} node_id does not match its connection node"
                 )
-        points = tuple((float(point[0]), float(point[1])) for point in self.route_points)
-        if any(not (math.isfinite(x) and math.isfinite(y)) for x, y in points):
-            raise ValueError(f"connection {self.connection_id!r} has non-finite route geometry")
-        if any(len(point) != 2 for point in self.route_points):
-            raise ValueError(f"connection {self.connection_id!r} route points must be 2D")
-        object.__setattr__(self, "route_points", points)
+        normalized_points = []
+        for index, point in enumerate(self.route_points):
+            if not isinstance(point, (tuple, list)) or len(point) != 2:
+                raise ValueError(
+                    f"connection {self.connection_id!r} route point {index} must be 2D"
+                )
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in point):
+                raise ValueError(
+                    f"connection {self.connection_id!r} route point {index} must be numeric"
+                )
+            x, y = float(point[0]), float(point[1])
+            if not (math.isfinite(x) and math.isfinite(y)):
+                raise ValueError(f"connection {self.connection_id!r} has non-finite route geometry")
+            normalized_points.append((x, y))
+        object.__setattr__(self, "route_points", tuple(normalized_points))
         object.__setattr__(self, "properties", _freeze(self.properties, "connection.properties"))
 
 

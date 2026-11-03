@@ -54,7 +54,8 @@ def test_explicit_connection_route_is_preserved_without_topology_inference() -> 
     assert entity.metadata["route_routing_mode"] == "manual"
     assert entity.metadata["route_geometry_source"] == "persisted_route"
     assert entity.metadata["gridforge_connection_id"] == "wire-9"
-    assert entity.metadata["properties"]["core_connection_id"] == "core-wire-9"
+    assert entity.metadata["persisted_connection_properties"]["core_connection_id"] == "core-wire-9"
+    assert entity.metadata["core_connection_id"] == "core-wire-9"
 
 
 def test_unrouted_explicit_connection_uses_positions_only_as_display_endpoints() -> None:
@@ -80,3 +81,22 @@ def test_connection_with_missing_endpoint_node_fails_closed() -> None:
     )
     with pytest.raises(ValueError, match="references a missing node"):
         SLDNodeEntityBuilder(_registry()).build(broken, profile=SymbolProfile.ANSI_IEEE)
+
+
+
+def test_connection_snapshot_rejects_endpoint_node_identity_mismatch() -> None:
+    with pytest.raises(ValueError, match="source_endpoint node_id"):
+        SLDConnectionExportSnapshot(
+            connection_id="bad-endpoint", source_node_id="a", target_node_id="b",
+            source_endpoint={"node_id": "other", "terminal_id": "t1"},
+            target_endpoint=None, route_points=(),
+        )
+
+
+@pytest.mark.parametrize("route_points", [((1,),), ((1, 2, 3),), ((True, 2),)])
+def test_connection_snapshot_rejects_malformed_route_points(route_points) -> None:
+    with pytest.raises(ValueError, match="route point"):
+        SLDConnectionExportSnapshot(
+            connection_id="bad-route", source_node_id="a", target_node_id="b",
+            source_endpoint=None, target_endpoint=None, route_points=route_points,
+        )

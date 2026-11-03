@@ -60,6 +60,7 @@ class SLDNodeEntityBuilder:
                     "symbol_definition_id": symbol.symbol_definition_id,
                     "representation_id": symbol.representation_id,
                     "symbol_profile": profile.value,
+                    "symbol_definition_base_point": definition.base_point,
                     "symbol_instance_properties": dict(symbol.properties),
                     "presentation_properties": dict(node.properties),
                     "engineering_attributes": dict(node.engineering_attributes),
