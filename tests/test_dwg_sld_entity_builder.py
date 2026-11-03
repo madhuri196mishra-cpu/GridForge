@@ -16,7 +16,10 @@ def _registry() -> SymbolRegistry:
     }, {})
     return SymbolRegistry((SymbolDefinition(
         symbol_id="breaker", profile=SymbolProfile.ANSI_IEEE,
-        primitives=(primitive,),
+        primitives=(primitive,), definition_version="1.0.0",
+        review_status="reviewed", reviewer="gridforge-review",
+        reviewed_on="2026-11-03",
+        review_reference="review-record:GF-SYMBOL-SLD-001",
     ),))
 
 
