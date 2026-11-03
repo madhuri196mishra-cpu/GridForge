@@ -8,6 +8,7 @@ from .symbol_registry import SymbolDefinition, SymbolRegistry
 from .source_snapshot import ApplicationDrawingSnapshot, DrawingPlanFactory
 from .application_adapter import ApplicationDrawingSnapshotAdapter
 from .sld_projection_adapter import SLDProjectionDrawingSnapshotAdapter
+from .coordinate_transform import SLDCoordinateTransform
 from .sld_entity_builder import SLDNodeEntityBuilder
 from .validation import DrawingPlanValidationError, validate_drawing_plan
 from .backends import ODAFileConverterBackend
@@ -18,7 +19,7 @@ __all__ = [
     "serialize_drawing_plan", "DWGExportService", "ExportResult",
     "DrawingPlanValidationError", "validate_drawing_plan", "SymbolDefinition",
     "SymbolRegistry", "ApplicationDrawingSnapshot", "DrawingPlanFactory",
-    "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter",
+    "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter", "SLDCoordinateTransform",
     "SLDNodeEntityBuilder", "ODAFileConverterBackend",
     "DWGExportConfiguration", "DWGExportPlugin", "PLUGIN_DESCRIPTOR",
 ]
