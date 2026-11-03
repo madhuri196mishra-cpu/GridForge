@@ -113,6 +113,7 @@ def test_registry_fingerprint_is_deterministic_and_tracks_definition_content():
         definition_version="1.0.0", review_status="reviewed",
         reviewer="gridforge-review", reviewed_on="2026-11-03",
         review_reference="review-record:GF-SYMBOL-001",
+        standard_reference="standard-reference:IEC-or-IEEE-reviewed-source",
     ),), catalogue_version="1.0.0")
     assert first.fingerprint == equivalent.fingerprint
     assert first.fingerprint != changed.fingerprint
