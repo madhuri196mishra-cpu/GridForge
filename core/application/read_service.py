@@ -332,11 +332,25 @@ class NetworkReadService(ReadService):
         from .read_models import EngineeringParameterReadModel, SimpleWireReadModel
 
         result: list[EngineeringParameterReadModel] = []
+        if element_type == "grids":
+            for optional_field in (
+                "impedance_base_mva",
+                "impedance_base_voltage_kv",
+                "neutral_grounding_impedance_ohm",
+            ):
+                attributes.setdefault(optional_field, None)
         basis = str(attributes.get("impedance_basis", "")).lower()
         for parameter_id, value in attributes.items():
             if parameter_id in {"from_endpoint", "endpoint_from_id", "from_terminal", "to_endpoint", "endpoint_to_id", "to_terminal", "terminal_connectivity"}:
                 continue
             metadata = dict(_PARAMETER_METADATA.get(parameter_id, {}))
+            if element_type == "grids" and parameter_id in {
+                "impedance_base_mva",
+                "impedance_base_voltage_kv",
+                "neutral_grounding_impedance_ohm",
+            }:
+                metadata["editable"] = True
+                metadata["validation"] = {**dict(metadata.get("validation", {})), "nullable": True}
             if element_type in {"loads", "generators"} and parameter_id == "in_service":
                 metadata["editable"] = True
             if element_type == "lines" and parameter_id == "in_service":
