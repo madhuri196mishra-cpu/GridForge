@@ -16,7 +16,7 @@ from typing import Iterable
 from .drawing_plan import DrawingEntity, SymbolProfile
 
 _SYMBOL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
-_VERSION = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _SUPPORTED_PRIMITIVES = frozenset({"LINE", "CIRCLE", "ARC", "TEXT", "LWPOLYLINE"})
 
 
