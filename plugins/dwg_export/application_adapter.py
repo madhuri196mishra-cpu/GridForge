@@ -30,6 +30,11 @@ class ApplicationDrawingSnapshotAdapter:
             raise ValueError("project_id must be a non-empty string.")
         if not hasattr(application, "revision"):
             raise TypeError("application must expose its revision.")
+        lifecycle = getattr(application, "project_lifecycle", None)
+        if lifecycle is None or not all(
+            hasattr(lifecycle, name) for name in ("context", "activation_generation")
+        ):
+            raise TypeError("application must expose project_lifecycle context and activation_generation.")
         self._application = application
         self._project_id = project_id.strip()
 
@@ -47,6 +52,11 @@ class ApplicationDrawingSnapshotAdapter:
         if not callable(entity_builder):
             raise TypeError("entity_builder must be callable.")
 
+        lifecycle = self._application.project_lifecycle
+        context = lifecycle.context
+        if context is None or context.project_id != self._project_id:
+            raise RuntimeError("requested project does not match active Application project")
+        activation_generation_before = lifecycle.activation_generation
         revision_before = self._application.revision
         read_model = self._application.read_network()
         if not isinstance(read_model, NetworkReadModel):
@@ -55,6 +65,13 @@ class ApplicationDrawingSnapshotAdapter:
         revision_after = self._application.revision
         if revision_before != revision_after:
             raise RuntimeError("Application revision changed during DWG snapshot capture; retry the export.")
+        if (
+            self._application.project_lifecycle is not lifecycle
+            or lifecycle.context is not context
+            or lifecycle.activation_generation != activation_generation_before
+            or context.project_id != self._project_id
+        ):
+            raise RuntimeError("Application project identity or activation changed during DWG snapshot capture; retry the export.")
         return ApplicationDrawingSnapshot(
             project_id=self._project_id,
             export_id=str(uuid4()),
