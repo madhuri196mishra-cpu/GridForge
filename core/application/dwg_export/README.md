@@ -25,7 +25,7 @@ SLD coordinates are currently labelled `sld-unit` in the `sld-document-local` co
 
 ## Supported CAD primitives
 
-The current backend supports LINE, CIRCLE, ARC, TEXT, LWPOLYLINE and registry-backed INSERT. Geometry validation is performed before backend writes. Unsupported primitives and missing symbol definitions fail closed.
+The current backend supports LINE, CIRCLE, ARC, TEXT, LWPOLYLINE and registry-backed INSERT. A drawing plan declares both its coordinate-system identifier and units; the ODA backend currently accepts only coordinate_system=`world` with units=`mm`. Other coordinate systems require an explicit, reviewed transformation before export. Geometry validation is performed before backend writes, including primitive-specific field sets and CAD layer-name constraints. Unsupported primitives and missing symbol definitions fail closed. INSERT geometry.insert is the target location of the symbol definition base point; the registry definition supplies the local block base point, and scale/rotation are applied by the CAD INSERT transform.
 
 Persisted symbol instances are represented as INSERT entities. Explicit persisted SLD connections are represented as polylines. A persisted connection ID establishes the relationship; geometric proximity, overlap and snapping are never used to infer connectivity. Authored route points are preserved, and node positions are used as display endpoints only for an already-persisted connection that has no authored route. Transient study-result annotations are not exported as persisted document annotations.
 

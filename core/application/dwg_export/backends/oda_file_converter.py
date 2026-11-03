@@ -192,6 +192,11 @@ class ODAFileConverterBackend:
             raise ValueError(f"Unsupported ODA target version {version!r}; supported: {', '.join(sorted(_DWG_SIGNATURES))}")
         if plan.units != "mm":
             raise ValueError(f"ODA backend currently supports millimetre units only, not {plan.units!r}")
+        if plan.coordinate_system != "world":
+            raise ValueError(
+                "ODA backend currently accepts only the explicit 'world' coordinate system; "
+                f"received {plan.coordinate_system!r}"
+            )
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="gridforge-dwg-") as temp:

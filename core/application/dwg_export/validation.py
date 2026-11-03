@@ -174,7 +174,7 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
             _keys(geometry, {"text", "insert"}, {"height", "rotation"}, entity.entity_id)
             if not isinstance(geometry["text"], str):
                 raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} requires string geometry.text")
-            if "\\x00" in geometry["text"]:
+            if "\x00" in geometry["text"]:
                 raise DrawingPlanValidationError(f"TEXT entity {entity.entity_id} contains a NUL character")
             _point(geometry["insert"], "geometry.insert", entity.entity_id)
             if "height" in geometry and _number(geometry, "height", entity.entity_id) <= 0:
