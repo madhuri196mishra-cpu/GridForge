@@ -132,3 +132,25 @@ def test_service_rejects_backend_result_with_mismatched_source_provenance(tmp_pa
     service = DWGExportService(IncorrectProvenanceBackend())
     with pytest.raises(RuntimeError, match="provenance mismatch for project_id"):
         service.export(_plan(), tmp_path / "drawing.dwg")
+
+
+
+def test_service_accepts_export_result_with_matching_source_provenance(tmp_path: Path):
+    class ProvenanceBackend:
+        backend_id = "test-dwg"
+        supported_formats = frozenset({"dwg"})
+
+        def export(self, plan, destination, *, target_version=None):
+            return ExportResult(
+                destination, "dwg", len(plan.entities), self.backend_id,
+                project_id=plan.project_id,
+                source_revision=plan.source_revision,
+                source_kind=plan.source_kind,
+                source_id=plan.source_id,
+                source_document_id=plan.source_document_id,
+            )
+
+    service = DWGExportService(ProvenanceBackend())
+    result = service.export(_plan(), tmp_path / "drawing.dwg")
+    assert result.project_id == "project-1"
+    assert result.source_revision == "revision-1"

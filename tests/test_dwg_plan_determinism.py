@@ -24,7 +24,11 @@ def test_plan_canonicalizes_entity_order_and_serialization():
     plan_two = _plan((second, first))
     assert [item.entity_id for item in plan_one.entities] == ["a", "b"]
     assert serialize_drawing_plan(plan_one) == serialize_drawing_plan(plan_two)
-    assert json.loads(serialize_drawing_plan(plan_one))["coordinate_system"] == "world"
+    serialized = json.loads(serialize_drawing_plan(plan_one))
+    assert serialized["coordinate_system"] == "world"
+    assert serialized["source_kind"] is None
+    assert serialized["source_id"] is None
+    assert serialized["source_document_id"] is None
 
 
 def test_plan_rejects_missing_coordinate_system_or_units():
@@ -61,3 +65,17 @@ def test_validator_accepts_explicit_insert_transform_and_registry_basepoint_cont
         {"symbol_id": "breaker", "insert": [10, 20], "scale": [2, -2, 1], "rotation": 90}, {},
     )
     validate_drawing_plan(_plan((entity,)))
+
+
+
+def test_serialization_preserves_source_document_provenance():
+    plan = DrawingPlan(
+        project_id="project", export_id="export", source_revision="revision",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(), source_kind="sld_export_snapshot",
+        source_id="document-7", source_document_id="document-7",
+    )
+    serialized = json.loads(serialize_drawing_plan(plan))
+    assert serialized["source_kind"] == "sld_export_snapshot"
+    assert serialized["source_id"] == "document-7"
+    assert serialized["source_document_id"] == "document-7"

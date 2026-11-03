@@ -6,7 +6,8 @@ It does not create a second engineering model and does not mutate Core.
 ## Implemented foundation
 
 - Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs, canonical entity ordering and deterministic JSON serialization.
-- Application-level plan validation and backend format/result checks.
+- Application-level plan validation and backend format/result checks, including project/source/revision/document provenance returned with each export result.
+- Top-level DrawingPlan serialization carries source kind, source ID and (for SLD) an explicit source document ID; the export service rejects backend results that lose or alter that provenance.
 - Schema-versioned, catalogue-versioned `SymbolRegistry` definitions with stable IDs, definition versions, explicit base points and vector primitives.
 - Export resolution is fail-closed for unreviewed symbols. Reviewed definitions require reviewer, ISO review date and a review-evidence reference; provenance is carried into entity metadata.
 - An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
@@ -42,7 +43,7 @@ The implementation currently recognizes target versions ACAD12, ACAD2000, ACAD20
 
 ## Explicitly unsupported
 
-- No complete SLD export workflow is claimed until the coordinate/unit mapping and production composition-root integration are completed.
+- No complete SLD export workflow is claimed until the coordinate/unit mapping and production composition-root integration are completed. The current SLD capture, builder, plan factory and backend are separate contracts; no production user action is wired to orchestrate them yet.
 - Control drawing plans are unsupported until authoritative Control read models and persisted drawing semantics are available. Control logic/interlocks are never inferred from SLD wiring.
 - Protection drawing plans are unsupported until authoritative Protection read models and persisted CT/PT, relay, zone and trip-target relationships are available. None are inferred from drawing proximity.
 - No physical wiring, logical control relationship, protection relationship, junction or terminal is invented.
