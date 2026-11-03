@@ -99,3 +99,18 @@ def test_definition_version_changes_stable_block_identity():
 def test_registry_rejects_unknown_schema_version():
     with pytest.raises(ValueError, match="schema_version"):
         SymbolRegistry((), schema_version=2)
+
+
+
+def test_registry_fingerprint_is_deterministic_and_tracks_definition_content():
+    first = SymbolRegistry((_definition(),), catalogue_version="1.0.0")
+    equivalent = SymbolRegistry((_definition(),), catalogue_version="1.0.0")
+    changed = SymbolRegistry((SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE,
+        (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 6}, {}),),
+        definition_version="1.0.0", review_status="reviewed",
+        reviewer="gridforge-review", reviewed_on="2026-11-03",
+        review_reference="review-record:GF-SYMBOL-001",
+    ),), catalogue_version="1.0.0")
+    assert first.fingerprint == equivalent.fingerprint
+    assert first.fingerprint != changed.fingerprint

@@ -103,6 +103,13 @@ class ODAFileConverterBackend:
                 f"INSERT {entity.entity_id} requires symbol registry schema "
                 f"{expected_schema!r}, but configured schema is {self._symbols.schema_version!r}"
             )
+        expected_fingerprint = entity.metadata.get("symbol_registry_fingerprint")
+        if expected_fingerprint is not None and expected_fingerprint != self._symbols.fingerprint:
+            raise ValueError(
+                f"INSERT {entity.entity_id} requires symbol registry fingerprint "
+                f"{expected_fingerprint!r}, but configured registry content is "
+                f"{self._symbols.fingerprint!r}"
+            )
         expected_catalogue = entity.metadata.get("symbol_catalogue_version")
         if expected_catalogue is not None and expected_catalogue != self._symbols.catalogue_version:
             raise ValueError(

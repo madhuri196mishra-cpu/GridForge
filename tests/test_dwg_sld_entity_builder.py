@@ -58,6 +58,7 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.metadata["symbol_review_status"] == "reviewed"
     assert entity.metadata["symbol_registry_schema_version"] == 1
     assert entity.metadata["symbol_catalogue_version"] == "1.0.0"
+    assert entity.metadata["symbol_registry_fingerprint"] == _registry().fingerprint
 
 
 def test_sld_node_builder_fails_closed_when_symbol_is_unmapped() -> None:

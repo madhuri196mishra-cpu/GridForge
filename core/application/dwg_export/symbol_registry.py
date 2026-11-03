@@ -8,12 +8,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import hashlib
+import json
 import math
 import re
 from types import MappingProxyType
 from typing import Iterable
 
-from .drawing_plan import DrawingEntity, SymbolProfile
+from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile, drawing_plan_to_dict
 
 _SYMBOL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$")
 _VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
@@ -137,6 +138,39 @@ class SymbolRegistry:
     @property
     def catalogue_version(self) -> str:
         return self._catalogue_version
+
+    @property
+    def fingerprint(self) -> str:
+        """Return a deterministic digest of registry content, not just its version labels."""
+        definitions = []
+        for definition in self.definitions():
+            plan = DrawingPlan(
+                project_id="symbol-registry",
+                export_id=f"{definition.profile.value}:{definition.symbol_id}:{definition.definition_version}",
+                source_revision="registry-fingerprint",
+                symbol_profile=definition.profile,
+                drawing_types=("symbol",),
+                entities=definition.primitives,
+            )
+            definitions.append({
+                "symbol_id": definition.symbol_id,
+                "profile": definition.profile.value,
+                "definition_version": definition.definition_version,
+                "review_status": definition.review_status,
+                "reviewer": definition.reviewer,
+                "reviewed_on": definition.reviewed_on,
+                "review_reference": definition.review_reference,
+                "standard_reference": definition.standard_reference,
+                "description": definition.description,
+                "base_point": list(definition.base_point),
+                "drawing_plan": drawing_plan_to_dict(plan),
+            })
+        payload = json.dumps({
+            "schema_version": self.schema_version,
+            "catalogue_version": self.catalogue_version,
+            "definitions": definitions,
+        }, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def resolve(self, symbol_id: str, profile: SymbolProfile) -> SymbolDefinition:
         try:

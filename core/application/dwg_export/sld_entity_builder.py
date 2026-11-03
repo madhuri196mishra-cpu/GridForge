@@ -66,6 +66,7 @@ class SLDNodeEntityBuilder:
                     "symbol_standard_reference": definition.standard_reference,
                     "symbol_registry_schema_version": self._registry.schema_version,
                     "symbol_catalogue_version": self._registry.catalogue_version,
+                    "symbol_registry_fingerprint": self._registry.fingerprint,
                     "representation_id": symbol.representation_id,
                     "symbol_profile": profile.value,
                     "symbol_definition_base_point": definition.base_point,
