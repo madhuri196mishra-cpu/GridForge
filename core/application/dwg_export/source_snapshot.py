@@ -14,7 +14,11 @@ from .validation import validate_drawing_plan
 
 @dataclass(frozen=True, slots=True)
 class ApplicationDrawingSnapshot:
-    """Detached export input captured from one consistent Application revision."""
+    """Detached export input stamped with a source revision by its producer.
+
+    The DTO does not itself guarantee atomic capture; the producing lifecycle
+    boundary is responsible for serialization and fail-closed revision checks.
+    """
 
     project_id: str
     export_id: str

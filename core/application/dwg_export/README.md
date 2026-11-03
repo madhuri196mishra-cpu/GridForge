@@ -5,7 +5,7 @@ It does not create a second engineering model and does not mutate Core.
 
 ## Implemented foundation
 
-- Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs.
+- Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs, canonical entity ordering and deterministic JSON serialization.
 - Application-level plan validation and backend format/result checks.
 - Profile-aware `SymbolRegistry` definitions with stable IDs, explicit base points and vector primitives.
 - An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
