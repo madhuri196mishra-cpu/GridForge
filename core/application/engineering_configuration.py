@@ -76,6 +76,20 @@ class EngineeringUpdatePreparer:
         if entry is None:
             raise KeyError(f"No Application engineering update command for {element_type!r}.")
         command_class, id_field = entry
+        if element_type == "grid":
+            base_fields = ("impedance_base_mva", "impedance_base_voltage_kv")
+            supplied_base_fields = tuple(field for field in base_fields if field in values)
+            if any(values[field] is None for field in supplied_base_fields):
+                if supplied_base_fields != base_fields or any(values[field] is not None for field in base_fields):
+                    raise ValueError(
+                        "Grid impedance bases must be cleared together by explicitly supplying both fields as None."
+                    )
+                values.pop("impedance_base_mva")
+                values.pop("impedance_base_voltage_kv")
+                values["clear_impedance_base"] = True
+            if "neutral_grounding_impedance_ohm" in values and values["neutral_grounding_impedance_ohm"] is None:
+                values.pop("neutral_grounding_impedance_ohm")
+                values["clear_neutral_grounding_impedance"] = True
         signature = inspect.signature(command_class)
         fields = {
             name for name, parameter in signature.parameters.items()
