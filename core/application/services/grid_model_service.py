@@ -30,7 +30,7 @@ class GridModelService(ModelServiceSupport):
     def network(self) -> Network:
         return self._network
 
-    def create_grid(self, *, grid_id: str, endpoint: Bus | Terminal | None = None, name: str | None = None, nominal_voltage_kv: float = 0.0, frequency_hz: float = 50.0, voltage_pu: float = 1.0, angle_deg: float = 0.0, p_mw: float = 0.0, q_mvar: float = 0.0, short_circuit_mva: float = 0.0, x_over_r: float = 0.0, z1_pu: complex = 0j, z2_pu: complex = 0j, z0_pu: complex = 0j, in_service: bool = True, grounded: bool = True, transaction: Transaction) -> ApplicationResult[Grid]:
+    def create_grid(self, *, grid_id: str, endpoint: Bus | Terminal | None = None, name: str | None = None, nominal_voltage_kv: float = 0.0, frequency_hz: float = 50.0, voltage_pu: float = 1.0, angle_deg: float = 0.0, p_mw: float = 0.0, q_mvar: float = 0.0, short_circuit_mva: float | None = None, x_over_r: float | None = None, z1_pu: complex | None = None, z2_pu: complex | None = None, z0_pu: complex | None = None, in_service: bool = True, grounded: bool = True, transaction: Transaction) -> ApplicationResult[Grid]:
         self._require_transaction(transaction); self._require_id(grid_id, "grid_id")
         if endpoint is not None: self._validate_endpoint(endpoint, "endpoint")
         self._ensure_not_exists("grid", grid_id, "Grid")
