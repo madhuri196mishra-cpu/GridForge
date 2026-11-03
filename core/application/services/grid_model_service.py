@@ -140,6 +140,10 @@ class GridModelService(ModelServiceSupport):
                 )
             if in_service is not None:
                 grid.set_in_service(in_service)
+
+            # Direct assignments above must satisfy the same Core invariants
+            # as Grid construction before the transaction can accept them.
+            grid.validate()
         except Exception:
             restore_snapshot()
             raise
