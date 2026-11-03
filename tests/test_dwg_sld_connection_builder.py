@@ -1,83 +1,75 @@
 from __future__ import annotations
 
-from core.application.dwg_export import DrawingEntity, SLDNodeEntityBuilder, SymbolProfile
-from ui.canvas.sld_canvas_projection import SLDCanvasConnection, SLDCanvasNode, SLDCanvasSnapshot
-from ui.sld.sld_model import SLDRoute
+import pytest
+
+from core.application.sld_export_snapshot import (
+    SLDConnectionExportSnapshot, SLDExportSnapshot, SLDNodeExportSnapshot,
+    SLDSymbolPlacementSnapshot,
+)
+from core.application.dwg_export import DrawingEntity, SLDNodeEntityBuilder, SymbolDefinition, SymbolProfile, SymbolRegistry
 
 
-def test_explicit_sld_connection_route_is_exported_without_topology_inference() -> None:
-    projection = SLDCanvasSnapshot(
-        nodes=(
-            SLDCanvasNode("a", "equipment-a", 0, 0, {}, None),
-            SLDCanvasNode("b", "equipment-b", 100, 50, {}, None),
-        ),
-        connections=(
-            SLDCanvasConnection(
-                connection_id="wire-9",
-                source_node_id="a",
-                target_node_id="b",
-                source_endpoint=None,
-                target_endpoint=None,
-                route=SLDRoute(routing_mode="manual", ownership="engineer", points=((1, 2), (30, 2), (30, 45))),
-                connection_kind="SIMPLE_WIRE",
-                presentation_owner="engineer",
-                projection_source="persisted",
-                properties={"core_connection_id": "core-wire-9"},
-            ),
+def _registry() -> SymbolRegistry:
+    primitive = DrawingEntity("symbol-line", "LINE", "SYMBOL", {"start": (0, 0), "end": (1, 0)}, {})
+    return SymbolRegistry((SymbolDefinition(
+        symbol_id="generic", profile=SymbolProfile.ANSI_IEEE, primitives=(primitive,),
+    ),))
+
+
+def _node(node_id: str, x: float, y: float) -> SLDNodeExportSnapshot:
+    return SLDNodeExportSnapshot(
+        node_id=node_id, equipment_id=None, x=x, y=y, properties={},
+        symbol=SLDSymbolPlacementSnapshot(
+            symbol_instance_id=f"instance-{node_id}", symbol_definition_id="generic",
+            representation_id="symbol", visible=True, scale=1, rotation_degrees=0,
         ),
     )
 
-    entities = SLDNodeEntityBuilder.build_connections(projection)
 
-    assert len(entities) == 1
-    entity = entities[0]
+def _plan(route_points: tuple[tuple[float, float], ...]) -> SLDExportSnapshot:
+    connection = SLDConnectionExportSnapshot(
+        connection_id="wire-9", source_node_id="a", target_node_id="b",
+        source_endpoint={"terminal_id": "terminal-a"},
+        target_endpoint={"terminal_id": "terminal-b"},
+        route_points=route_points, connection_kind="SIMPLE_WIRE",
+        presentation_owner="engineer", projection_source="persisted",
+        properties={"core_connection_id": "core-wire-9"},
+    )
+    return SLDExportSnapshot(
+        project_id="project-1", document_id="document-1",
+        source_revision="revision-1", nodes=(_node("a", 0, 0), _node("b", 100, 50)),
+        connections=(connection,),
+    )
+
+
+def test_explicit_connection_route_is_preserved_without_topology_inference() -> None:
+    entity = SLDNodeEntityBuilder(_registry()).build(
+        _plan(((1, 2), (30, 2), (30, 45))), profile=SymbolProfile.ANSI_IEEE,
+    )[-1]
     assert entity.kind == "LWPOLYLINE"
-    assert entity.geometry["points"] == ((1.0, 2.0), (30.0, 2.0), (30.0, 45.0))
+    assert entity.geometry["points"] == ((0.0, 0.0), (1.0, 2.0), (30.0, 2.0), (30.0, 45.0), (100.0, 50.0))
     assert entity.metadata["gridforge_connection_id"] == "wire-9"
-    assert entity.metadata["core_connection_id"] == "core-wire-9"
-    assert entity.metadata["route_ownership"] == "engineer"
+    assert entity.metadata["properties"]["core_connection_id"] == "core-wire-9"
 
 
-def test_unrouted_explicit_sld_connection_uses_node_positions_only_for_display() -> None:
-    projection = SLDCanvasSnapshot(
-        nodes=(
-            SLDCanvasNode("a", None, 3, 4, {}, None),
-            SLDCanvasNode("b", None, 8, 9, {}, None),
-        ),
-        connections=(
-            SLDCanvasConnection("connection-1", "a", "b", None, None, SLDRoute(), None, None, None, {}),
-        ),
+def test_unrouted_explicit_connection_uses_positions_only_as_display_endpoints() -> None:
+    entity = SLDNodeEntityBuilder(_registry()).build(
+        _plan(()), profile=SymbolProfile.ANSI_IEEE,
+    )[-1]
+    assert entity.geometry["points"] == ((0.0, 0.0), (100.0, 50.0))
+
+
+def test_connection_with_missing_endpoint_node_fails_closed() -> None:
+    plan = _plan(())
+    connection = SLDConnectionExportSnapshot(
+        connection_id="bad-wire", source_node_id="a", target_node_id="missing",
+        source_endpoint=None, target_endpoint=None, route_points=(),
+        connection_kind="SIMPLE_WIRE", presentation_owner="engineer",
+        projection_source="persisted",
     )
-    entity = SLDNodeEntityBuilder.build_connections(projection)[0]
-    assert entity.geometry["points"] == ((3.0, 4.0), (8.0, 9.0))
-    assert entity.metadata["source_kind"] == "persisted_sld_connection"
-
-
-def test_sld_connection_with_missing_node_fails_closed() -> None:
-    projection = SLDCanvasSnapshot(
-        nodes=(SLDCanvasNode("a", None, 0, 0, {}, None),),
-        connections=(
-            SLDCanvasConnection("connection-1", "a", "missing", None, None, SLDRoute(), None, None, None, {}),
-        ),
+    broken = SLDExportSnapshot(
+        project_id=plan.project_id, document_id=plan.document_id,
+        source_revision=plan.source_revision, nodes=plan.nodes, connections=(connection,),
     )
-    import pytest
-    with pytest.raises(ValueError, match="missing projected node"):
-        SLDNodeEntityBuilder.build_connections(projection)
-
-
-def test_connection_kind_is_normalized_for_cad_layer_name() -> None:
-    projection = SLDCanvasSnapshot(
-        nodes=(
-            SLDCanvasNode("a", None, 0, 0, {}, None),
-            SLDCanvasNode("b", None, 10, 10, {}, None),
-        ),
-        connections=(
-            SLDCanvasConnection(
-                "connection-2", "a", "b", None, None, SLDRoute(),
-                'wire;bad/name:*', None, None, {},
-            ),
-        ),
-    )
-    entity = SLDNodeEntityBuilder.build_connections(projection)[0]
-    assert entity.layer == "SLD_WIRE_BAD_NAME"
-    assert entity.metadata["connection_kind"] == 'wire;bad/name:*'
+    with pytest.raises(ValueError, match="references a missing node"):
+        SLDNodeEntityBuilder(_registry()).build(broken, profile=SymbolProfile.ANSI_IEEE)

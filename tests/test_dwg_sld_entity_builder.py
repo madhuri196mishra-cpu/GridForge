@@ -2,38 +2,44 @@ from __future__ import annotations
 
 import pytest
 
+from core.application.sld_export_snapshot import (
+    SLDExportSnapshot, SLDNodeExportSnapshot, SLDSymbolPlacementSnapshot,
+)
 from core.application.dwg_export import (
     DrawingEntity, SLDNodeEntityBuilder, SymbolDefinition, SymbolProfile, SymbolRegistry,
 )
-from ui.canvas.sld_canvas_projection import SLDCanvasNode, SLDCanvasSnapshot
-from ui.equipment.symbol.symbol_base import SymbolBase
 
 
 def _registry() -> SymbolRegistry:
     primitive = DrawingEntity("primitive-1", "LINE", "SYMBOL", {
-        "x1": -1, "y1": 0, "x2": 1, "y2": 0,
+        "start": (-1, 0), "end": (1, 0),
     }, {})
     return SymbolRegistry((SymbolDefinition(
-        symbol_id="breaker",
-        profile=SymbolProfile.ANSI_IEEE,
+        symbol_id="breaker", profile=SymbolProfile.ANSI_IEEE,
         primitives=(primitive,),
     ),))
 
 
-def test_sld_node_builder_uses_persisted_symbol_identity_and_transform() -> None:
-    presentation = SymbolBase(
-        "instance-7", "breaker", scale=1.5, rotation=90,
-        properties={"authored": "yes"},
-    )
-    projection = SLDCanvasSnapshot(
-        nodes=(SLDCanvasNode("node-7", "equipment-7", 120, 240, {}, presentation),),
-        connections=(),
+def _node(symbol_id: str = "breaker") -> SLDNodeExportSnapshot:
+    return SLDNodeExportSnapshot(
+        node_id="node-7", equipment_id="equipment-7", x=120, y=240,
+        properties={"source": "persisted"},
+        symbol=SLDSymbolPlacementSnapshot(
+            symbol_instance_id="instance-7", symbol_definition_id=symbol_id,
+            representation_id="symbol", visible=True, scale=1.5,
+            rotation_degrees=90, properties={"authored": "yes"},
+        ),
+        engineering_attributes={"rated_voltage_kv": 11.0},
+        engineering_units={"rated_voltage_kv": "kV"},
     )
 
-    entities = SLDNodeEntityBuilder(_registry()).build(
-        projection, profile=SymbolProfile.ANSI_IEEE,
-    )
 
+def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
+    snapshot = SLDExportSnapshot(
+        project_id="project-1", document_id="document-1",
+        source_revision="revision-42", nodes=(_node(),), connections=(),
+    )
+    entities = SLDNodeEntityBuilder(_registry()).build(snapshot, profile=SymbolProfile.ANSI_IEEE)
     assert len(entities) == 1
     entity = entities[0]
     assert entity.kind == "INSERT"
@@ -42,133 +48,27 @@ def test_sld_node_builder_uses_persisted_symbol_identity_and_transform() -> None
     assert entity.geometry["insert"] == (120.0, 240.0)
     assert entity.geometry["scale"] == 1.5
     assert entity.geometry["rotation"] == 90.0
-    assert entity.metadata["gridforge_node_id"] == "node-7"
     assert entity.metadata["equipment_id"] == "equipment-7"
+    assert entity.metadata["engineering_units"]["rated_voltage_kv"] == "kV"
+    assert entity.metadata["source_revision"] == "revision-42"
 
 
-def test_sld_node_builder_fails_closed_when_persisted_symbol_is_unmapped() -> None:
-    presentation = SymbolBase("instance-1", "unknown-symbol")
-    projection = SLDCanvasSnapshot(
-        nodes=(SLDCanvasNode("node-1", None, 0, 0, {}, presentation),),
-        connections=(),
+def test_sld_node_builder_fails_closed_when_symbol_is_unmapped() -> None:
+    snapshot = SLDExportSnapshot(
+        project_id="project-1", document_id="document-1",
+        source_revision="revision-42", nodes=(_node("unknown-symbol"),), connections=(),
     )
     with pytest.raises(KeyError, match="unknown-symbol"):
-        SLDNodeEntityBuilder(_registry()).build(
-            projection, profile=SymbolProfile.ANSI_IEEE,
-        )
+        SLDNodeEntityBuilder(_registry()).build(snapshot, profile=SymbolProfile.ANSI_IEEE)
 
 
-def test_sld_node_builder_rejects_nodes_without_persisted_presentation() -> None:
-    projection = SLDCanvasSnapshot(
-        nodes=(SLDCanvasNode("node-1", None, 0, 0, {}, None),),
-        connections=(),
+def test_sld_node_builder_rejects_missing_persisted_symbol() -> None:
+    node = SLDNodeExportSnapshot(
+        node_id="node-1", equipment_id=None, x=0, y=0, properties={}, symbol=None,
     )
-    with pytest.raises(ValueError, match="no persisted symbol presentation"):
-        SLDNodeEntityBuilder(_registry()).build(
-            projection, profile=SymbolProfile.ANSI_IEEE,
-        )
-
-
-@pytest.mark.parametrize(
-    ("route_points", "expected"),
-    [
-        ((), ((10.0, 20.0), (90.0, 80.0))),
-        (((50.0, 20.0),), ((10.0, 20.0), (50.0, 20.0), (90.0, 80.0))),
-        (
-            ((50.0, 20.0), (50.0, 80.0), (70.0, 80.0)),
-            ((10.0, 20.0), (50.0, 20.0), (50.0, 80.0), (70.0, 80.0), (90.0, 80.0)),
-        ),
-    ],
-)
-def test_sld_connection_builder_preserves_endpoints_around_route_bends(
-    route_points: tuple[tuple[float, float], ...],
-    expected: tuple[tuple[float, float], ...],
-) -> None:
-    from ui.canvas.sld_canvas_projection import SLDCanvasConnection
-    from ui.sld.sld_model import SLDRoute
-
-    connection = SLDCanvasConnection(
-        connection_id="connection-1",
-        source_node_id="source",
-        target_node_id="target",
-        source_endpoint=None,
-        target_endpoint=None,
-        route=SLDRoute(points=route_points),
-        connection_kind="wire",
-        presentation_owner="engineer",
-        projection_source="persisted",
-        properties={},
+    snapshot = SLDExportSnapshot(
+        project_id="project-1", document_id="document-1",
+        source_revision="revision-42", nodes=(node,), connections=(),
     )
-    projection = SLDCanvasSnapshot(
-        nodes=(
-            SLDCanvasNode("source", None, 10, 20, {}, None),
-            SLDCanvasNode("target", None, 90, 80, {}, None),
-        ),
-        connections=(connection,),
-    )
-
-    entities = SLDNodeEntityBuilder.build_connections(projection)
-
-    assert len(entities) == 1
-    assert entities[0].geometry["points"] == expected
-    assert entities[0].geometry["points"][0] == (10.0, 20.0)
-    assert entities[0].geometry["points"][-1] == (90.0, 80.0)
-
-
-def test_sld_connection_builder_removes_only_consecutive_duplicate_points() -> None:
-    from ui.canvas.sld_canvas_projection import SLDCanvasConnection
-    from ui.sld.sld_model import SLDRoute
-
-    connection = SLDCanvasConnection(
-        connection_id="connection-duplicate",
-        source_node_id="source",
-        target_node_id="target",
-        source_endpoint=None,
-        target_endpoint=None,
-        route=SLDRoute(points=((10, 20), (50, 20), (50, 20), (10, 20))),
-        connection_kind="wire",
-        presentation_owner="engineer",
-        projection_source="persisted",
-        properties={},
-    )
-    projection = SLDCanvasSnapshot(
-        nodes=(
-            SLDCanvasNode("source", None, 10, 20, {}, None),
-            SLDCanvasNode("target", None, 90, 80, {}, None),
-        ),
-        connections=(connection,),
-    )
-
-    entity = SLDNodeEntityBuilder.build_connections(projection)[0]
-
-    assert entity.geometry["points"] == (
-        (10.0, 20.0), (50.0, 20.0), (10.0, 20.0), (90.0, 80.0),
-    )
-
-
-def test_sld_connection_builder_rejects_geometry_without_distinct_endpoints() -> None:
-    from ui.canvas.sld_canvas_projection import SLDCanvasConnection
-    from ui.sld.sld_model import SLDRoute
-
-    connection = SLDCanvasConnection(
-        connection_id="connection-zero-length",
-        source_node_id="source",
-        target_node_id="target",
-        source_endpoint=None,
-        target_endpoint=None,
-        route=SLDRoute(),
-        connection_kind="wire",
-        presentation_owner="engineer",
-        projection_source="persisted",
-        properties={},
-    )
-    projection = SLDCanvasSnapshot(
-        nodes=(
-            SLDCanvasNode("source", None, 10, 20, {}, None),
-            SLDCanvasNode("target", None, 10, 20, {}, None),
-        ),
-        connections=(connection,),
-    )
-
-    with pytest.raises(ValueError, match="no distinct source-to-target presentation geometry"):
-        SLDNodeEntityBuilder.build_connections(projection)
+    with pytest.raises(ValueError, match="no persisted symbol definition"):
+        SLDNodeEntityBuilder(_registry()).build(snapshot, profile=SymbolProfile.ANSI_IEEE)
