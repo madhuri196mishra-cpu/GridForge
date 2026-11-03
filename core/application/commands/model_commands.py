@@ -107,13 +107,17 @@ class CreateGridCommand(Command):
     def __init__(self, *, grid_id: str, endpoint: EndpointReference | None = None, name: str = "", nominal_voltage_kv: float = 0.0, frequency_hz: float = 50.0,
                  voltage_pu: float = 1.0, angle_deg: float = 0.0, p_mw: float = 0.0, q_mvar: float = 0.0,
                  short_circuit_mva: float | None = None, x_over_r: float | None = None, z1_pu: complex | None = None,
-                 z2_pu: complex | None = None, z0_pu: complex | None = None, in_service: bool = True,
+                 z2_pu: complex | None = None, z0_pu: complex | None = None,
+                 impedance_base_mva: float | None = None, impedance_base_voltage_kv: float | None = None,
+                 neutral_grounding_impedance_ohm: complex | None = None, in_service: bool = True,
                  grounded: bool = True, presentation_x: float | None = None, presentation_y: float | None = None, command_id: UUID | None = None, correlation_id: UUID | None = None,
                  causation_id: UUID | None = None) -> None:
         _endpoint(endpoint, "endpoint")
         super().__init__(**_command(CREATE_GRID, {"presentation_x": presentation_x, "presentation_y": presentation_y, "grid_id": grid_id, "endpoint": endpoint, "name": name, "nominal_voltage_kv": nominal_voltage_kv,
             "frequency_hz": frequency_hz, "voltage_pu": voltage_pu, "angle_deg": angle_deg, "p_mw": p_mw, "q_mvar": q_mvar,
             "short_circuit_mva": short_circuit_mva, "x_over_r": x_over_r, "z1_pu": z1_pu, "z2_pu": z2_pu, "z0_pu": z0_pu,
+            "impedance_base_mva": impedance_base_mva, "impedance_base_voltage_kv": impedance_base_voltage_kv,
+            "neutral_grounding_impedance_ohm": neutral_grounding_impedance_ohm,
             "in_service": in_service, "grounded": grounded}, command_id=command_id, correlation_id=correlation_id, causation_id=causation_id))
 
 class DeleteGridCommand(Command):
@@ -125,13 +129,18 @@ class UpdateGridCommand(Command):
                  frequency_hz: float | None = None, voltage_pu: float | None = None, angle_deg: float | None = None,
                  p_mw: float | None = None, q_mvar: float | None = None, short_circuit_mva: float | None = None,
                  x_over_r: float | None = None, z1_pu: complex | None = None, z2_pu: complex | None = None,
-                 z0_pu: complex | None = None, in_service: bool | None = None, grounded: bool | None = None,
+                 z0_pu: complex | None = None, impedance_base_mva: float | None = None,
+                 impedance_base_voltage_kv: float | None = None,
+                 neutral_grounding_impedance_ohm: complex | None = None,
+                 in_service: bool | None = None, grounded: bool | None = None,
                  command_id: UUID | None = None, correlation_id: UUID | None = None, causation_id: UUID | None = None) -> None:
-        values = (name, nominal_voltage_kv, frequency_hz, voltage_pu, angle_deg, p_mw, q_mvar, short_circuit_mva, x_over_r, z1_pu, z2_pu, z0_pu, in_service, grounded)
+        values = (name, nominal_voltage_kv, frequency_hz, voltage_pu, angle_deg, p_mw, q_mvar, short_circuit_mva, x_over_r, z1_pu, z2_pu, z0_pu, impedance_base_mva, impedance_base_voltage_kv, neutral_grounding_impedance_ohm, in_service, grounded)
         if all(v is None for v in values): raise ValueError("UpdateGridCommand requires at least one mutable Grid field.")
         super().__init__(**_command(UPDATE_GRID, {"grid_id": grid_id, "name": name, "nominal_voltage_kv": nominal_voltage_kv,
             "frequency_hz": frequency_hz, "voltage_pu": voltage_pu, "angle_deg": angle_deg, "p_mw": p_mw, "q_mvar": q_mvar,
             "short_circuit_mva": short_circuit_mva, "x_over_r": x_over_r, "z1_pu": z1_pu, "z2_pu": z2_pu, "z0_pu": z0_pu,
+            "impedance_base_mva": impedance_base_mva, "impedance_base_voltage_kv": impedance_base_voltage_kv,
+            "neutral_grounding_impedance_ohm": neutral_grounding_impedance_ohm,
             "in_service": in_service, "grounded": grounded}, command_id=command_id, correlation_id=correlation_id, causation_id=causation_id))
 
 class CreateGeneratorCommand(Command):
