@@ -20,6 +20,7 @@ def _registry() -> SymbolRegistry:
         review_status="reviewed", reviewer="gridforge-review",
         reviewed_on="2026-11-03",
         review_reference="review-record:GF-SYMBOL-SLD-001",
+        standard_reference="standard-reference:IEEE-reviewed-source",
     ),))
 
 
