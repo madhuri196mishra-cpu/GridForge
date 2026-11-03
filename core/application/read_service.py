@@ -107,6 +107,19 @@ _FIELD_CONTRACTS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
 }
 
 _REQUIRED_FIELDS = {element_type: frozenset(canonical for canonical, _ in fields) for element_type, fields in _FIELD_CONTRACTS.items()}
+# Grid short-circuit strength and sequence impedances are optional Core
+# engineering values. Keep them in the projection vocabulary when present,
+# but do not reject a valid Grid when they have not yet been configured.
+_REQUIRED_FIELDS["grids"] = frozenset({
+    "nominal_voltage_kv",
+    "frequency_hz",
+    "voltage_pu",
+    "angle_deg",
+    "p_mw",
+    "q_mvar",
+    "in_service",
+    "grounded",
+})
 
 _PARAMETER_METADATA: dict[str, dict[str, Any]] = {
     "nominal_voltage_kv": {"unit": "kV", "datatype": "float"},
