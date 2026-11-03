@@ -7,6 +7,8 @@ atomic lock; concurrent mutation is not made impossible by this adapter.
 from __future__ import annotations
 
 from dataclasses import fields, is_dataclass
+from enum import Enum
+import math
 from typing import Any, Mapping
 
 from core.application.sld_export_snapshot import (
@@ -17,6 +19,48 @@ from ui.canvas.sld_canvas_projection import SLDCanvasProjection
 from ui.sld.sld_document import SLDDocument
 from ui.sld.sld_model import SLDModel
 from ui.workspace.document_manager import DocumentManager
+
+
+
+def _detached_value(value: Any, path: str) -> Any:
+    """Convert Application read values into lossless JSON-compatible DTO data."""
+    if isinstance(value, Enum):
+        return _detached_value(value.value, path)
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{path} contains a non-finite number")
+        return value
+    if isinstance(value, complex):
+        if not (math.isfinite(value.real) and math.isfinite(value.imag)):
+            raise ValueError(f"{path} contains a non-finite complex number")
+        return {"real": value.real, "imag": value.imag}
+    if isinstance(value, Mapping):
+        result = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key:
+                raise TypeError(f"{path} mapping keys must be non-empty strings")
+            result[key] = _detached_value(item, f"{path}.{key}")
+        return result
+    if isinstance(value, (tuple, list)):
+        return tuple(
+            _detached_value(item, f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _detached_value(getattr(value, item.name), f"{path}.{item.name}")
+            for item in fields(value)
+        }
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        result = to_dict()
+        if isinstance(result, Mapping):
+            return _detached_value(result, path)
+    raise TypeError(
+        f"{path} contains unsupported Application read value {type(value).__name__}"
+    )
 
 
 def _plain_mapping(value: Any) -> Mapping[str, Any] | None:
@@ -85,7 +129,9 @@ class SLDExportSnapshotCapture:
                 rotation_degrees=symbol.rotation, properties=dict(symbol.properties),
             )
             read_model = node.read_model
-            attributes = {} if read_model is None else dict(read_model.attributes)
+            attributes = {} if read_model is None else _detached_value(
+                read_model.attributes, f"node[{node.node_id}].engineering_attributes"
+            )
             units = {} if read_model is None else {
                 item.parameter_id: item.unit
                 for item in read_model.engineering_parameters if item.unit is not None
