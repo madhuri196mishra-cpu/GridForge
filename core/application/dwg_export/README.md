@@ -1,36 +1,50 @@
-# GridForge DWG Export
+# GridForge DWG Export Foundation
 
-This package defines the Application-owned boundary for exporting engineering drawings. It is not a second engineering model and does not mutate Core.
+This package defines an Application-owned, backend-neutral drawing-plan boundary.
+It does not create a second engineering model and does not mutate Core.
 
-## Current implementation
+## Implemented foundation
 
-- Immutable drawing-plan DTOs with stable GridForge entity IDs.
-- `ApplicationDrawingSnapshot` and `DrawingPlanFactory` contracts that assemble a validated plan from detached, immutable Application-level data. They do not access Core, Qt, QGraphics, or renderer objects.
-- Fail-closed validation for duplicate IDs, supported primitive kinds, finite numeric geometry, and required INSERT/TEXT properties.
-- An Application service that validates plans and enforces declared backend formats/results.
-- A validated, profile-specific `SymbolRegistry` with stable deterministic block names, local-space vector primitives, base points, and fail-closed resolution by symbol ID plus ANSI/IEEE or IEC 60617 profile.
-- An optional `ODAFileConverterBackend` that creates a temporary DXF using `ezdxf`, resolves `INSERT` entities through the injected symbol registry, converts the drawing to native DWG using the separately installed ODA File Converter, checks the target DWG signature, and atomically replaces the destination only after successful conversion.
-- ODA executable path must be explicitly configured; the backend does not resolve a converter from PATH implicitly.
-- Install GridForge's optional Python dependency with `pip install -e '.[cad-export]'` and install ODA File Converter separately. This does not require IngeCAD.
+- Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs.
+- Application-level plan validation and backend format/result checks.
+- Profile-aware `SymbolRegistry` definitions with stable IDs, explicit base points and vector primitives.
+- An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
+- Stable entity identity and metadata are written as GRIDFORGE XDATA where supported.
+- ODA publication uses unique staging files, a timeout, process status checks, DWG signature checks and atomic replacement.
+- The optional Python extra is installed with `pip install -e '.[cad-export]'`; ODA File Converter is installed and configured separately. Neither dependency is required by the base GridForge installation.
 
-## Important limitations
+## SLD snapshot boundary
 
-This is an initial vertical slice, not a complete production export workflow. The current ODA backend supports LINE, CIRCLE, ARC, TEXT, LWPOLYLINE and registry-backed INSERT entities. The registry is a rendering contract only: it does not supply electrical meaning, wiring, or operational state. Registry definitions must be injected by the caller; this slice does not yet ship a standards-reviewed symbol catalogue. The backend currently supports millimetre units and a fixed set of target versions. `ApplicationDrawingSnapshotAdapter` now captures the public `Application.read_network()` DTO and rejects a revision change observed across capture. Its entity-builder callback must emit detached `DrawingEntity` values; it does not infer layout coordinates from topology. `SLDProjectionDrawingSnapshotAdapter` accepts the renderer-neutral `SLDCanvasSnapshot`. Its `capture_from_document_lifecycle()` entry point checks the active `DocumentManager` document/project identity and compares `Application.revision` before and after projection and building, failing closed on observed changes. This is a before/after guard, not a lock; capture must run on the lifecycle's serialized execution thread. `SLDNodeEntityBuilder` resolves persisted `SymbolBase.definition_id` through the profile-specific DWG `SymbolRegistry` and exports symbol instances as stable CAD INSERT entities, preserving visibility, position, scale and rotation. It also exports each explicit persisted SLD connection as a CAD polyline, preserving authored route points; when no usable route exists, node coordinates are used only as display endpoints for that already-existing connection. It never infers a connection from proximity. Missing node presentation, symbol definitions, or connection endpoint nodes fail closed. This is still a foundation, not complete SLD export: the document model is not atomically locked with the Application revision, no standards-reviewed complete symbol catalogue is shipped, and round-trip/converter integration gates remain outstanding. No current UI or Core model should be passed directly. Full SLD, control wiring, and protection/measurement plan builders, round-trip tests, and actual converter integration tests remain outstanding. Do not advertise the complete export feature as production-ready until those gates pass.
+The renderer-independent DTOs live in `core.application.sld_export_snapshot`. They contain project/document identity, source revision, coordinate-system and unit labels, stable node/equipment IDs, symbol identity/profile inputs, placement/transforms, engineering attributes/units, explicit connection identity/endpoints, authored route points and persisted annotations.
 
+`ui.canvas.sld_export_snapshot_adapter.SLDExportSnapshotCapture` is the lifecycle-side adapter. It reads the active `SLDDocument` through the existing `DocumentManager`, uses `SLDCanvasProjection` to detach persisted presentation, and checks project/document identity, Application revision and serialized document content before and after capture. The Application export modules consume only the detached DTO and do not import UI packages.
 
-- Drawing-plan validation checks backend-compatible geometry contracts before conversion: finite/distinct line endpoints, positive circle/arc radii, non-degenerate arc angles, 2D polyline points, and valid symbol INSERT points/scales. The SLD node builder emits INSERT coordinates and transforms in the same schema consumed by the ODA backend.
+**Consistency limitation:** these checks are fail-closed before/after guards, not an atomic snapshot or a lock. Capture must be invoked from the serialized workspace/document lifecycle operation. The current implementation does not prove atomicity against concurrent mutation outside that serialization boundary. If the revision, active document, project, or serialized SLD document changes during capture, export is rejected.
 
-## Architecture rules
+SLD coordinates are currently labelled `sld-unit` in the `sld-document-local` coordinate system. They are not silently treated as millimetres. The ODA backend currently accepts millimetres only, so a verified coordinate/unit mapping is still required before this SLD snapshot can be converted by that backend.
 
-- Build drawing plans from authoritative Application read models and approved presentation projections.
-- Keep CAD SDK imports out of Core and DTO/validation modules.
-- IngeCAD remains optional; the standalone path must work without it.
-- DWG and DXF are distinct formats; never label DXF bytes as DWG.
-- Stable GridForge IDs must be persisted as drawing metadata where supported; CAD handles are not authoritative IDs.
-- Unsupported primitives or conversion failures must fail closed. Never silently omit engineering entities.
-- SLD geometry is a layout hint, never electrical truth. Logical signal mappings must not be invented as physical control wiring.
+## Supported CAD primitives
 
+The current backend supports LINE, CIRCLE, ARC, TEXT, LWPOLYLINE and registry-backed INSERT. Geometry validation is performed before backend writes. Unsupported primitives and missing symbol definitions fail closed.
 
-- ODA identity XDATA serialization splits metadata on UTF-8 character boundaries with a conservative per-string byte budget. Entity IDs that exceed the supported XDATA string budget are rejected rather than truncated or written as invalid CAD strings.
+Persisted symbol instances are represented as INSERT entities. Explicit persisted SLD connections are represented as polylines. A persisted connection ID establishes the relationship; geometric proximity, overlap and snapping are never used to infer connectivity. Authored route points are preserved, and node positions are used as display endpoints only for an already-persisted connection that has no authored route. Transient study-result annotations are not exported as persisted document annotations.
 
-- Final DWG publication uses a unique temporary file in the destination directory, flushes and syncs staged bytes, and atomically replaces the destination only after conversion and signature validation. Failed publication removes its staging file and leaves an existing destination intact.
+## Symbol profiles and standards
+
+The registry is versioned/profile-aware and supports ANSI/IEEE and IEC 60617 profile keys. It is a rendering/export mapping, not an electrical authority. Only explicitly registered and reviewed definitions are usable. No complete catalogue is shipped, and the presence of a profile key does not establish standards compliance. Add reviewed symbols incrementally without changing the drawing-plan or backend contract.
+
+## ODA configuration and limitations
+
+Pass an explicit executable path when constructing `ODAFileConverterBackend`; it does not resolve an arbitrary executable from PATH. The converter is invoked without a shell and with a bounded timeout. A successful exit alone is insufficient: the expected DWG file and version signature are checked before publication.
+
+The implementation currently recognizes target versions ACAD12, ACAD2000, ACAD2004, ACAD2007, ACAD2010, ACAD2013 and ACAD2018. Actual compatibility depends on the separately installed ODA File Converter build and platform. Signature checking is not a full DWG parser or interoperability test. Round-trip fidelity, external CAD application compatibility and preservation of all metadata through third-party editing are not established.
+
+## Explicitly unsupported
+
+- No complete SLD export workflow is claimed until the coordinate/unit mapping and production composition-root integration are completed.
+- Control drawing plans are unsupported until authoritative Control read models and persisted drawing semantics are available. Control logic/interlocks are never inferred from SLD wiring.
+- Protection drawing plans are unsupported until authoritative Protection read models and persisted CT/PT, relay, zone and trip-target relationships are available. None are inferred from drawing proximity.
+- No physical wiring, logical control relationship, protection relationship, junction or terminal is invented.
+- No complete standards catalogue, DWG round-trip compatibility or production readiness is claimed.
+
+DXF is only the intermediate representation used by the ODA backend. A DXF file is never reported as a DWG deliverable.
