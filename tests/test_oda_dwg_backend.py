@@ -82,12 +82,14 @@ def test_oda_backend_rejects_registry_content_drift_even_when_versions_match(tmp
         {"symbol_id": "breaker", "insert": [0, 0]},
         {
             "symbol_profile": SymbolProfile.ANSI_IEEE.value,
+            "symbol_definition_id": "breaker",
             "symbol_definition_version": "1.0.0",
             "symbol_definition_base_point": (0.0, 0.0),
             "symbol_review_status": "reviewed",
             "symbol_reviewer": "reviewer",
             "symbol_reviewed_on": "2026-11-03",
             "symbol_review_reference": "review:1",
+            "symbol_standard_reference": None,
             "symbol_registry_schema_version": 1,
             "symbol_catalogue_version": "1.0.0",
             "symbol_registry_fingerprint": builder_registry.fingerprint,
@@ -135,12 +137,14 @@ def test_oda_backend_rejects_symbol_base_point_provenance_drift(tmp_path: Path):
     registry = SymbolRegistry((definition,))
     metadata = {
         "symbol_profile": SymbolProfile.ANSI_IEEE.value,
+        "symbol_definition_id": definition.symbol_id,
         "symbol_definition_version": definition.definition_version,
         "symbol_definition_base_point": (0.0, 0.0),
         "symbol_review_status": definition.review_status,
         "symbol_reviewer": definition.reviewer,
         "symbol_reviewed_on": definition.reviewed_on,
         "symbol_review_reference": definition.review_reference,
+        "symbol_standard_reference": definition.standard_reference,
         "symbol_registry_schema_version": registry.schema_version,
         "symbol_catalogue_version": registry.catalogue_version,
         "symbol_registry_fingerprint": registry.fingerprint,
@@ -151,4 +155,77 @@ def test_oda_backend_rejects_symbol_base_point_provenance_drift(tmp_path: Path):
     )
     backend = ODAFileConverterBackend(executable, symbol_registry=registry)
     with pytest.raises(ValueError, match="symbol_definition_base_point"):
+        backend._add_insert(type("Doc", (), {})(), entity, set(), SymbolProfile.ANSI_IEEE)
+
+
+
+def test_oda_backend_rejects_symbol_definition_id_drift(tmp_path: Path):
+    from plugins.dwg_export import DrawingEntity, SymbolDefinition, SymbolProfile, SymbolRegistry
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    definition = SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE,
+        (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
+        review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
+        review_reference="review:1",
+    )
+    registry = SymbolRegistry((definition,))
+    metadata = {
+        "symbol_profile": SymbolProfile.ANSI_IEEE.value,
+        "symbol_definition_id": "disconnect-switch",
+        "symbol_definition_version": definition.definition_version,
+        "symbol_definition_base_point": definition.base_point,
+        "symbol_review_status": definition.review_status,
+        "symbol_reviewer": definition.reviewer,
+        "symbol_reviewed_on": definition.reviewed_on,
+        "symbol_review_reference": definition.review_reference,
+        "symbol_standard_reference": definition.standard_reference,
+        "symbol_registry_schema_version": registry.schema_version,
+        "symbol_catalogue_version": registry.catalogue_version,
+        "symbol_registry_fingerprint": registry.fingerprint,
+    }
+    entity = DrawingEntity(
+        "sld-node:n1", "INSERT", "SLD_SYMBOLS",
+        {"symbol_id": "breaker", "insert": [0, 0]}, metadata,
+    )
+    backend = ODAFileConverterBackend(executable, symbol_registry=registry)
+    with pytest.raises(ValueError, match="symbol_definition_id"):
+        backend._add_insert(type("Doc", (), {})(), entity, set(), SymbolProfile.ANSI_IEEE)
+
+
+def test_oda_backend_rejects_standard_reference_provenance_drift(tmp_path: Path):
+    from plugins.dwg_export import DrawingEntity, SymbolDefinition, SymbolProfile, SymbolRegistry
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    definition = SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE,
+        (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
+        review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
+        review_reference="review:1", standard_reference="IEEE-symbol-reference",
+    )
+    registry = SymbolRegistry((definition,))
+    metadata = {
+        "symbol_profile": SymbolProfile.ANSI_IEEE.value,
+        "symbol_definition_id": definition.symbol_id,
+        "symbol_definition_version": definition.definition_version,
+        "symbol_definition_base_point": definition.base_point,
+        "symbol_review_status": definition.review_status,
+        "symbol_reviewer": definition.reviewer,
+        "symbol_reviewed_on": definition.reviewed_on,
+        "symbol_review_reference": definition.review_reference,
+        "symbol_standard_reference": "different-standard-reference",
+        "symbol_registry_schema_version": registry.schema_version,
+        "symbol_catalogue_version": registry.catalogue_version,
+        "symbol_registry_fingerprint": registry.fingerprint,
+    }
+    entity = DrawingEntity(
+        "sld-node:n1", "INSERT", "SLD_SYMBOLS",
+        {"symbol_id": "breaker", "insert": [0, 0]}, metadata,
+    )
+    backend = ODAFileConverterBackend(executable, symbol_registry=registry)
+    with pytest.raises(ValueError, match="symbol_standard_reference"):
         backend._add_insert(type("Doc", (), {})(), entity, set(), SymbolProfile.ANSI_IEEE)
