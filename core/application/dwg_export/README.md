@@ -8,7 +8,7 @@ It does not create a second engineering model and does not mutate Core.
 - Immutable, versioned `DrawingPlan` and `DrawingEntity` DTOs with stable GridForge entity IDs, canonical entity ordering and deterministic JSON serialization.
 - Application-level plan validation and backend format/result checks, including project/source/revision/document provenance returned with each export result.
 - Top-level DrawingPlan serialization carries source kind, source ID and (for SLD) an explicit source document ID; the export service rejects backend results that lose or alter that provenance.
-- Schema-versioned, catalogue-versioned `SymbolRegistry` definitions with stable IDs, definition versions, explicit base points and vector primitives.
+- Schema-versioned, catalogue-versioned `SymbolRegistry` definitions with stable IDs, definition versions, explicit base points and vector primitives. A deterministic content fingerprint detects builder/backend registry drift even when version labels match.
 - Export resolution is fail-closed for unreviewed symbols. Reviewed definitions require reviewer, ISO review date and a review-evidence reference; provenance is carried into entity metadata.
 - An optional ODA File Converter backend using `ezdxf` for DXF staging and a separately installed, explicitly configured converter for DWG output.
 - Stable entity identity and metadata are written as GRIDFORGE XDATA where supported.
