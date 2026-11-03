@@ -61,3 +61,48 @@ def test_xdata_rejects_entity_ids_that_exceed_safe_utf8_length():
         assert "safe DXF XDATA string length" in str(exc)
     else:
         raise AssertionError("oversized XDATA entity ID must be rejected")
+
+
+
+def test_xdata_includes_top_level_plan_provenance():
+    from core.application.dwg_export import DrawingPlan, SymbolProfile
+
+    document = _Document()
+    cad_entity = _CadEntity()
+    entity = DrawingEntity("sld-node:n1", "TEXT", "LABEL", {"text": "x"}, {})
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-1", source_revision="revision-8",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(entity,), source_kind="sld_export_snapshot",
+        source_id="document-9", source_document_id="document-9",
+    )
+
+    ODAFileConverterBackend._attach_identity(document, cad_entity, entity, plan)
+
+    import json
+    chunks = [value for code, value in cad_entity.xdata[1] if code == 1000][1:]
+    metadata = json.loads("".join(chunks))
+    assert metadata["source_project_id"] == "project-1"
+    assert metadata["source_revision"] == "revision-8"
+    assert metadata["source_kind"] == "sld_export_snapshot"
+    assert metadata["source_document_id"] == "document-9"
+
+
+def test_xdata_rejects_entity_metadata_conflicting_with_plan_provenance():
+    from core.application.dwg_export import DrawingPlan, SymbolProfile
+    import pytest
+
+    document = _Document()
+    cad_entity = _CadEntity()
+    entity = DrawingEntity(
+        "sld-node:n1", "TEXT", "LABEL", {"text": "x"},
+        {"source_project_id": "wrong-project"},
+    )
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-1", source_revision="revision-8",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(entity,), source_kind="sld_export_snapshot",
+        source_id="document-9", source_document_id="document-9",
+    )
+    with pytest.raises(ValueError, match="conflicts with drawing-plan provenance"):
+        ODAFileConverterBackend._attach_identity(document, cad_entity, entity, plan)

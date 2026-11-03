@@ -160,13 +160,33 @@ class ODAFileConverterBackend:
         return chunks or ["{}"]
 
     @staticmethod
-    def _attach_identity(doc: Any, cad_entity: Any, entity: DrawingEntity) -> None:
+    def _attach_identity(
+        doc: Any, cad_entity: Any, entity: DrawingEntity, plan: DrawingPlan | None = None,
+    ) -> None:
         entity_id = entity.entity_id
         if len(entity_id.encode("utf-8")) > 240:
             raise ValueError(f"Drawing entity ID {entity_id!r} exceeds the safe DXF XDATA string length")
         if "GRIDFORGE" not in doc.appids:
             doc.appids.add("GRIDFORGE")
-        payload = json.dumps(_plain_json(entity.metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        metadata = dict(entity.metadata)
+        if plan is not None:
+            source_fields = {
+                "source_project_id": plan.project_id,
+                "source_revision": plan.source_revision,
+                "source_kind": plan.source_kind,
+                "source_id": plan.source_id,
+                "source_document_id": plan.source_document_id,
+            }
+            for field_name, expected in source_fields.items():
+                existing = metadata.get(field_name)
+                if existing is not None and existing != expected:
+                    raise ValueError(
+                        f"Entity {entity.entity_id!r} metadata conflicts with drawing-plan "
+                        f"provenance for {field_name}"
+                    )
+                if expected is not None:
+                    metadata[field_name] = expected
+        payload = json.dumps(_plain_json(metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
 
@@ -236,7 +256,7 @@ class ODAFileConverterBackend:
                     cad_entity = self._add_insert(doc, entity, defined_blocks, plan.symbol_profile)
                 else:
                     cad_entity = self._add_entity(doc.modelspace(), entity)
-                self._attach_identity(doc, cad_entity, entity)
+                self._attach_identity(doc, cad_entity, entity, plan)
             doc.saveas(dxf_path)
             command = [str(self._executable), str(source_dir), str(output_dir), version, "DWG", "0", "0", "*.dxf"]
             completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=self._timeout, shell=False)
