@@ -10,6 +10,7 @@ def _definition(symbol_id="breaker", profile=SymbolProfile.ANSI_IEEE):
         definition_version="1.0.0", review_status="reviewed",
         reviewer="gridforge-review", reviewed_on="2026-11-03",
         review_reference="review-record:GF-SYMBOL-001",
+        standard_reference="standard-reference:IEC-or-IEEE-reviewed-source",
     )
 
 
@@ -92,6 +93,7 @@ def test_definition_version_changes_stable_block_identity():
         definition_version="2.0.0", review_status="reviewed",
         reviewer="gridforge-review", reviewed_on="2026-11-03",
         review_reference="review-record:GF-SYMBOL-002",
+        standard_reference="standard-reference:IEC-or-IEEE-reviewed-source",
     )
     assert first.block_name != second.block_name
 
@@ -114,3 +116,21 @@ def test_registry_fingerprint_is_deterministic_and_tracks_definition_content():
     ),), catalogue_version="1.0.0")
     assert first.fingerprint == equivalent.fingerprint
     assert first.fingerprint != changed.fingerprint
+
+
+def test_reviewed_definition_requires_standard_reference():
+    with pytest.raises(ValueError, match="standard_reference"):
+        SymbolDefinition(
+            "missing-standard-reference", SymbolProfile.ANSI_IEEE,
+            (_definition().primitives[0],), review_status="reviewed",
+            reviewer="gridforge-review", reviewed_on="2026-11-03",
+            review_reference="review-record:GF-SYMBOL-003",
+        )
+
+
+def test_unreviewed_definition_may_omit_standard_reference():
+    definition = SymbolDefinition(
+        "draft-without-standard-reference", SymbolProfile.ANSI_IEEE,
+        (_definition().primitives[0],),
+    )
+    assert definition.standard_reference is None
