@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 import hashlib
 import re
+from urllib.parse import urlsplit
 from typing import Iterable
 
 from .drawing_plan import DrawingPlan, SymbolProfile, serialize_drawing_plan
@@ -55,8 +56,9 @@ class SymbolReviewEvidence:
             raise ValueError("symbol_id must be a stable canonical identifier")
         if not _SYMBOL_REFERENCE.fullmatch(self.symbol_reference):
             raise ValueError("symbol_reference must be an explicit standard symbol identifier")
-        if not self.source_uri.startswith("https://"):
-            raise ValueError("source_uri must identify an HTTPS source")
+        parsed_source = urlsplit(self.source_uri)
+        if parsed_source.scheme != "https" or not parsed_source.hostname or parsed_source.username:
+            raise ValueError("source_uri must identify an HTTPS source with a hostname")
         if not _SHA256.fullmatch(self.geometry_sha256):
             raise ValueError("geometry_sha256 must be a lowercase SHA-256 digest")
         try:
@@ -117,6 +119,7 @@ def build_reviewed_symbol_registry(
     if any(not isinstance(item, SymbolReviewEvidence) for item in evidence_records):
         raise TypeError("evidence_records must contain SymbolReviewEvidence values")
 
+    required_id_set = set(required_ids)
     evidence_by_key: dict[tuple[SymbolProfile, str], SymbolReviewEvidence] = {}
     for evidence in evidence_records:
         key = (evidence.profile, evidence.symbol_id)
@@ -127,6 +130,8 @@ def build_reviewed_symbol_registry(
     definitions_by_key: dict[tuple[SymbolProfile, str], SymbolDefinition] = {}
     for definition in definitions:
         key = (definition.profile, definition.symbol_id)
+        if definition.symbol_id not in required_id_set:
+            raise ValueError(f"definition uses non-canonical symbol ID: {definition.symbol_id}")
         if key in definitions_by_key:
             raise ValueError(f"duplicate symbol definition for {definition.profile.value}:{definition.symbol_id}")
         definitions_by_key[key] = definition
