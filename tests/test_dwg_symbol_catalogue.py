@@ -12,6 +12,7 @@ from plugins.dwg_export import (
     convert_sld_catalogue_primitives,
     SymbolCatalogueEntry,
     assemble_unreviewed_symbol_definitions,
+    symbol_catalogue_coverage,
 )
 
 
@@ -190,3 +191,25 @@ def test_detached_catalogue_assembly_rejects_profile_duplicate():
     )
     with pytest.raises(ValueError, match="duplicate catalogue entry"):
         assemble_unreviewed_symbol_definitions((entry, entry))
+
+def test_catalogue_coverage_reports_missing_profile_slots_and_unreviewed_definitions():
+    entry = SymbolCatalogueEntry(
+        symbol_id="breaker",
+        profile=SymbolProfile.ANSI_IEEE,
+        source_units="mm",
+        primitives=({"kind": "rect", "x": -1, "y": -1, "width": 2, "height": 2},),
+        base_point=(0, 0),
+        terminal_anchors={"from": (-1, 0), "to": (1, 0)},
+    )
+    definitions = assemble_unreviewed_symbol_definitions((entry,))
+    report = symbol_catalogue_coverage(definitions, required_symbol_ids=("breaker", "relay"))
+    assert report.required == (
+        ("ansi_ieee", "breaker"), ("ansi_ieee", "relay"),
+        ("iec_60617", "breaker"), ("iec_60617", "relay"),
+    )
+    assert report.present == (("ansi_ieee", "breaker"),)
+    assert report.missing == (
+        ("ansi_ieee", "relay"), ("iec_60617", "breaker"), ("iec_60617", "relay"),
+    )
+    assert report.unreviewed == (("ansi_ieee", "breaker"),)
+    assert report.export_candidate is False
