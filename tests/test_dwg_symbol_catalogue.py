@@ -125,3 +125,20 @@ def test_terminal_anchors_are_part_of_reviewed_geometry_digest():
         "breaker", SymbolProfile.ANSI_IEEE, (primitive,), terminal_anchors={"from": (-2, 0)},
     )
     assert symbol_geometry_digest(first) != symbol_geometry_digest(changed)
+
+def test_catalogue_conversion_requires_explicit_millimetre_source_units():
+    with pytest.raises(ValueError, match="source_units must be explicitly declared as mm"):
+        convert_sld_catalogue_primitives(
+            "breaker",
+            ({"kind": "rect", "x": 0, "y": 0, "width": 2, "height": 3},),
+            source_units="sld-unit",
+        )
+
+
+def test_catalogue_conversion_rejects_text_without_proven_alignment_mapping():
+    with pytest.raises(ValueError, match="unsupported SLD catalogue primitive"):
+        convert_sld_catalogue_primitives(
+            "generator",
+            ({"kind": "text", "x": -10, "y": -9, "width": 20, "height": 18, "text": "G"},),
+            source_units="mm",
+        )
