@@ -97,8 +97,12 @@ class SLDCoordinateTransform:
                 geometry["center"] = self.transform_point(geometry["center"])
                 geometry["radius"] = float(geometry["radius"]) * scale_factor
                 if kind == "ARC":
-                    geometry["start_angle"] = float(geometry["start_angle"]) + angle
-                    geometry["end_angle"] = float(geometry["end_angle"]) + angle
+                    # DXF ARC angles are represented within one revolution.
+                    # Normalize both endpoints independently; adding the same
+                    # rotation preserves the authored counter-clockwise sweep,
+                    # including arcs that cross the 0-degree boundary.
+                    geometry["start_angle"] = (float(geometry["start_angle"]) + angle) % 360.0
+                    geometry["end_angle"] = (float(geometry["end_angle"]) + angle) % 360.0
             elif kind == "LWPOLYLINE":
                 geometry["points"] = tuple(self.transform_point(point) for point in geometry["points"])
             elif kind in {"INSERT", "TEXT"}:
