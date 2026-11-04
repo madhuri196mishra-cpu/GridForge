@@ -10,6 +10,8 @@ from plugins.dwg_export import (
     build_reviewed_symbol_registry,
     symbol_geometry_digest,
     convert_sld_catalogue_primitives,
+    SymbolCatalogueEntry,
+    assemble_unreviewed_symbol_definitions,
 )
 
 
@@ -142,3 +144,49 @@ def test_catalogue_conversion_rejects_text_without_proven_alignment_mapping():
             ({"kind": "text", "x": -10, "y": -9, "width": 20, "height": 18, "text": "G"},),
             source_units="mm",
         )
+
+def test_detached_catalogue_entry_assembles_unreviewed_mm_definition_with_mapping_provenance():
+    entry = SymbolCatalogueEntry(
+        symbol_id="breaker",
+        profile=SymbolProfile.ANSI_IEEE,
+        source_units="logical-unit",
+        unit_to_mm=2.0,
+        unit_mapping_reference="engineering-unit-review:U-17",
+        primitives=({"kind": "rect", "x": -5, "y": -4, "width": 10, "height": 8},),
+        base_point=(1, 2),
+        terminal_anchors={"from": (-5, 0), "to": (5, 0)},
+    )
+    (definition,) = assemble_unreviewed_symbol_definitions((entry,))
+    assert definition.review_status == "unreviewed"
+    assert definition.units == "mm"
+    assert definition.source_units == "logical-unit"
+    assert definition.unit_to_mm == 2.0
+    assert definition.unit_mapping_reference == "engineering-unit-review:U-17"
+    assert definition.base_point == (2.0, 4.0)
+    assert definition.terminal_anchors == {"from": (-10.0, 0.0), "to": (10.0, 0.0)}
+    assert definition.primitives[0].geometry["points"] == ((-10, -8), (10, -8), (10, 8), (-10, 8))
+
+
+def test_detached_catalogue_assembly_rejects_missing_unit_mapping_evidence():
+    with pytest.raises(ValueError, match="reviewed unit mapping reference"):
+        SymbolCatalogueEntry(
+            symbol_id="breaker",
+            profile=SymbolProfile.ANSI_IEEE,
+            source_units="logical-unit",
+            primitives=({"kind": "line", "x1": 0, "y1": 0, "x2": 1, "y2": 0},),
+            base_point=(0, 0),
+            terminal_anchors={},
+        )
+
+
+def test_detached_catalogue_assembly_rejects_profile_duplicate():
+    entry = SymbolCatalogueEntry(
+        symbol_id="breaker",
+        profile=SymbolProfile.ANSI_IEEE,
+        source_units="mm",
+        primitives=({"kind": "line", "x1": 0, "y1": 0, "x2": 1, "y2": 0},),
+        base_point=(0, 0),
+        terminal_anchors={},
+    )
+    with pytest.raises(ValueError, match="duplicate catalogue entry"):
+        assemble_unreviewed_symbol_definitions((entry, entry))
