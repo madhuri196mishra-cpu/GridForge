@@ -98,3 +98,90 @@ def test_adapter_rejects_mismatched_project_identity() -> None:
             symbol_profile=SymbolProfile.ANSI_IEEE,
             entity_builder=_entity_builder,
         )
+
+
+from core.application.services.control_service import ControlProgramReadModel
+from plugins.dwg_export import ControlProjectionDrawingSnapshotAdapter
+
+
+class FakeControlApplication(FakeApplication):
+    def read_control(self) -> ControlProgramReadModel:
+        return ControlProgramReadModel(
+            project_id="project-1",
+            program_id="ladder-main",
+            schema_version=1,
+            rungs=(),
+            components=(),
+            connections=(),
+            dependencies=(),
+        )
+
+
+def _control_entity_builder(model: ControlProgramReadModel, profile: SymbolProfile) -> tuple[DrawingEntity, ...]:
+    assert isinstance(model, ControlProgramReadModel)
+    assert profile is SymbolProfile.ANSI_IEEE
+    return (
+        DrawingEntity(
+            "control-component-1",
+            "INSERT",
+            "CONTROL_COMPONENT",
+            {"symbol_id": "control.contact.no", "insert": (0, 0)},
+            {"source_component_id": "contact-1", "drawing_type": "control"},
+        ),
+    )
+
+
+def test_control_adapter_captures_its_own_program_snapshot_and_provenance() -> None:
+    adapter = ControlProjectionDrawingSnapshotAdapter()
+    snapshot = adapter.capture(
+        FakeControlApplication(),
+        project_id="project-1",
+        symbol_profile=SymbolProfile.ANSI_IEEE,
+        entity_builder=_control_entity_builder,
+    )
+
+    assert snapshot.project_id == "project-1"
+    assert snapshot.source_revision == "7"
+    assert snapshot.source_kind == "control_program_read_model"
+    assert snapshot.source_id == "ladder-main"
+    assert snapshot.drawing_types == ("control",)
+    assert snapshot.coordinate_system == "control-ladder-local"
+    assert snapshot.units == "control-layout-unit"
+    assert snapshot.entities[0].entity_id == "control-component-1"
+
+
+def test_control_adapter_rejects_revision_change_during_capture() -> None:
+    adapter = ControlProjectionDrawingSnapshotAdapter()
+    with pytest.raises(RuntimeError, match="revision changed"):
+        adapter.capture(
+            FakeControlApplication(mutate_revision=True),
+            project_id="project-1",
+            entity_builder=_control_entity_builder,
+        )
+
+
+def test_control_adapter_rejects_project_activation_during_capture() -> None:
+    application = FakeControlApplication()
+    adapter = ControlProjectionDrawingSnapshotAdapter()
+
+    def activate_during_build(model: ControlProgramReadModel, profile: SymbolProfile):
+        application.project_lifecycle.activation_generation += 1
+        return _control_entity_builder(model, profile)
+
+    with pytest.raises(RuntimeError, match="identity or activation changed"):
+        adapter.capture(
+            application,
+            project_id="project-1",
+            entity_builder=activate_during_build,
+        )
+
+
+def test_control_adapter_rejects_mismatched_project_identity() -> None:
+    application = FakeControlApplication()
+    application.project_lifecycle.context.project_id = "project-2"
+    with pytest.raises(RuntimeError, match="does not match active Application project"):
+        ControlProjectionDrawingSnapshotAdapter().capture(
+            application,
+            project_id="project-1",
+            entity_builder=_control_entity_builder,
+        )
