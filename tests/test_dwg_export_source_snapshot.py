@@ -104,3 +104,14 @@ def test_application_snapshot_rejects_combined_sld_and_control_drawings():
             symbol_profile=SymbolProfile.ANSI_IEEE,
             drawing_types=("sld", "control"), entities=(),
         )
+
+
+def test_control_program_snapshot_cannot_be_relabelled_as_sld():
+    with pytest.raises(ValueError, match="Control-only"):
+        ApplicationDrawingSnapshot(
+            project_id="project-a", export_id="export-a", source_revision="rev-1",
+            source_kind="control_program_read_model", source_id="ladder-main",
+            symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+            entities=(), units="control-layout-unit",
+            coordinate_system="control-ladder-local",
+        )
