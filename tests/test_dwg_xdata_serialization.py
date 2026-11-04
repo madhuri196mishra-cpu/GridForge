@@ -628,3 +628,43 @@ def test_geometry_roundtrip_snapshot_covers_block_definitions_layers_and_units()
     assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
         ODAFileConverterBackend._geometry_roundtrip_snapshot(drawing(color=3))
     )
+
+
+
+def test_geometry_roundtrip_snapshot_includes_lwpolyline_vertices():
+    from types import SimpleNamespace
+
+    class _Polyline:
+        attribs = ()
+
+        def __init__(self, points):
+            self.points = points
+
+        def dxftype(self):
+            return "LWPOLYLINE"
+
+        def dxfattribs(self):
+            return {"layer": "WIRE", "closed": False}
+
+        def get_points(self, format):
+            assert format == "xyseb"
+            return self.points
+
+    def drawing(points):
+        return SimpleNamespace(
+            header={"$INSUNITS": 4},
+            layers=(),
+            blocks=(),
+            modelspace=lambda: [_Polyline(points)],
+        )
+
+    source = drawing([(0.0, 0.0, 0.0, 0.0, 0.0), (10.0, 5.0, 0.0, 0.0, 0.0)])
+    unchanged = drawing([(0.0, 0.0, 0.0, 0.0, 0.0), (10.0, 5.0, 0.0, 0.0, 0.0)])
+    changed = drawing([(0.0, 0.0, 0.0, 0.0, 0.0), (10.0, 6.0, 0.0, 0.0, 0.0)])
+
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) == (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(unchanged)
+    )
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(changed)
+    )
