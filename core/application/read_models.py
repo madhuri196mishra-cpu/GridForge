@@ -562,7 +562,9 @@ class ProtectionReadModel:
 
 
 __all__ = [
+    "ConfigurationFieldAssessmentReadModel",
     "ElementReadModel",
+    "EquipmentConfigurationAssessmentReadModel",
     "EngineeringParameterReadModel",
     "NetworkReadModel",
     "SimpleWireReadModel",
