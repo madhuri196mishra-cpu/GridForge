@@ -60,6 +60,7 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.metadata["symbol_definition_units"] == "mm"
     assert entity.metadata["symbol_review_status"] == "reviewed"
     assert entity.metadata["symbol_terminal_anchors"] == {"from": (-28.0, 0.0), "to": (28.0, 0.0)}
+    assert entity.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
     assert entity.metadata["symbol_registry_schema_version"] == 1
     assert entity.metadata["symbol_catalogue_version"] == "1.0.0"
     assert entity.metadata["symbol_registry_fingerprint"] == _registry().fingerprint
