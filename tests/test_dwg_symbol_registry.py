@@ -135,3 +135,8 @@ def test_unreviewed_definition_may_omit_standard_reference():
         (_definition().primitives[0],),
     )
     assert definition.standard_reference is None
+
+
+def test_symbol_definition_rejects_units_not_supported_by_dwg_backend():
+    with pytest.raises(ValueError, match="units must be explicitly supported as mm"):
+        SymbolDefinition("inch-symbol", SymbolProfile.ANSI_IEEE, (_definition().primitives[0],), units="inch")
