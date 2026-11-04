@@ -19,6 +19,31 @@ def test_oda_backend_rejects_non_executable_on_posix(tmp_path: Path) -> None:
             ODAFileConverterBackend(executable)
 
 
+@pytest.mark.parametrize("timeout_seconds", [float("nan"), float("inf"), float("-inf"), 0.0, -1.0])
+def test_oda_backend_rejects_non_finite_or_non_positive_timeout(tmp_path: Path, timeout_seconds: float) -> None:
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    with pytest.raises(ValueError, match="finite positive"):
+        ODAFileConverterBackend(executable, timeout_seconds=timeout_seconds)
+
+
+def test_oda_backend_rejects_boolean_timeout(tmp_path: Path) -> None:
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    with pytest.raises(TypeError, match="finite positive"):
+        ODAFileConverterBackend(executable, timeout_seconds=True)
+
+
+def test_oda_backend_rejects_non_numeric_timeout(tmp_path: Path) -> None:
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    with pytest.raises(TypeError, match="finite positive"):
+        ODAFileConverterBackend(executable, timeout_seconds="120")  # type: ignore[arg-type]
+
+
 def test_oda_backend_rejects_unsupported_target_version_before_conversion(tmp_path: Path) -> None:
     executable = tmp_path / "converter"
     executable.write_text("placeholder", encoding="utf-8")
@@ -205,7 +230,7 @@ def test_oda_backend_rejects_standard_reference_provenance_drift(tmp_path: Path)
         "breaker", SymbolProfile.ANSI_IEEE,
         (DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {}),),
         review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
-        review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source", standard_reference="IEEE-symbol-reference",
+        review_reference="review:1", standard_reference="standard-reference:IEEE-reviewed-source",
     )
     registry = SymbolRegistry((definition,))
     metadata = {
