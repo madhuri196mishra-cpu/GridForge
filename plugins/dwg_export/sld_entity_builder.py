@@ -58,6 +58,7 @@ class SLDNodeEntityBuilder:
                     "symbol_instance_id": symbol.symbol_instance_id,
                     "symbol_definition_id": symbol.symbol_definition_id,
                     "symbol_definition_version": definition.definition_version,
+                    "symbol_definition_units": definition.units,
                     "symbol_review_status": definition.review_status,
                     "symbol_reviewer": definition.reviewer,
                     "symbol_reviewed_on": definition.reviewed_on,
