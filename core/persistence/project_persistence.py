@@ -210,7 +210,8 @@ class ProjectPersistenceService:
              draft_network: DraftNetwork | None = None,
              protection_presentation: Mapping[str, Any] | None = None,
              presentation_collection: Mapping[str, Any] | None = None,
-             study_cases: Sequence[StudyCaseDefinition] = ()) -> None:
+             study_cases: Sequence[StudyCaseDefinition] = (),
+             configuration_assessments: Sequence[Mapping[str, Any]] = ()) -> None:
         if path is None:
             path = presentation
             presentation = None
