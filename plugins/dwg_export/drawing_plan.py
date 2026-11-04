@@ -113,6 +113,13 @@ class DrawingPlan:
         normalized_types = tuple(sorted({item.strip() for item in drawing_types}))
         if len(normalized_types) != len(drawing_types):
             raise ValueError("drawing_types must not contain duplicates")
+        if len(normalized_types) != 1:
+            raise ValueError(
+                "each DrawingPlan must represent exactly one drawing type; "
+                "SLD and Control require separate plans and output drawings"
+            )
+        if self.source_kind == "sld_export_snapshot" and normalized_types != ("sld",):
+            raise ValueError("SLD export snapshots must produce an SLD-only drawing plan")
         entities = tuple(self.entities)
         if any(not isinstance(item, DrawingEntity) for item in entities):
             raise TypeError("entities must contain only DrawingEntity values")
