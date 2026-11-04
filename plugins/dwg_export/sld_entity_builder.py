@@ -88,13 +88,14 @@ class SLDNodeEntityBuilder:
                 raise ValueError(
                     f"SLD connection {connection.connection_id!r} references a missing node"
                 )
-            # The persisted connection establishes connectivity. Preserve its
-            # authored route verbatim; do not prepend node positions or fabricate
-            # bends. A direct display chord is used only when the persisted route
-            # contains no points, and is explicitly identified as a fallback.
+            # Persisted route points are interior bends, not endpoints. The
+            # connection's stable source/target node identities define the
+            # endpoints; include both positions around the authored bends.
+            # When no bends were authored, the node-to-node chord is an
+            # explicitly identified display fallback for this persisted edge.
             has_authored_route = bool(connection.route_points)
             candidates = (
-                tuple(connection.route_points)
+                ((source.x, source.y), *tuple(connection.route_points), (target.x, target.y))
                 if has_authored_route
                 else ((source.x, source.y), (target.x, target.y))
             )
