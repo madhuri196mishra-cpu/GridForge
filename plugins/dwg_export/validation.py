@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from datetime import date
+
+from .control_coordinate_transform import ControlCoordinateTransform
 
 from .drawing_plan import DrawingPlan
 
@@ -94,7 +97,18 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
         raise DrawingPlanValidationError(
             "SLD export plans must contain transformed world-coordinate geometry in millimetres"
         )
+    if plan.source_kind == "control_program_read_model" and (
+        plan.coordinate_system != "world" or plan.units != "mm"
+    ):
+        raise DrawingPlanValidationError(
+            "Control export plans must contain reviewed world-coordinate geometry in millimetres"
+        )
+    if plan.source_kind == "control_program_read_model" and not plan.entities:
+        raise DrawingPlanValidationError(
+            "Control export plans require transformed entities carrying reviewed coordinate provenance"
+        )
 
+    control_mapping_fingerprint: str | None = None
     seen: set[str] = set()
     for entity in plan.entities:
         if entity.entity_id in seen:
@@ -108,6 +122,57 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
             )
         geometry = entity.geometry
         _finite_numbers(geometry, f"entities[{entity.entity_id}].geometry")
+
+        if plan.source_kind == "control_program_read_model":
+            provenance = entity.metadata.get("coordinate_transform")
+            if not isinstance(provenance, Mapping):
+                raise DrawingPlanValidationError(
+                    f"Control entity {entity.entity_id} lacks reviewed coordinate-transform provenance"
+                )
+            required_provenance = {
+                "mapping_id", "mapping_version", "source_coordinate_system",
+                "source_units", "target_coordinate_system", "target_units",
+                "world_origin_x_mm", "world_origin_y_mm", "rotation_degrees",
+                "reviewer", "reviewed_on", "review_reference", "mapping_fingerprint",
+            }
+            if set(provenance) != required_provenance:
+                raise DrawingPlanValidationError(
+                    f"Control entity {entity.entity_id} has incomplete or unsupported coordinate provenance fields"
+                )
+            if (
+                provenance.get("source_coordinate_system") != "control-ladder-local"
+                or provenance.get("source_units") != "mm"
+                or provenance.get("target_coordinate_system") != "world"
+                or provenance.get("target_units") != "mm"
+            ):
+                raise DrawingPlanValidationError(
+                    f"Control entity {entity.entity_id} has an incompatible coordinate mapping declaration"
+                )
+            try:
+                reviewed_on = date.fromisoformat(str(provenance["reviewed_on"]))
+                calculated_fingerprint = ControlCoordinateTransform.fingerprint_from_provenance(provenance)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise DrawingPlanValidationError(
+                    f"Control entity {entity.entity_id} has invalid coordinate mapping provenance"
+                ) from exc
+            if not all(
+                isinstance(provenance.get(field), str) and str(provenance[field]).strip()
+                for field in ("mapping_id", "mapping_version", "reviewer", "review_reference")
+            ):
+                raise DrawingPlanValidationError(
+                    f"Control entity {entity.entity_id} has incomplete coordinate review evidence"
+                )
+            fingerprint = provenance.get("mapping_fingerprint")
+            if not isinstance(fingerprint, str) or fingerprint != calculated_fingerprint:
+                raise DrawingPlanValidationError(
+                    f"Control entity {entity.entity_id} coordinate mapping fingerprint mismatch"
+                )
+            if control_mapping_fingerprint is None:
+                control_mapping_fingerprint = fingerprint
+            elif fingerprint != control_mapping_fingerprint:
+                raise DrawingPlanValidationError(
+                    "Control drawing contains mixed coordinate mapping fingerprints"
+                )
 
         if kind == "LINE":
             _keys(geometry, {"start", "end"}, set(), entity.entity_id)
