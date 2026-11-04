@@ -615,6 +615,26 @@ class PropertiesPanelWidget(QWidget):
             QLabel("Status", self),
             QLabel("Draft" if target.identity_kind == "draft" else str(target.status or "Unknown"), self),
         )
+        assessment = target.configuration_assessment
+        if assessment is not None and target.identity_kind == "element":
+            self._form_layout.addRow(
+                QLabel("Configuration assessment", self),
+                QLabel(str(assessment.status), self),
+            )
+            if not assessment.fields:
+                self._form_layout.addRow(
+                    QLabel("Configuration evidence", self),
+                    QLabel("No trusted creation-disposition evidence; engineering review is required.", self),
+                )
+            for field_assessment in assessment.fields:
+                detail = str(field_assessment.status)
+                if field_assessment.workflow:
+                    detail += f" · Workflow: {field_assessment.workflow}"
+                if field_assessment.reason:
+                    detail += f" · {field_assessment.reason}"
+                detail_label = QLabel(detail, self)
+                detail_label.setWordWrap(True)
+                self._form_layout.addRow(QLabel(str(field_assessment.field_name), self), detail_label)
         if target.identity_kind == "draft":
             self._form_layout.addRow(QLabel("Placement", self), QLabel(str(target.placement), self))
             self._form_layout.addRow(QLabel("Terminals", self), QLabel(", ".join(target.terminal_contract), self))
