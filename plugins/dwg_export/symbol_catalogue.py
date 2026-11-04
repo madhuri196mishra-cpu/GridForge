@@ -13,7 +13,7 @@ import json
 import math
 import re
 from urllib.parse import urlsplit
-from typing import Any, Iterable, Mapping
+from typing import Iterable, Mapping
 
 from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile, serialize_drawing_plan
 from .symbol_registry import SymbolDefinition, SymbolRegistry
@@ -109,8 +109,10 @@ def convert_sld_catalogue_primitives(
     """Convert detached SLD primitive mappings to CAD-neutral entities.
 
     RECT is represented as a closed LWPOLYLINE using the exact x/y/width/height
-    local bounds. This function does not import UI code, assign units, or mark
-    converted geometry as reviewed.
+    local bounds. Source units must explicitly be millimetres. Text primitives
+    are rejected because their SLD bounding-box alignment has no proven
+    equivalent in the current CAD TEXT contract. This function does not import
+    UI code or mark converted geometry as reviewed.
     """
     if not isinstance(symbol_id, str) or not _SYMBOL_REFERENCE.fullmatch(symbol_id):
         raise ValueError("symbol_id must be a stable canonical identifier")
