@@ -3389,10 +3389,11 @@ class Application:
     def read_element(self, element_type: str, object_id: str) -> ElementReadModel:
         self._require_read_service()
         model = self._read_service.element(element_type, object_id)  # type: ignore[union-attr]
+        lifecycle = self._project_lifecycle
+        context = lifecycle.context if lifecycle is not None else None
         assessment = (
             self._equipment_configuration_assessments.get(object_id)
-            if self._configuration_assessments_project_id == self.project_lifecycle.context.project_id
-            and self.project_lifecycle.context is not None
+            if context is not None and self._configuration_assessments_project_id == context.project_id
             else None
         )
         return replace(model, configuration_assessment=assessment)
@@ -3401,7 +3402,8 @@ class Application:
         self, equipment_id: str
     ) -> EquipmentConfigurationAssessmentReadModel:
         """Return the Application-owned configuration obligation assessment."""
-        context = self.project_lifecycle.context
+        lifecycle = self._project_lifecycle
+        context = lifecycle.context if lifecycle is not None else None
         if context is None or self._configuration_assessments_project_id != context.project_id:
             raise RuntimeError("Equipment configuration assessments are unavailable without the active project scope.")
         try:
@@ -3413,7 +3415,8 @@ class Application:
         self,
     ) -> tuple[EquipmentConfigurationAssessmentReadModel, ...]:
         """Return detached assessments for all equipment with a recorded creation contract."""
-        context = self.project_lifecycle.context
+        lifecycle = self._project_lifecycle
+        context = lifecycle.context if lifecycle is not None else None
         if context is None or self._configuration_assessments_project_id != context.project_id:
             return ()
         return tuple(self._equipment_configuration_assessments[key] for key in sorted(self._equipment_configuration_assessments))
