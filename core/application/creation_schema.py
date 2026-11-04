@@ -402,6 +402,21 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "z1_pu": _field_disposition("later_configuration", "Complex sequence impedance is not represented by the scalar creation schema.", "Grid sequence-impedance configuration / UpdateGridCommand"),
         "z2_pu": _field_disposition("later_configuration", "Complex sequence impedance is not represented by the scalar creation schema.", "Grid sequence-impedance configuration / UpdateGridCommand"),
         "z0_pu": _field_disposition("later_configuration", "Complex sequence impedance is not represented by the scalar creation schema.", "Grid sequence-impedance configuration / UpdateGridCommand"),
+        "impedance_base_mva": _field_disposition(
+            "later_configuration",
+            "The impedance base is engineering configuration coupled to sequence-impedance data, not an independent creation default.",
+            "Grid sequence-impedance configuration / UpdateGridCommand",
+        ),
+        "impedance_base_voltage_kv": _field_disposition(
+            "later_configuration",
+            "The impedance base voltage must be declared with its sequence-impedance reference; it is not inferred from nominal voltage.",
+            "Grid sequence-impedance configuration / UpdateGridCommand",
+        ),
+        "neutral_grounding_impedance_ohm": _field_disposition(
+            "later_configuration",
+            "Neutral grounding impedance requires the explicit physical neutral terminal and ground-electrode topology; scalar source creation cannot establish that topology.",
+            "Grid neutral-grounding configuration / physical N terminal and GROUND_ELECTRODE connection",
+        ),
         "in_service": _field_disposition("lifecycle_state", "Service state is governed by explicit lifecycle operations.", "Put/Take Grid In Service commands"),
     },
     "generator": {
