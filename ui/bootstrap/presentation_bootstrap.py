@@ -212,10 +212,6 @@ class PresentationBootstrap:
                     "require_any": tuple(item.require_any),
                     "require_all": tuple(item.require_all),
                 } for item in definition.conditional_requirements),
-                "command_field_dispositions": {
-                    field_name: dict(disposition)
-                    for field_name, disposition in definition.command_field_dispositions.items()
-                },
             }
         configure_creation_contracts = getattr(application, "configure_creation_contracts", None)
         if not callable(configure_creation_contracts):
