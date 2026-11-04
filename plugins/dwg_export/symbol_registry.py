@@ -38,6 +38,9 @@ class SymbolDefinition:
     standard_reference: str | None = None
     units: str = "mm"
     terminal_anchors: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    source_units: str = "mm"
+    unit_to_mm: float = 1.0
+    unit_mapping_reference: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.symbol_id, str) or not _SYMBOL_ID.fullmatch(self.symbol_id):
@@ -52,6 +55,22 @@ class SymbolDefinition:
         if not isinstance(self.units, str) or self.units.strip() != "mm":
             raise ValueError("symbol definition units must be explicitly supported as mm")
         object.__setattr__(self, "units", self.units.strip())
+        if not isinstance(self.source_units, str) or not self.source_units.strip():
+            raise ValueError("source_units must retain the original non-empty unit label")
+        if isinstance(self.unit_to_mm, bool) or not isinstance(self.unit_to_mm, (int, float)):
+            raise TypeError("unit_to_mm must be numeric")
+        factor = float(self.unit_to_mm)
+        if not math.isfinite(factor) or factor <= 0:
+            raise ValueError("unit_to_mm must be finite and positive")
+        if self.source_units.strip() == "mm":
+            if factor != 1.0 or self.unit_mapping_reference is not None:
+                raise ValueError("mm source units require factor 1 and no mapping reference")
+        elif not isinstance(self.unit_mapping_reference, str) or not self.unit_mapping_reference.strip():
+            raise ValueError("non-mm source units require a reviewed mapping reference")
+        object.__setattr__(self, "source_units", self.source_units.strip())
+        object.__setattr__(self, "unit_to_mm", factor)
+        if self.unit_mapping_reference is not None:
+            object.__setattr__(self, "unit_mapping_reference", self.unit_mapping_reference.strip())
         if self.review_status not in {"unreviewed", "reviewed"}:
             raise ValueError("review_status must be unreviewed or reviewed")
         for name in ("reviewer", "reviewed_on", "review_reference", "standard_reference"):
@@ -195,6 +214,9 @@ class SymbolRegistry:
                     for name in sorted(definition.terminal_anchors)
                 },
                 "units": definition.units,
+                "source_units": definition.source_units,
+                "unit_to_mm": definition.unit_to_mm,
+                "unit_mapping_reference": definition.unit_mapping_reference,
                 "drawing_plan": drawing_plan_to_dict(plan),
             })
         payload = json.dumps({
