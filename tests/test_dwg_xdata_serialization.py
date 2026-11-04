@@ -569,3 +569,62 @@ def test_geometry_roundtrip_snapshot_detects_entity_transform_changes():
     assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
         ODAFileConverterBackend._geometry_roundtrip_snapshot(changed)
     )
+
+
+def test_geometry_roundtrip_snapshot_covers_block_definitions_layers_and_units():
+    from types import SimpleNamespace
+
+    class _Entity:
+        attribs = ()
+
+        def __init__(self, start):
+            self.start = start
+
+        def dxftype(self):
+            return "LINE"
+
+        def dxfattribs(self):
+            return {"layer": "SYMBOL", "start": self.start, "end": (10.0, 0.0, 0.0)}
+
+    class _BlockHeader:
+        def __init__(self, base_point):
+            self.base_point = base_point
+
+        def dxfattribs(self):
+            return {"name": "BREAKER", "base_point": self.base_point, "flags": 0}
+
+    class _BlockLayout(list):
+        name = "BREAKER"
+
+        def __init__(self, base_point, start):
+            super().__init__([_Entity(start)])
+            self.block = _BlockHeader(base_point)
+
+    class _Layer:
+        def __init__(self, color):
+            self.color = color
+
+        def dxfattribs(self):
+            return {"name": "SYMBOL", "color": self.color, "linetype": "CONTINUOUS"}
+
+    def drawing(*, insunits=4, base_point=(0.0, 0.0, 0.0), start=(0.0, 0.0, 0.0), color=7):
+        return SimpleNamespace(
+            header={"$INSUNITS": insunits},
+            layers=[_Layer(color)],
+            blocks=[_BlockLayout(base_point, start)],
+            modelspace=lambda: [],
+        )
+
+    source = drawing()
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(drawing(insunits=1))
+    )
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(drawing(base_point=(1.0, 0.0, 0.0)))
+    )
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(drawing(start=(0.0, 1.0, 0.0)))
+    )
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(drawing(color=3))
+    )
