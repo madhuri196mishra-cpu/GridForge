@@ -221,6 +221,7 @@ def test_oda_backend_rejects_symbol_definition_id_drift(tmp_path: Path):
         "symbol_profile": SymbolProfile.ANSI_IEEE.value,
         "symbol_definition_id": "disconnect-switch",
         "symbol_definition_version": definition.definition_version,
+        "symbol_definition_units": definition.units,
         "symbol_definition_base_point": definition.base_point,
         "symbol_review_status": definition.review_status,
         "symbol_reviewer": definition.reviewer,
