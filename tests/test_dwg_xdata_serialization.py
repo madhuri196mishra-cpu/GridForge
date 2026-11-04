@@ -571,6 +571,56 @@ def test_geometry_roundtrip_snapshot_detects_entity_transform_changes():
     )
 
 
+def test_geometry_roundtrip_snapshot_binds_geometry_to_gridforge_identity():
+    from types import SimpleNamespace
+
+    class _Entity:
+        attribs = ()
+
+        def __init__(self, entity_id, start):
+            self.entity_id = entity_id
+            self.start = start
+
+        def dxftype(self):
+            return "LINE"
+
+        def dxfattribs(self):
+            return {"layer": "WIRE", "start": self.start, "end": (10.0, 0.0, 0.0)}
+
+        def get_xdata(self, appid):
+            assert appid == "GRIDFORGE"
+            return [SimpleNamespace(code=1000, value=self.entity_id)]
+
+    def drawing(entities):
+        return SimpleNamespace(
+            header={"$INSUNITS": 4},
+            layers=(),
+            blocks=(),
+            modelspace=lambda: entities,
+        )
+
+    source = drawing([
+        _Entity("connection-a", (0.0, 0.0, 0.0)),
+        _Entity("connection-b", (0.0, 5.0, 0.0)),
+    ])
+    unchanged = drawing([
+        _Entity("connection-b", (0.0, 5.0, 0.0)),
+        _Entity("connection-a", (0.0, 0.0, 0.0)),
+    ])
+    reassigned = drawing([
+        _Entity("connection-a", (0.0, 5.0, 0.0)),
+        _Entity("connection-b", (0.0, 0.0, 0.0)),
+    ])
+
+    snapshot = ODAFileConverterBackend._geometry_roundtrip_snapshot
+    assert snapshot(source, bind_modelspace_identity=True) == (
+        snapshot(unchanged, bind_modelspace_identity=True)
+    )
+    assert snapshot(source, bind_modelspace_identity=True) != (
+        snapshot(reassigned, bind_modelspace_identity=True)
+    )
+
+
 def test_geometry_roundtrip_snapshot_covers_block_definitions_layers_and_units():
     from types import SimpleNamespace
 
