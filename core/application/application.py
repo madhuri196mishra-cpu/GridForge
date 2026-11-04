@@ -3436,10 +3436,17 @@ class Application:
         context = lifecycle.context if lifecycle is not None else None
         if context is None or self._configuration_assessments_project_id != context.project_id:
             raise RuntimeError("Equipment configuration assessments are unavailable without the active project scope.")
-        try:
-            return self._equipment_configuration_assessments[equipment_id]
-        except KeyError as exc:
-            raise KeyError(f"No configuration assessment is recorded for equipment {equipment_id!r}.") from exc
+        assessment = self._equipment_configuration_assessments.get(equipment_id)
+        if assessment is not None:
+            return assessment
+        for element in self.read_network().elements:
+            if element.object_id == equipment_id:
+                return EquipmentConfigurationAssessmentReadModel(
+                    equipment_id=equipment_id,
+                    equipment_type=element.element_type,
+                    fields=(),
+                )
+        raise KeyError(f"No Core equipment or configuration assessment exists for {equipment_id!r}.")
 
     def read_equipment_configuration_assessments(
         self,
@@ -3450,7 +3457,11 @@ class Application:
         if context is None or self._configuration_assessments_project_id != context.project_id:
             return ()
         network = self.read_network()
-        assessments = dict(self._equipment_configuration_assessments)
+        current_ids = {element.object_id for element in network.elements}
+        assessments = {
+            key: value for key, value in self._equipment_configuration_assessments.items()
+            if key in current_ids
+        }
         for element in network.elements:
             if element.object_id not in assessments:
                 assessments[element.object_id] = EquipmentConfigurationAssessmentReadModel(
