@@ -17,6 +17,7 @@ import tempfile
 from typing import Any
 
 from ..drawing_plan import DrawingEntity, DrawingPlan, serialize_drawing_plan
+from ..control_coordinate_transform import ControlCoordinateTransform
 from ..service import ExportResult
 from ..symbol_registry import SymbolRegistry
 from ..validation import validate_drawing_plan
@@ -256,12 +257,29 @@ class ODAFileConverterBackend:
                 raise ValueError(
                     f"Entity {entity.entity_id!r} has invalid coordinate transform provenance"
                 )
-            required = {
+            common_required = {
                 "mapping_id", "mapping_version", "source_coordinate_system",
                 "source_units", "target_coordinate_system", "target_units",
-                "millimetres_per_source_unit", "world_origin_mm",
                 "rotation_degrees", "reviewer", "reviewed_on", "review_reference",
             }
+            if mapping.get("source_coordinate_system") == "control-ladder-local":
+                required = common_required | {
+                    "world_origin_x_mm", "world_origin_y_mm", "mapping_fingerprint",
+                }
+                try:
+                    expected_mapping_fingerprint = ControlCoordinateTransform.fingerprint_from_provenance(mapping)
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Entity {entity.entity_id!r} has invalid Control coordinate mapping provenance"
+                    ) from exc
+                if mapping.get("mapping_fingerprint") != expected_mapping_fingerprint:
+                    raise ValueError(
+                        f"Entity {entity.entity_id!r} Control coordinate mapping fingerprint mismatch"
+                    )
+            else:
+                required = common_required | {
+                    "millimetres_per_source_unit", "world_origin_mm",
+                }
             missing = required - set(mapping)
             if missing:
                 raise ValueError(
