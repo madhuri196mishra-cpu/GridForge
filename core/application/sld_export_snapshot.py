@@ -12,6 +12,16 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 
+def _finite_number(value: Any, name: str) -> float:
+    """Normalize a real numeric value without accepting bool or coercible strings."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{name} must be a real number")
+    normalized = float(value)
+    if not math.isfinite(normalized):
+        raise ValueError(f"{name} must be finite")
+    return normalized
+
+
 def _freeze(value: Any, path: str) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
@@ -50,8 +60,8 @@ class SLDSymbolPlacementSnapshot:
         if not isinstance(self.visible, bool):
             raise TypeError("visible must be boolean")
         for name in ("scale", "rotation_degrees"):
-            value = float(getattr(self, name))
-            if not math.isfinite(value) or (name == "scale" and value <= 0):
+            value = _finite_number(getattr(self, name), name)
+            if name == "scale" and value <= 0:
                 raise ValueError(f"{name} is outside its valid numeric range")
             object.__setattr__(self, name, value)
         object.__setattr__(self, "properties", _freeze(self.properties, "symbol.properties"))
@@ -76,10 +86,8 @@ class SLDNodeExportSnapshot:
             if not isinstance(self.equipment_id, str) or not self.equipment_id.strip():
                 raise ValueError("equipment_id must be non-empty when supplied")
             object.__setattr__(self, "equipment_id", self.equipment_id.strip())
-        object.__setattr__(self, "x", float(self.x))
-        object.__setattr__(self, "y", float(self.y))
-        if not math.isfinite(self.x) or not math.isfinite(self.y):
-            raise ValueError(f"SLD node {self.node_id!r} has non-finite placement")
+        object.__setattr__(self, "x", _finite_number(self.x, "node.x"))
+        object.__setattr__(self, "y", _finite_number(self.y, "node.y"))
         object.__setattr__(self, "properties", _freeze(self.properties, "node.properties"))
         object.__setattr__(self, "engineering_attributes", _freeze(self.engineering_attributes, "node.engineering_attributes"))
         object.__setattr__(self, "engineering_units", _freeze(self.engineering_units, "node.engineering_units"))
@@ -157,10 +165,8 @@ class SLDAnnotationExportSnapshot:
                 raise TypeError(f"{name} must be a string")
         if not self.annotation_id.strip() or not self.node_id.strip():
             raise ValueError("annotation_id and node_id must be non-empty")
-        object.__setattr__(self, "x", float(self.x))
-        object.__setattr__(self, "y", float(self.y))
-        if not (math.isfinite(self.x) and math.isfinite(self.y)):
-            raise ValueError("annotation coordinates must be finite")
+        object.__setattr__(self, "x", _finite_number(self.x, "annotation.x"))
+        object.__setattr__(self, "y", _finite_number(self.y, "annotation.y"))
         if not isinstance(self.visible, bool):
             raise TypeError("annotation visible must be boolean")
 
