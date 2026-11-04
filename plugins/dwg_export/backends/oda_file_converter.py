@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 from typing import Any
 
-from ..drawing_plan import DrawingEntity, DrawingPlan
+from ..drawing_plan import DrawingEntity, DrawingPlan, serialize_drawing_plan
 from ..service import ExportResult
 from ..symbol_registry import SymbolRegistry
 from ..validation import validate_drawing_plan
@@ -189,8 +189,76 @@ class ODAFileConverterBackend:
         return chunks or ["{}"]
 
     @staticmethod
+    def _build_export_manifest(
+        plan: DrawingPlan, symbol_registry: SymbolRegistry, target_version: str,
+    ) -> dict[str, Any]:
+        """Build deterministic artifact provenance copied into each entity's XDATA."""
+        mapping_records: dict[str, Any] = {}
+        entities_with_mapping = 0
+        for entity in plan.entities:
+            mapping = entity.metadata.get("coordinate_transform")
+            if mapping is None:
+                continue
+            if not isinstance(mapping, Mapping):
+                raise ValueError(
+                    f"Entity {entity.entity_id!r} has invalid coordinate transform provenance"
+                )
+            required = {
+                "mapping_id", "mapping_version", "source_coordinate_system",
+                "source_units", "target_coordinate_system", "target_units",
+                "millimetres_per_source_unit", "world_origin_mm",
+                "rotation_degrees", "reviewer", "reviewed_on", "review_reference",
+            }
+            missing = required - set(mapping)
+            if missing:
+                raise ValueError(
+                    f"Entity {entity.entity_id!r} has incomplete coordinate transform provenance: "
+                    f"{', '.join(sorted(missing))}"
+                )
+            canonical = json.dumps(
+                _plain_json(mapping), sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            )
+            fingerprint = __import__("hashlib").sha256(canonical.encode("utf-8")).hexdigest()
+            mapping_records[fingerprint] = _plain_json(mapping)
+            entities_with_mapping += 1
+
+        if mapping_records and entities_with_mapping != len(plan.entities):
+            raise ValueError("Drawing plan mixes transformed and untransformed entities")
+        if len(mapping_records) > 1:
+            raise ValueError("Drawing plan contains conflicting coordinate mapping provenance")
+        if plan.source_kind == "sld_export_snapshot" and plan.entities and not mapping_records:
+            raise ValueError("SLD export plan is missing reviewed coordinate mapping provenance")
+
+        mapping_fingerprint = next(iter(mapping_records), None)
+        mapping_details = mapping_records.get(mapping_fingerprint) if mapping_fingerprint else None
+        plan_digest = __import__("hashlib").sha256(
+            serialize_drawing_plan(plan).encode("utf-8")
+        ).hexdigest()
+        return {
+            "manifest_schema_version": 1,
+            "export_id": plan.export_id,
+            "project_id": plan.project_id,
+            "source_revision": plan.source_revision,
+            "source_kind": plan.source_kind,
+            "source_id": plan.source_id,
+            "source_document_id": plan.source_document_id,
+            "drawing_plan_sha256": plan_digest,
+            "symbol_profile": plan.symbol_profile.value,
+            "symbol_registry_schema_version": symbol_registry.schema_version,
+            "symbol_catalogue_version": symbol_registry.catalogue_version,
+            "symbol_registry_fingerprint": symbol_registry.fingerprint,
+            "coordinate_mapping_fingerprint": mapping_fingerprint,
+            "coordinate_mapping": mapping_details,
+            "backend_id": ODAFileConverterBackend.backend_id,
+            "target_version": target_version,
+            "entity_count": len(plan.entities),
+        }
+
+    @staticmethod
     def _attach_identity(
         doc: Any, cad_entity: Any, entity: DrawingEntity, plan: DrawingPlan | None = None,
+        artifact_manifest: Mapping[str, Any] | None = None,
     ) -> None:
         entity_id = entity.entity_id
         if len(entity_id.encode("utf-8")) > 240:
@@ -215,6 +283,14 @@ class ODAFileConverterBackend:
                     )
                 if expected is not None:
                     metadata[field_name] = expected
+        if artifact_manifest is not None:
+            manifest = _plain_json(artifact_manifest)
+            existing_manifest = metadata.get("gridforge_export_manifest")
+            if existing_manifest is not None and existing_manifest != manifest:
+                raise ValueError(
+                    f"Entity {entity.entity_id!r} metadata conflicts with export manifest"
+                )
+            metadata["gridforge_export_manifest"] = manifest
         payload = json.dumps(_plain_json(metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
@@ -279,6 +355,7 @@ class ODAFileConverterBackend:
             doc = ezdxf.new("R2018")
             doc.header["$INSUNITS"] = 4
             doc.header["$PROJECTNAME"] = plan.project_id[:255]
+            artifact_manifest = self._build_export_manifest(plan, self._symbols, version)
             defined_blocks: set[str] = set()
             for entity in plan.entities:
                 if entity.layer not in doc.layers:
@@ -287,7 +364,7 @@ class ODAFileConverterBackend:
                     cad_entity = self._add_insert(doc, entity, defined_blocks, plan.symbol_profile)
                 else:
                     cad_entity = self._add_entity(doc.modelspace(), entity)
-                self._attach_identity(doc, cad_entity, entity, plan)
+                self._attach_identity(doc, cad_entity, entity, plan, artifact_manifest)
             doc.saveas(dxf_path)
             command = [str(self._executable), str(source_dir), str(output_dir), version, "DWG", "0", "0", "*.dxf"]
             completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=self._timeout, shell=False)
