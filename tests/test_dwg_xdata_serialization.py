@@ -571,6 +571,61 @@ def test_geometry_roundtrip_snapshot_detects_entity_transform_changes():
     )
 
 
+def test_geometry_roundtrip_snapshot_detects_insert_rotation_and_nonuniform_scale():
+    from types import SimpleNamespace
+
+    class _Insert:
+        attribs = ()
+
+        def __init__(self, *, insert, rotation=0.0, xscale=1.0, yscale=1.0, zscale=1.0):
+            self.values = {
+                "layer": "SLD_SYMBOLS",
+                "name": "breaker",
+                "insert": insert,
+                "rotation": rotation,
+                "xscale": xscale,
+                "yscale": yscale,
+                "zscale": zscale,
+            }
+
+        def dxftype(self):
+            return "INSERT"
+
+        def dxfattribs(self):
+            return self.values
+
+        def get_xdata(self, appid):
+            assert appid == "GRIDFORGE"
+            return [SimpleNamespace(code=1000, value="node-breaker")]
+
+    def drawing(entity):
+        return SimpleNamespace(
+            header={"$INSUNITS": 4},
+            layers=(),
+            blocks=(),
+            modelspace=lambda: [entity],
+        )
+
+    source = _Insert(insert=(100.0, 200.0, 30.0), rotation=90.0,
+                     xscale=2.0, yscale=0.5, zscale=1.5)
+    snapshot = ODAFileConverterBackend._geometry_roundtrip_snapshot
+    baseline = snapshot(drawing(source), bind_modelspace_identity=True)
+    variants = (
+        _Insert(insert=(100.0, 200.0, 30.0), rotation=91.0,
+                xscale=2.0, yscale=0.5, zscale=1.5),
+        _Insert(insert=(100.0, 200.0, 30.0), rotation=90.0,
+                xscale=2.1, yscale=0.5, zscale=1.5),
+        _Insert(insert=(100.0, 200.0, 30.0), rotation=90.0,
+                xscale=2.0, yscale=0.5, zscale=1.6),
+        _Insert(insert=(100.0, 200.0, 31.0), rotation=90.0,
+                xscale=2.0, yscale=0.5, zscale=1.5),
+    )
+    for variant in variants:
+        assert snapshot(
+            drawing(variant), bind_modelspace_identity=True,
+        ) != baseline
+
+
 def test_geometry_roundtrip_snapshot_binds_geometry_to_gridforge_identity():
     from types import SimpleNamespace
 
