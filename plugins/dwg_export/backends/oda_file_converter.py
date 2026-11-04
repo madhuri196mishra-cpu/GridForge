@@ -391,8 +391,10 @@ class ODAFileConverterBackend:
             ) from exc
 
     @classmethod
-    def _geometry_roundtrip_snapshot(cls, document: Any) -> dict[str, Any]:
-        """Capture modelspace, block geometry, layers and drawing units without volatile handles."""
+    def _geometry_roundtrip_snapshot(
+        cls, document: Any, *, bind_modelspace_identity: bool = False,
+    ) -> dict[str, Any]:
+        """Capture drawing geometry, optionally binding modelspace records to GridForge IDs."""
         volatile_attributes = {"handle", "owner"}
 
         def attributes(entity: Any) -> dict[str, Any]:
@@ -402,12 +404,33 @@ class ODAFileConverterBackend:
                 if name not in volatile_attributes
             }
 
-        def entity_record(entity: Any) -> dict[str, Any]:
+        def entity_record(
+            entity: Any, *, require_gridforge_identity: bool = False,
+        ) -> dict[str, Any]:
             entity_type = entity.dxftype()
             record = {
                 "type": entity_type,
                 "attributes": attributes(entity),
             }
+            if require_gridforge_identity:
+                get_xdata = getattr(entity, "get_xdata", None)
+                if not callable(get_xdata):
+                    raise RuntimeError(
+                        "Round-trip modelspace entity does not expose GridForge identity XDATA"
+                    )
+                try:
+                    identity_tags = [
+                        tag for tag in get_xdata("GRIDFORGE") if tag.code == 1000
+                    ]
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Round-trip modelspace entity lost GridForge identity XDATA"
+                    ) from exc
+                if not identity_tags or not str(identity_tags[0].value).strip():
+                    raise RuntimeError(
+                        "Round-trip modelspace entity has no GridForge identity XDATA"
+                    )
+                record["gridforge_entity_id"] = str(identity_tags[0].value)
             if entity_type == "LWPOLYLINE":
                 record["vertices"] = cls._canonical_dxf_value(
                     entity.get_points("xyseb")
@@ -423,8 +446,13 @@ class ODAFileConverterBackend:
                 ]
             return record
 
-        def ordered_entities(layout: Any) -> list[dict[str, Any]]:
-            records = [entity_record(entity) for entity in layout]
+        def ordered_entities(
+            layout: Any, *, require_gridforge_identity: bool = False,
+        ) -> list[dict[str, Any]]:
+            records = [
+                entity_record(entity, require_gridforge_identity=require_gridforge_identity)
+                for entity in layout
+            ]
             return sorted(
                 records,
                 key=lambda record: json.dumps(
@@ -450,7 +478,10 @@ class ODAFileConverterBackend:
         return {
             "insunits": document.header.get("$INSUNITS"),
             "layers": layers,
-            "modelspace": ordered_entities(document.modelspace()),
+            "modelspace": ordered_entities(
+                document.modelspace(),
+                require_gridforge_identity=bind_modelspace_identity,
+            ),
             "blocks": blocks,
         }
 
@@ -491,8 +522,12 @@ class ODAFileConverterBackend:
         except ImportError as exc:
             raise RuntimeError("DWG metadata verification requires ezdxf") from exc
         document = ezdxf.readfile(roundtrip_dxf)
-        source_geometry = self._geometry_roundtrip_snapshot(source_document)
-        converted_geometry = self._geometry_roundtrip_snapshot(document)
+        source_geometry = self._geometry_roundtrip_snapshot(
+            source_document, bind_modelspace_identity=True,
+        )
+        converted_geometry = self._geometry_roundtrip_snapshot(
+            document, bind_modelspace_identity=True,
+        )
         if converted_geometry != source_geometry:
             raise RuntimeError(
                 "Converted DWG geometry, block definitions, layers or drawing units "
