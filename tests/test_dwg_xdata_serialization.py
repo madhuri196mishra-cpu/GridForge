@@ -106,3 +106,109 @@ def test_xdata_rejects_entity_metadata_conflicting_with_plan_provenance():
     )
     with pytest.raises(ValueError, match="conflicts with drawing-plan provenance"):
         ODAFileConverterBackend._attach_identity(document, cad_entity, entity, plan)
+
+
+
+def test_xdata_carries_deterministic_export_manifest():
+    import json
+    from plugins.dwg_export import DrawingPlan, SymbolProfile
+
+    document = _Document()
+    cad_entity = _CadEntity()
+    entity = DrawingEntity("equipment-1", "TEXT", "LABEL", {"text": "x"}, {})
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-42", source_revision="revision-8",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(entity,), source_kind="sld_export_snapshot",
+        source_id="document-9", source_document_id="document-9",
+    )
+    manifest = {
+        "manifest_schema_version": 1,
+        "drawing_plan_sha256": "plan-digest",
+        "symbol_registry_fingerprint": "registry-digest",
+        "coordinate_mapping_fingerprint": "mapping-digest",
+    }
+
+    ODAFileConverterBackend._attach_identity(
+        document, cad_entity, entity, plan, manifest,
+    )
+
+    chunks = [value for code, value in cad_entity.xdata[1] if code == 1000][1:]
+    metadata = json.loads("".join(chunks))
+    assert metadata["gridforge_export_manifest"] == manifest
+
+
+def test_export_manifest_binds_plan_registry_and_single_coordinate_mapping(tmp_path):
+    import hashlib
+    import json
+    from plugins.dwg_export import (
+        DrawingEntity, DrawingPlan, SLDCoordinateTransform,
+        SymbolProfile, SymbolRegistry,
+    )
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    backend = ODAFileConverterBackend(executable)
+    transform = SLDCoordinateTransform(
+        mapping_id="site-map", mapping_version="2.1.0",
+        source_coordinate_system="sld-document-local", source_units="sld-unit",
+        millimetres_per_source_unit=2.0, world_origin_x_mm=100.0,
+        world_origin_y_mm=200.0, rotation_degrees=30.0,
+        reviewer="reviewer", reviewed_on="2026-11-04",
+        review_reference="review:site-map",
+    )
+    source = DrawingEntity(
+        "sld-connection:c1", "LWPOLYLINE", "WIRE",
+        {"points": ((0.0, 0.0), (1.0, 1.0))},
+        {},
+    )
+    transformed = transform.transform_entities((source,))[0]
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-42", source_revision="revision-8",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(transformed,), source_kind="sld_export_snapshot",
+        source_id="document-9", source_document_id="document-9",
+        coordinate_system="world", units="mm",
+    )
+    registry = SymbolRegistry()
+    manifest = backend._build_export_manifest(plan, registry, "ACAD2018")
+    mapping_json = json.dumps(
+        dict(transformed.metadata["coordinate_transform"]),
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    )
+    assert manifest["drawing_plan_sha256"] == hashlib.sha256(
+        __import__("plugins.dwg_export.drawing_plan", fromlist=["serialize_drawing_plan"])
+        .serialize_drawing_plan(plan).encode("utf-8")
+    ).hexdigest()
+    assert manifest["symbol_registry_fingerprint"] == registry.fingerprint
+    assert manifest["coordinate_mapping_fingerprint"] == hashlib.sha256(
+        mapping_json.encode("utf-8")
+    ).hexdigest()
+    assert manifest["coordinate_mapping"]["mapping_id"] == "site-map"
+    assert manifest["target_version"] == "ACAD2018"
+
+
+def test_export_manifest_rejects_mixed_coordinate_mapping_provenance(tmp_path):
+    from plugins.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile, SymbolRegistry
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    backend = ODAFileConverterBackend(executable)
+    first = DrawingEntity(
+        "line-1", "LINE", "WIRE", {"start": (0, 0), "end": (1, 1)},
+        {"coordinate_transform": {"mapping_id": "map-a"}},
+    )
+    second = DrawingEntity(
+        "line-2", "LINE", "WIRE", {"start": (1, 1), "end": (2, 2)},
+        {"coordinate_transform": {"mapping_id": "map-b"}},
+    )
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-42", source_revision="revision-8",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(first, second), source_kind="sld_export_snapshot",
+        source_id="document-9", source_document_id="document-9",
+    )
+    with pytest.raises(ValueError, match="incomplete coordinate transform provenance"):
+        backend._build_export_manifest(plan, SymbolRegistry(), "ACAD2018")
