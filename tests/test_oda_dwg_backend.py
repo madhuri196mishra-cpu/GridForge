@@ -324,11 +324,15 @@ def test_oda_insert_preserves_local_base_point_and_instance_transform(tmp_path: 
             self.insert = (name, insert, dxfattribs)
             return self.insert
 
+    class _Layers(set):
+        def new(self, name):
+            self.add(name)
+
     class _Doc:
         def __init__(self):
             self.blocks = _Blocks()
             self._modelspace = _Modelspace()
-            self.layers = set()
+            self.layers = _Layers()
 
         def modelspace(self):
             return self._modelspace
