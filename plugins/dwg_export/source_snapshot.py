@@ -55,6 +55,10 @@ class ApplicationDrawingSnapshot:
             item.strip() for item in drawing_types
         ) != ("sld",):
             raise ValueError("SLD export snapshots must be SLD-only")
+        if self.source_kind == "control_program_read_model" and tuple(
+            item.strip() for item in drawing_types
+        ) != ("control",):
+            raise ValueError("Control program snapshots must produce Control-only drawings")
         if any(not isinstance(item, DrawingEntity) for item in entities):
             raise TypeError("snapshot entities must be immutable DrawingEntity values")
         object.__setattr__(self, "drawing_types", tuple(item.strip() for item in drawing_types))
