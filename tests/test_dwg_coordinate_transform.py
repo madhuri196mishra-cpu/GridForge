@@ -57,3 +57,36 @@ def test_polyline_orientation_is_preserved_by_positive_uniform_mapping() -> None
     assert signed_area(points) > 0.0
     assert abs(signed_area(points)) == 8.0
     assert transformed.geometry["closed"] is True
+
+
+def test_insert_transform_maps_only_instance_position_and_rotation() -> None:
+    anchors = {"from": (-28.0, 0.0), "to": (28.0, 0.0)}
+    insert = DrawingEntity(
+        "insert-1",
+        "INSERT",
+        "SLD_SYMBOLS",
+        {
+            "symbol_id": "breaker",
+            "insert": (10.0, 20.0),
+            "scale": (1.5, 0.75, 1.0),
+            "rotation": 15.0,
+        },
+        {
+            "symbol_definition_base_point": (2.0, 3.0),
+            "symbol_terminal_anchors": anchors,
+            "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
+        },
+    )
+
+    transformed = _transform().transform_entities((insert,))[0]
+
+    assert transformed.geometry["insert"] == (
+        100.0 + 2.0 * (10.0 * 0.8660254037844387 - 20.0 * 0.5),
+        200.0 + 2.0 * (10.0 * 0.5 + 20.0 * 0.8660254037844387),
+    )
+    assert transformed.geometry["scale"] == (1.5, 0.75, 1.0)
+    assert transformed.geometry["rotation"] == 45.0
+    assert transformed.metadata["symbol_definition_base_point"] == (2.0, 3.0)
+    assert transformed.metadata["symbol_terminal_anchors"] == anchors
+    assert transformed.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
+    assert transformed.metadata["coordinate_transform"]["target_units"] == "mm"
