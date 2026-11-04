@@ -9,6 +9,7 @@ from plugins.dwg_export import (
     SymbolReviewEvidence,
     build_reviewed_symbol_registry,
     symbol_geometry_digest,
+    convert_sld_catalogue_primitives,
 )
 
 
@@ -96,3 +97,30 @@ def test_review_evidence_requires_explicit_source_and_license_provenance():
             review_reference="review-record:1",
             geometry_sha256=symbol_geometry_digest(definition),
         )
+
+def test_rectangle_primitive_becomes_closed_polyline_without_geometry_drift():
+    entities = convert_sld_catalogue_primitives(
+        "breaker",
+        ({"kind": "rect", "x": -10, "y": -9, "width": 20, "height": 18},),
+    )
+    assert len(entities) == 1
+    assert entities[0].kind == "LWPOLYLINE"
+    assert entities[0].geometry["closed"] is True
+    assert entities[0].geometry["points"] == ((-10, -9), (10, -9), (10, 9), (-10, 9))
+    assert entities[0].metadata["source_rectangle"] == {"x": -10, "y": -9, "width": 20, "height": 18}
+
+
+def test_catalogue_conversion_rejects_unsupported_or_ambiguous_primitive():
+    with pytest.raises(ValueError, match="unsupported SLD catalogue primitive"):
+        convert_sld_catalogue_primitives("relay", ({"kind": "bezier", "points": []},))
+
+
+def test_terminal_anchors_are_part_of_reviewed_geometry_digest():
+    primitive = DrawingEntity("body", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 5}, {})
+    first = SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE, (primitive,), terminal_anchors={"from": (-1, 0)},
+    )
+    changed = SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE, (primitive,), terminal_anchors={"from": (-2, 0)},
+    )
+    assert symbol_geometry_digest(first) != symbol_geometry_digest(changed)
