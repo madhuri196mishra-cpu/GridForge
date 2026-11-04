@@ -739,11 +739,17 @@ class ProjectPersistenceService:
             "UNAVAILABLE", "REVIEW_REQUIRED",
         }
         for record in records:
+            unknown_record_fields = set(record) - {"equipment_id", "equipment_type", "fields"}
+            if unknown_record_fields:
+                raise ProjectPersistenceError(
+                    "Unknown configuration assessment fields are rejected: "
+                    + ", ".join(sorted(str(item) for item in unknown_record_fields))
+                )
             equipment_id = record.get("equipment_id")
             equipment_type = record.get("equipment_type")
             fields = record.get("fields")
-            if not isinstance(equipment_id, str) or not equipment_id.strip():
-                raise ProjectPersistenceError("Configuration assessment equipment_id must be non-empty.")
+            if not isinstance(equipment_id, str) or not equipment_id.strip() or equipment_id != equipment_id.strip():
+                raise ProjectPersistenceError("Configuration assessment equipment_id must be canonical and non-empty.")
             if equipment_id in seen_equipment:
                 raise ProjectPersistenceError(f"Duplicate configuration assessment for {equipment_id!r}.")
             seen_equipment.add(equipment_id)
@@ -753,19 +759,25 @@ class ProjectPersistenceService:
                 raise ProjectPersistenceError(f"Configuration assessment {equipment_id!r} fields must be an array of objects.")
             seen_fields: set[str] = set()
             for item in fields:
+                unknown_field_fields = set(item) - {"field_name", "kind", "reason", "workflow", "status"}
+                if unknown_field_fields:
+                    raise ProjectPersistenceError(
+                        f"Unknown configuration field assessment fields for {equipment_id!r}: "
+                        + ", ".join(sorted(str(value) for value in unknown_field_fields))
+                    )
                 field_name = item.get("field_name")
                 kind = item.get("kind")
                 reason = item.get("reason")
                 status = item.get("status")
                 workflow = item.get("workflow")
-                if not isinstance(field_name, str) or not field_name.strip() or field_name in seen_fields:
+                if not isinstance(field_name, str) or not field_name.strip() or field_name != field_name.strip() or field_name in seen_fields:
                     raise ProjectPersistenceError(f"Configuration assessment {equipment_id!r} has an invalid or duplicate field.")
                 seen_fields.add(field_name)
                 if not isinstance(kind, str) or not kind.strip():
                     raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has no disposition kind.")
                 if not isinstance(reason, str) or not reason.strip():
                     raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has no disposition reason.")
-                if status not in allowed_statuses:
+                if not isinstance(status, str) or status not in allowed_statuses:
                     raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has an unsupported status.")
                 if workflow is not None and (not isinstance(workflow, str) or not workflow.strip()):
                     raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has an invalid workflow.")
