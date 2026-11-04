@@ -3601,12 +3601,13 @@ class Application:
         if next_fields == assessment.fields:
             return
 
+        previous_project_id = self._configuration_assessments_project_id
         previous_assessments = self._equipment_configuration_assessments
         next_assessments = dict(previous_assessments)
         next_assessments[equipment_id] = replace(assessment, fields=next_fields)
         transaction.record_undo(
-            lambda assessments=previous_assessments: self._restore_configuration_assessments(
-                self._configuration_assessments_project_id,
+            lambda project_id=previous_project_id, assessments=previous_assessments: self._restore_configuration_assessments(
+                project_id,
                 assessments,
             )
         )
