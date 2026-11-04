@@ -79,7 +79,7 @@ class ControlProjectionDrawingSnapshotAdapter:
             symbol_profile=profile,
             drawing_types=("control",),
             entities=entities,
-            units="control-layout-unit",
+            units="mm",
             coordinate_system="control-ladder-local",
         )
 
