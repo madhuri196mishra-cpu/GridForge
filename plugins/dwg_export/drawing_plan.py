@@ -100,6 +100,11 @@ class DrawingPlan:
                 raise ValueError("SLD export plans require source_document_id")
             if self.source_id is not None and self.source_id != self.source_document_id:
                 raise ValueError("SLD source_id must match source_document_id")
+        if self.source_kind == "control_program_read_model":
+            if self.source_id is None:
+                raise ValueError("Control export plans require source_id as the program identity")
+            if self.source_document_id is not None:
+                raise ValueError("Control export plans must not carry an SLD document identity")
         if isinstance(self.schema_version, bool) or not isinstance(self.schema_version, int) or self.schema_version != 1:
             raise ValueError("schema_version must be the supported integer 1")
         if not isinstance(self.symbol_profile, SymbolProfile):
@@ -120,6 +125,8 @@ class DrawingPlan:
             )
         if self.source_kind == "sld_export_snapshot" and normalized_types != ("sld",):
             raise ValueError("SLD export snapshots must produce an SLD-only drawing plan")
+        if self.source_kind == "control_program_read_model" and normalized_types != ("control",):
+            raise ValueError("Control program snapshots must produce a Control-only drawing plan")
         entities = tuple(self.entities)
         if any(not isinstance(item, DrawingEntity) for item in entities):
             raise TypeError("entities must contain only DrawingEntity values")
