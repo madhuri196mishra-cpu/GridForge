@@ -632,6 +632,7 @@ def create_application(
             draft_network=application.draft_network,
             presentation_collection=presentation_collection,
             study_cases=application.study_cases,
+            configuration_assessments=application.serialize_equipment_configuration_assessments(),
             protection_presentation=(                application.protection_presentation.to_dict()
                 if callable(getattr(getattr(application, "protection_presentation", None), "to_dict", None))
                 else getattr(application, "protection_presentation", None)
