@@ -57,7 +57,7 @@ class SymbolReviewEvidence:
         if not _SYMBOL_REFERENCE.fullmatch(self.symbol_reference):
             raise ValueError("symbol_reference must be an explicit standard symbol identifier")
         parsed_source = urlsplit(self.source_uri)
-        if parsed_source.scheme != "https" or not parsed_source.hostname or parsed_source.username:
+        if parsed_source.scheme != "https" or not parsed_source.hostname or (parsed_source.username or parsed_source.password):
             raise ValueError("source_uri must identify an HTTPS source with a hostname")
         if not _SHA256.fullmatch(self.geometry_sha256):
             raise ValueError("geometry_sha256 must be a lowercase SHA-256 digest")
@@ -109,8 +109,13 @@ def build_reviewed_symbol_registry(
     """
     definitions = tuple(definitions)
     evidence_records = tuple(evidence_records)
+    if isinstance(required_symbol_ids, str):
+        raise TypeError("required_symbol_ids must be an iterable of IDs, not one string")
     required_ids = tuple(required_symbol_ids)
-    if not required_ids or any(not isinstance(item, str) or not item.strip() for item in required_ids):
+    if not required_ids or any(
+        not isinstance(item, str) or not item.strip() or item != item.strip()
+        for item in required_ids
+    ):
         raise ValueError("required_symbol_ids must contain canonical non-empty IDs")
     if len(set(required_ids)) != len(required_ids):
         raise ValueError("required_symbol_ids must not contain duplicates")
