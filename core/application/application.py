@@ -3596,6 +3596,26 @@ class Application:
             equipment_id_field, equipment_type = "shunt_id", "shunt"
             if payload.get("in_service") is not None:
                 resolutions["in_service"] = "RESOLVED"
+        elif command_type in {
+            "model.put_switch_in_service", "model.take_switch_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "switch_id", "switch"
+            resolutions["in_service"] = "RESOLVED"
+        elif command_type in {
+            "model.put_disconnector_in_service", "model.take_disconnector_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "disconnector_id", "disconnector"
+            resolutions["in_service"] = "RESOLVED"
+        elif command_type in {
+            "model.put_fuse_in_service", "model.take_fuse_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "fuse_id", "fuse"
+            resolutions["in_service"] = "RESOLVED"
+        elif command_type in {
+            "model.put_relay_in_service", "model.take_relay_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "relay_id", "relay"
+            resolutions["in_service"] = "RESOLVED"
 
         if not resolutions or equipment_id_field is None or equipment_type is None:
             return
