@@ -1,3 +1,5 @@
+import pytest
+
 from plugins.dwg_export import DrawingEntity
 from plugins.dwg_export.backends.oda_file_converter import ODAFileConverterBackend
 
@@ -145,6 +147,7 @@ def test_export_manifest_binds_plan_registry_and_single_coordinate_mapping(tmp_p
         DrawingEntity, DrawingPlan, SLDCoordinateTransform,
         SymbolProfile, SymbolRegistry,
     )
+    from plugins.dwg_export.drawing_plan import serialize_drawing_plan
 
     executable = tmp_path / "converter"
     executable.write_text("placeholder", encoding="utf-8")
@@ -178,8 +181,7 @@ def test_export_manifest_binds_plan_registry_and_single_coordinate_mapping(tmp_p
         sort_keys=True, separators=(",", ":"), ensure_ascii=False,
     )
     assert manifest["drawing_plan_sha256"] == hashlib.sha256(
-        __import__("plugins.dwg_export.drawing_plan", fromlist=["serialize_drawing_plan"])
-        .serialize_drawing_plan(plan).encode("utf-8")
+        serialize_drawing_plan(plan).encode("utf-8")
     ).hexdigest()
     assert manifest["symbol_registry_fingerprint"] == registry.fingerprint
     assert manifest["coordinate_mapping_fingerprint"] == hashlib.sha256(
@@ -196,13 +198,29 @@ def test_export_manifest_rejects_mixed_coordinate_mapping_provenance(tmp_path):
     executable.write_text("placeholder", encoding="utf-8")
     executable.chmod(0o700)
     backend = ODAFileConverterBackend(executable)
+    def mapping(mapping_id):
+        return {
+            "mapping_id": mapping_id,
+            "mapping_version": "1.0.0",
+            "source_coordinate_system": "sld-document-local",
+            "source_units": "sld-unit",
+            "target_coordinate_system": "world",
+            "target_units": "mm",
+            "millimetres_per_source_unit": 1.0,
+            "world_origin_mm": (0.0, 0.0),
+            "rotation_degrees": 0.0,
+            "reviewer": "reviewer",
+            "reviewed_on": "2026-11-04",
+            "review_reference": "review:coordinate-map",
+        }
+
     first = DrawingEntity(
         "line-1", "LINE", "WIRE", {"start": (0, 0), "end": (1, 1)},
-        {"coordinate_transform": {"mapping_id": "map-a"}},
+        {"coordinate_transform": mapping("map-a")},
     )
     second = DrawingEntity(
         "line-2", "LINE", "WIRE", {"start": (1, 1), "end": (2, 2)},
-        {"coordinate_transform": {"mapping_id": "map-b"}},
+        {"coordinate_transform": mapping("map-b")},
     )
     plan = DrawingPlan(
         project_id="project-1", export_id="export-42", source_revision="revision-8",
@@ -210,5 +228,5 @@ def test_export_manifest_rejects_mixed_coordinate_mapping_provenance(tmp_path):
         entities=(first, second), source_kind="sld_export_snapshot",
         source_id="document-9", source_document_id="document-9",
     )
-    with pytest.raises(ValueError, match="incomplete coordinate transform provenance"):
+    with pytest.raises(ValueError, match="conflicting coordinate mapping provenance"):
         backend._build_export_manifest(plan, SymbolRegistry(), "ACAD2018")
