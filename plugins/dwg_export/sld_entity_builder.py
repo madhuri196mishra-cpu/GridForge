@@ -74,6 +74,7 @@ class SLDNodeEntityBuilder:
                         name: definition.terminal_anchors[name]
                         for name in sorted(definition.terminal_anchors)
                     },
+                    "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
                     "symbol_instance_properties": dict(symbol.properties),
                     "presentation_properties": dict(node.properties),
                     "engineering_attributes": dict(node.engineering_attributes),
