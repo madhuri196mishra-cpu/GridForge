@@ -1656,18 +1656,42 @@ class Application:
                 previous_project_id = self._configuration_assessments_project_id
                 previous_assessments = self._equipment_configuration_assessments
                 persisted = (
-                    getattr(loaded, "configuration_assessments", None)
-                    if context is not None and loaded is not None else None
+                    getattr(loaded, "configuration_assessments", ())
+                    if context is not None and loaded is not None else ()
                 )
-                if persisted is None:
-                    candidate = {}
-                elif isinstance(persisted, Mapping) and all(
-                    isinstance(value, EquipmentConfigurationAssessmentReadModel)
-                    for value in persisted.values()
-                ):
-                    candidate = dict(persisted)
-                else:
-                    raise TypeError("Loaded configuration assessments must be a mapping of typed Application read models.")
+                if not isinstance(persisted, (tuple, list)):
+                    raise TypeError("Loaded configuration assessments must be a sequence of records.")
+                candidate = {}
+                for record in persisted:
+                    if not isinstance(record, Mapping):
+                        raise TypeError("Loaded configuration assessment records must be mappings.")
+                    equipment_id = record.get("equipment_id")
+                    fields_data = record.get("fields", ())
+                    if not isinstance(equipment_id, str) or not equipment_id.strip():
+                        raise ValueError("Loaded configuration assessment requires a non-empty equipment_id.")
+                    if not isinstance(fields_data, (tuple, list)):
+                        raise TypeError(f"Loaded configuration assessment {equipment_id!r} fields must be a sequence.")
+                    fields = tuple(
+                        ConfigurationFieldAssessmentReadModel(
+                            field_name=str(item["field_name"]),
+                            kind=str(item["kind"]),
+                            reason=str(item["reason"]),
+                            workflow=(str(item["workflow"]) if item.get("workflow") is not None else None),
+                            status=str(item["status"]),
+                        )
+                        for item in fields_data
+                        if isinstance(item, Mapping)
+                    )
+                    if len(fields) != len(fields_data):
+                        raise TypeError(f"Loaded configuration assessment {equipment_id!r} contains an invalid field record.")
+                    assessment = EquipmentConfigurationAssessmentReadModel(
+                        equipment_id=equipment_id,
+                        equipment_type=str(record.get("equipment_type") or ""),
+                        fields=fields,
+                    )
+                    if equipment_id in candidate:
+                        raise ValueError(f"Duplicate loaded configuration assessment for {equipment_id!r}.")
+                    candidate[equipment_id] = assessment
                 self._configuration_assessments_project_id = context.project_id if context is not None else None
                 self._equipment_configuration_assessments = candidate
 
@@ -3391,11 +3415,17 @@ class Application:
         model = self._read_service.element(element_type, object_id)  # type: ignore[union-attr]
         lifecycle = self._project_lifecycle
         context = lifecycle.context if lifecycle is not None else None
-        assessment = (
-            self._equipment_configuration_assessments.get(object_id)
-            if context is not None and self._configuration_assessments_project_id == context.project_id
-            else None
-        )
+        assessment = None
+        if context is not None and self._configuration_assessments_project_id == context.project_id:
+            assessment = self._equipment_configuration_assessments.get(object_id)
+            if assessment is None:
+                # Legacy Core equipment has no trusted creation-disposition
+                # provenance. Expose it as REVIEW_REQUIRED, never complete.
+                assessment = EquipmentConfigurationAssessmentReadModel(
+                    equipment_id=object_id,
+                    equipment_type=model.element_type,
+                    fields=(),
+                )
         return replace(model, configuration_assessment=assessment)
 
     def read_equipment_configuration_assessment(
@@ -3419,7 +3449,36 @@ class Application:
         context = lifecycle.context if lifecycle is not None else None
         if context is None or self._configuration_assessments_project_id != context.project_id:
             return ()
-        return tuple(self._equipment_configuration_assessments[key] for key in sorted(self._equipment_configuration_assessments))
+        network = self.read_network()
+        assessments = dict(self._equipment_configuration_assessments)
+        for element in network.elements:
+            if element.object_id not in assessments:
+                assessments[element.object_id] = EquipmentConfigurationAssessmentReadModel(
+                    equipment_id=element.object_id,
+                    equipment_type=element.element_type,
+                    fields=(),
+                )
+        return tuple(assessments[key] for key in sorted(assessments))
+
+    def serialize_equipment_configuration_assessments(self) -> tuple[dict[str, Any], ...]:
+        """Return the detached canonical records consumed by project persistence."""
+        records = []
+        for assessment in self.read_equipment_configuration_assessments():
+            records.append({
+                "equipment_id": assessment.equipment_id,
+                "equipment_type": assessment.equipment_type,
+                "fields": [
+                    {
+                        "field_name": item.field_name,
+                        "kind": item.kind,
+                        "reason": item.reason,
+                        "workflow": item.workflow,
+                        "status": item.status,
+                    }
+                    for item in assessment.fields
+                ],
+            })
+        return tuple(records)
 
     def _apply_configuration_dispositions(self, created_elements: tuple[Mapping[str, Any], ...], transaction: Any) -> None:
         context = self.project_lifecycle.context
