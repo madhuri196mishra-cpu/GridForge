@@ -21,6 +21,7 @@ def _registry() -> SymbolRegistry:
         reviewed_on="2026-11-03",
         review_reference="review-record:GF-SYMBOL-SLD-001",
         standard_reference="standard-reference:IEEE-reviewed-source",
+        terminal_anchors={"from": (-28, 0), "to": (28, 0)},
     ),))
 
 
@@ -58,6 +59,7 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.metadata["symbol_definition_version"] == "1.0.0"
     assert entity.metadata["symbol_definition_units"] == "mm"
     assert entity.metadata["symbol_review_status"] == "reviewed"
+    assert entity.metadata["symbol_terminal_anchors"] == {"from": (-28.0, 0.0), "to": (28.0, 0.0)}
     assert entity.metadata["symbol_registry_schema_version"] == 1
     assert entity.metadata["symbol_catalogue_version"] == "1.0.0"
     assert entity.metadata["symbol_registry_fingerprint"] == _registry().fingerprint
