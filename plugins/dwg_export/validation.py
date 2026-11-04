@@ -162,6 +162,16 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
                 raise DrawingPlanValidationError(
                     f"Control entity {entity.entity_id} has incomplete coordinate review evidence"
                 )
+            for field in ("world_origin_x_mm", "world_origin_y_mm", "rotation_degrees"):
+                value = provenance.get(field)
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value))
+                ):
+                    raise DrawingPlanValidationError(
+                        f"Control entity {entity.entity_id} has invalid coordinate mapping {field}"
+                    )
             fingerprint = provenance.get("mapping_fingerprint")
             if not isinstance(fingerprint, str) or fingerprint != calculated_fingerprint:
                 raise DrawingPlanValidationError(
