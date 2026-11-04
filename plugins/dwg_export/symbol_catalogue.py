@@ -7,13 +7,14 @@ not certify standards compliance or manufacture symbol geometry.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from datetime import date
 import hashlib
 import json
 import math
 import re
 from urllib.parse import urlsplit
-from typing import Iterable, Mapping
+from typing import Any, Iterable, Mapping
 
 from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile, serialize_drawing_plan
 from .symbol_registry import SymbolDefinition, SymbolRegistry
