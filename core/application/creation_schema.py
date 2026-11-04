@@ -433,11 +433,9 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "in_service": _field_disposition("lifecycle_state", "Service state is governed by explicit lifecycle operations.", "Shunt service lifecycle / UpdateShuntCommand"),
     },
     "line": {
-        "name": _field_disposition("metadata", "Human-facing asset label; not electrical configuration."),
         "conductor_system": _field_disposition("later_configuration", "Typed conductor construction is not a scalar creation parameter.", "Line conductor configuration / UpdateLineCommand"),
     },
     "transformer": {
-        "name": _field_disposition("metadata", "Human-facing asset label; not electrical configuration."),
         "hv_winding_connection": _field_disposition("later_configuration", "Winding connection belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
         "lv_winding_connection": _field_disposition("later_configuration", "Winding connection belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
         "hv_neutral_grounding_impedance_ohm": _field_disposition("later_configuration", "Neutral grounding evidence belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
@@ -465,7 +463,6 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "zero_sequence_two_winding_test_data": _field_disposition("later_configuration", "Two-winding test evidence belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
     },
     "cable": {
-        "name": _field_disposition("metadata", "Human-facing asset label; not electrical configuration."),
         "in_service": _field_disposition("lifecycle_state", "Service state is governed by explicit lifecycle operations.", "Cable service lifecycle / UpdateCableCommand"),
         "conductor_system": _field_disposition("later_configuration", "Typed conductor construction is not a scalar creation parameter.", "Cable conductor configuration / UpdateCableCommand"),
     },
