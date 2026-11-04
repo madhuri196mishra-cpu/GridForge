@@ -17,6 +17,7 @@ from plugins.dwg_export import (
     ControlProjectionDrawingSnapshotAdapter,
     DrawingEntity,
     DrawingPlanFactory,
+    ODAFileConverterBackend,
     SymbolDefinition,
     SymbolProfile,
     SymbolRegistry,
@@ -197,6 +198,17 @@ def test_control_plan_rejects_tampered_transform_provenance() -> None:
     )
     with pytest.raises(DrawingPlanValidationError, match="fingerprint mismatch"):
         DrawingPlanFactory.from_snapshot(tampered)
+
+
+def test_control_coordinate_mapping_is_included_in_backend_manifest() -> None:
+    plan = DrawingPlanFactory.from_snapshot(_capture())
+    manifest = ODAFileConverterBackend._build_export_manifest(
+        plan, _builder()._registry, "ACAD2018",
+    )
+    assert manifest["coordinate_mapping"]["mapping_id"] == "control-site-1"
+    assert manifest["coordinate_mapping"]["source_coordinate_system"] == "control-ladder-local"
+    assert manifest["coordinate_mapping"]["target_coordinate_system"] == "world"
+    assert manifest["coordinate_mapping"]["mapping_fingerprint"] == _transform().fingerprint
 
 
 def test_control_plan_rejects_mixed_mapping_fingerprints() -> None:
