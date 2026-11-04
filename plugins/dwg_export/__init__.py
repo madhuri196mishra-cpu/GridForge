@@ -5,6 +5,9 @@ from .drawing_plan import (
 )
 from .service import DWGExportService, ExportResult
 from .symbol_registry import SymbolDefinition, SymbolRegistry
+from .symbol_catalogue import (
+    SymbolReviewEvidence, build_reviewed_symbol_registry, symbol_geometry_digest,
+)
 from .source_snapshot import ApplicationDrawingSnapshot, DrawingPlanFactory
 from .application_adapter import ApplicationDrawingSnapshotAdapter
 from .sld_projection_adapter import SLDProjectionDrawingSnapshotAdapter
@@ -18,7 +21,8 @@ __all__ = [
     "DrawingEntity", "DrawingPlan", "SymbolProfile", "drawing_plan_to_dict",
     "serialize_drawing_plan", "DWGExportService", "ExportResult",
     "DrawingPlanValidationError", "validate_drawing_plan", "SymbolDefinition",
-    "SymbolRegistry", "ApplicationDrawingSnapshot", "DrawingPlanFactory",
+    "SymbolRegistry", "SymbolReviewEvidence", "build_reviewed_symbol_registry",
+    "symbol_geometry_digest", "ApplicationDrawingSnapshot", "DrawingPlanFactory",
     "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter", "SLDCoordinateTransform",
     "SLDNodeEntityBuilder", "ODAFileConverterBackend",
     "DWGExportConfiguration", "DWGExportPlugin", "PLUGIN_DESCRIPTOR",
