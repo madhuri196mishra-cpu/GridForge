@@ -59,6 +59,20 @@ Persisted symbol instances are represented as INSERT entities. Explicit persiste
 
 The registry has an explicit schema version and catalogue version; each symbol has a semantic definition version. It supports ANSI/IEEE and IEC 60617 profile keys. Definitions are keyed by profile and stable symbol ID, and their CAD block names are stable for a particular definition version. Export resolution rejects unreviewed definitions. A reviewed definition must carry a reviewer, ISO review date, review-evidence reference and standard reference; both references are recorded provenance only and are not authenticated or certified. SLD INSERT metadata records the definition, registry-schema and catalogue versions; the ODA backend rejects a registry whose versions do not match the versions captured by the builder. Review status does not certify conformance to ANSI/IEEE, IEC 60617 or any other standard. No complete catalogue is shipped and no standards-conformance assessment is claimed. Add definitions only after their source geometry and review evidence are supplied.
 
+## Evidence-gated symbol catalogue ingestion
+
+`plugins.dwg_export.symbol_catalogue` provides a CAD-plugin-owned ingestion boundary; it does not import or depend on the UI symbol package. A caller supplies profile-specific `SymbolDefinition` values and matching immutable `SymbolReviewEvidence` records. Each record binds:
+
+- the canonical symbol ID and ANSI/IEEE or IEC 60617 profile;
+- standard authority, identifier, edition and individual symbol reference;
+- an HTTPS source URI and explicit license-review reference;
+- reviewer, ISO review date and review-record identifier; and
+- a SHA-256 digest of the exact local primitive geometry, base point and units.
+
+The builder verifies that evidence and definition agree, rejects geometry drift, duplicate or orphan records, non-canonical IDs, missing provenance and incomplete profile coverage. A complete catalogue requires every supplied canonical ID under both profiles. Partial registries are permitted only when the caller explicitly opts into staged curation; ordinary export still rejects any missing profile/ID pair. The canonical ID inventory is supplied by the caller so the plugin does not create a second authority for SLD equipment identity.
+
+These checks establish traceability and integrity of the supplied records, not the truth of a standard citation, licensing permission, independent engineering approval or standards compliance. The current repository still ships no reviewed profile-specific DWG definitions. Do not populate production catalogue entries with placeholder sources, synthetic review references or copied UI glyphs.
+
 ## ODA configuration and limitations
 
 Pass an explicit executable path when constructing `ODAFileConverterBackend`; it does not resolve an arbitrary executable from PATH. The converter is invoked without a shell and with a bounded timeout. A successful exit alone is insufficient: the expected DWG file and version signature are checked before publication.
