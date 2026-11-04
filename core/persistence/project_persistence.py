@@ -64,6 +64,7 @@ class LoadedProject:
     protection_presentation: Mapping[str, Any] | None = None
     control_signal_mapping: ControlSignalMapping | None = None
     study_cases: tuple[StudyCaseDefinition, ...] = ()
+    configuration_assessments: tuple[Mapping[str, Any], ...] = ()
 
 
 class ProjectPersistenceError(RuntimeError):
@@ -195,6 +196,7 @@ class ProjectPersistenceService:
             draft_network=draft_network,
             protection_presentation=protection_presentation,
             study_cases=study_cases,
+            configuration_assessments=tuple(dict(item) for item in project["configuration_assessments"]),
         )
 
     def save(self, context: ProjectContext, network: Network,
@@ -261,6 +263,11 @@ class ProjectPersistenceService:
             raise ProjectPersistenceError("study_cases contains a definition for a different project.")
         if len({item.study_id for item in study_cases}) != len(study_cases):
             raise ProjectPersistenceError("study_cases contains duplicate study identities.")
+        if not isinstance(configuration_assessments, Sequence) or any(
+            not isinstance(item, Mapping) for item in configuration_assessments
+        ):
+            raise TypeError("configuration_assessments must be a sequence of mappings.")
+        self._validate_configuration_assessments(configuration_assessments)
 
         target = normalize_package_path(path)
         parent = target.parent
@@ -314,6 +321,7 @@ class ProjectPersistenceService:
             "dynamic_models": [item.to_dict() for item in dynamic_models],
             "measurement": {"channels": [dict(item) for item in measurement_definitions]},
             "study_cases": [self._serialize_study_case(item) for item in study_cases],
+            "configuration_assessments": [dict(item) for item in configuration_assessments],
         }
         if protection_configuration is not None:
             project["protection"] = protection_configuration.to_dict()
@@ -659,7 +667,7 @@ class ProjectPersistenceService:
         allowed = {
             "schema", "project", "network", "presentations", "dynamic_models",
             "measurement", "control", "control_signal_mapping", "protection", "protection_presentation",
-            "draft_network", "study_cases",
+            "draft_network", "study_cases", "configuration_assessments",
         }
         unknown = sorted(set(project) - allowed)
         if unknown:
@@ -717,6 +725,50 @@ class ProjectPersistenceService:
         study_cases = project.get("study_cases", [])
         if not isinstance(study_cases, list) or any(not isinstance(item, Mapping) for item in study_cases):
             raise ProjectPersistenceError("Canonical study_cases must be an array of objects.")
+        assessments = project.get("configuration_assessments")
+        if not isinstance(assessments, list) or any(not isinstance(item, Mapping) for item in assessments):
+            raise ProjectPersistenceError("Canonical configuration_assessments must be an array of objects.")
+        ProjectPersistenceService._validate_configuration_assessments(assessments)
+
+    @staticmethod
+    def _validate_configuration_assessments(records: Sequence[Mapping[str, Any]]) -> None:
+        """Validate detached configuration-obligation records without owning their meaning."""
+        seen_equipment: set[str] = set()
+        allowed_statuses = {
+            "PENDING", "RESOLVED", "NOT_APPLICABLE", "PROVISIONAL",
+            "UNAVAILABLE", "REVIEW_REQUIRED",
+        }
+        for record in records:
+            equipment_id = record.get("equipment_id")
+            equipment_type = record.get("equipment_type")
+            fields = record.get("fields")
+            if not isinstance(equipment_id, str) or not equipment_id.strip():
+                raise ProjectPersistenceError("Configuration assessment equipment_id must be non-empty.")
+            if equipment_id in seen_equipment:
+                raise ProjectPersistenceError(f"Duplicate configuration assessment for {equipment_id!r}.")
+            seen_equipment.add(equipment_id)
+            if not isinstance(equipment_type, str) or not equipment_type.strip():
+                raise ProjectPersistenceError(f"Configuration assessment {equipment_id!r} has no equipment_type.")
+            if not isinstance(fields, list) or any(not isinstance(item, Mapping) for item in fields):
+                raise ProjectPersistenceError(f"Configuration assessment {equipment_id!r} fields must be an array of objects.")
+            seen_fields: set[str] = set()
+            for item in fields:
+                field_name = item.get("field_name")
+                kind = item.get("kind")
+                reason = item.get("reason")
+                status = item.get("status")
+                workflow = item.get("workflow")
+                if not isinstance(field_name, str) or not field_name.strip() or field_name in seen_fields:
+                    raise ProjectPersistenceError(f"Configuration assessment {equipment_id!r} has an invalid or duplicate field.")
+                seen_fields.add(field_name)
+                if not isinstance(kind, str) or not kind.strip():
+                    raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has no disposition kind.")
+                if not isinstance(reason, str) or not reason.strip():
+                    raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has no disposition reason.")
+                if status not in allowed_statuses:
+                    raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has an unsupported status.")
+                if workflow is not None and (not isinstance(workflow, str) or not workflow.strip()):
+                    raise ProjectPersistenceError(f"Configuration field {equipment_id!r}.{field_name} has an invalid workflow.")
 
     @staticmethod
     def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = ()) -> None:
