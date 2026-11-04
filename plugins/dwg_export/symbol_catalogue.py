@@ -261,5 +261,7 @@ __all__ = [
     "convert_sld_catalogue_primitives",
     "SymbolCatalogueEntry",
     "assemble_unreviewed_symbol_definitions",
+    "SymbolCatalogueCoverage",
+    "symbol_catalogue_coverage",
     "build_reviewed_symbol_registry",
 ]
