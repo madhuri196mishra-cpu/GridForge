@@ -1650,6 +1650,8 @@ class Application:
         if not isinstance(service, ProjectLifecycleService): raise TypeError("service must be a ProjectLifecycleService.")
         if self._project_lifecycle is not None and self._project_lifecycle is not service: raise RuntimeError("Application project lifecycle is already configured.")
         self._project_lifecycle = service
+        if self._configuration_assessments_project_id is None and service.context is not None:
+            self._configuration_assessments_project_id = service.context.project_id
         if self._configuration_lifecycle_service is not service:
             def activate_configuration_assessments(context: ProjectContext | None, loaded: Any, network: Any, generation: int):
                 del network, generation
