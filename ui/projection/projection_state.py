@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from core.application.read_models import EquipmentConfigurationAssessmentReadModel
+
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
@@ -86,6 +88,7 @@ class ProjectionState:
     endpoint_references: Mapping[str, Any] = field(default_factory=dict)
     validation_state: Mapping[str, Any] = field(default_factory=dict)
     attributes: Mapping[str, Any] = field(default_factory=dict)
+    configuration_assessment: EquipmentConfigurationAssessmentReadModel | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.object_id, str) or not self.object_id:
@@ -107,6 +110,10 @@ class ProjectionState:
         object.__setattr__(self, "endpoint_references", _freeze(self.endpoint_references))
         object.__setattr__(self, "validation_state", _freeze(self.validation_state))
         object.__setattr__(self, "attributes", _freeze(self.attributes))
+        if self.configuration_assessment is not None and not isinstance(
+            self.configuration_assessment, EquipmentConfigurationAssessmentReadModel
+        ):
+            raise TypeError("ProjectionState.configuration_assessment must be an Application configuration assessment or None.")
 
     @classmethod
     def empty(cls, object_id: str, display_type: str) -> "ProjectionState":
