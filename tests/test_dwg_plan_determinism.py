@@ -98,3 +98,32 @@ def test_sld_export_plan_cannot_be_labelled_as_control():
             entities=(), source_kind="sld_export_snapshot",
             source_id="document-1", source_document_id="document-1",
         )
+
+
+def test_control_export_plan_requires_program_identity_and_control_only_type():
+    with pytest.raises(ValueError, match="Control-only"):
+        DrawingPlan(
+            project_id="project", export_id="export", source_revision="revision",
+            symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+            entities=(), source_kind="control_program_read_model",
+            source_id="ladder-main",
+        )
+    with pytest.raises(ValueError, match="program identity"):
+        DrawingPlan(
+            project_id="project", export_id="export", source_revision="revision",
+            symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("control",),
+            entities=(), source_kind="control_program_read_model",
+        )
+
+
+def test_control_export_plan_preserves_program_identity_without_sld_document_identity():
+    plan = DrawingPlan(
+        project_id="project", export_id="export", source_revision="revision",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("control",),
+        entities=(), source_kind="control_program_read_model",
+        source_id="ladder-main",
+    )
+    serialized = json.loads(serialize_drawing_plan(plan))
+    assert serialized["source_kind"] == "control_program_read_model"
+    assert serialized["source_id"] == "ladder-main"
+    assert serialized["source_document_id"] is None
