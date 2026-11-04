@@ -197,7 +197,7 @@ class DraftEquipment:
                 "required_connection_terminals": list(self.required_connection_terminals),
                 "parameter_contract": [dict(x) for x in self.parameter_contract],
                 "conditional_requirements": [dict(x) for x in self.conditional_requirements],
-                "command_field_dispositions": None if self.command_field_dispositions is None else {k: dict(v) for k, v in self.command_field_dispositions.items()}}
+                **({"command_field_dispositions": {k: dict(v) for k, v in self.command_field_dispositions.items()}} if self.command_field_dispositions is not None else {})}
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], *, require_dispositions: bool = False) -> "DraftEquipment":
@@ -513,7 +513,11 @@ class DraftNetwork:
     def restore_snapshot(self, snapshot: Mapping[str, Any]) -> None:
         restored = DraftNetwork.from_dict(snapshot, project_id=self.project_id, activation_generation=self.activation_generation)
         self._equipment = restored._equipment; self._connections = restored._connections; self.validation_state = restored.validation_state
-    def to_dict(self) -> dict[str, Any]: return {"schema": self.SCHEMA, "project_id": self.project_id, "activation_generation": self.activation_generation, "equipment": [x.to_dict() for x in self.equipment], "connections": [x.to_dict() for x in self.connections], "validation_state": deepcopy(self.validation_state)}
+    def to_dict(self) -> dict[str, Any]:
+        # A legacy schema-2 draft may not have trusted disposition metadata.
+        # Keep that absence explicit until commit resolves it from the trusted catalogue.
+        schema = self.SCHEMA if all(item.command_field_dispositions is not None for item in self.equipment) else 2
+        return {"schema": schema, "project_id": self.project_id, "activation_generation": self.activation_generation, "equipment": [x.to_dict() for x in self.equipment], "connections": [x.to_dict() for x in self.connections], "validation_state": deepcopy(self.validation_state)}
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], *, project_id: str, activation_generation: int) -> "DraftNetwork":
