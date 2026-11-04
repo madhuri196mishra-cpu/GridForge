@@ -5,6 +5,7 @@ from PATH implicitly. This backend does not require IngeCAD.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -219,7 +220,7 @@ class ODAFileConverterBackend:
                 _plain_json(mapping), sort_keys=True, separators=(",", ":"),
                 ensure_ascii=False, allow_nan=False,
             )
-            fingerprint = __import__("hashlib").sha256(canonical.encode("utf-8")).hexdigest()
+            fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             mapping_records[fingerprint] = _plain_json(mapping)
             entities_with_mapping += 1
 
@@ -232,9 +233,7 @@ class ODAFileConverterBackend:
 
         mapping_fingerprint = next(iter(mapping_records), None)
         mapping_details = mapping_records.get(mapping_fingerprint) if mapping_fingerprint else None
-        plan_digest = __import__("hashlib").sha256(
-            serialize_drawing_plan(plan).encode("utf-8")
-        ).hexdigest()
+        plan_digest = hashlib.sha256(serialize_drawing_plan(plan).encode("utf-8")).hexdigest()
         return {
             "manifest_schema_version": 1,
             "export_id": plan.export_id,
