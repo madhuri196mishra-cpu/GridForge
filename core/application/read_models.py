@@ -84,6 +84,65 @@ class EngineeringParameterReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfigurationFieldAssessmentReadModel:
+    """Immutable assessment of one catalogue-owned configuration obligation."""
+
+    field_name: str
+    kind: str
+    reason: str
+    workflow: str | None
+    status: str
+
+    def __post_init__(self) -> None:
+        if not self.field_name or not self.kind or not self.reason:
+            raise ValueError("Configuration field assessment requires field, kind and reason.")
+        if self.status not in {
+            "PENDING", "RESOLVED", "NOT_APPLICABLE", "PROVISIONAL",
+            "UNAVAILABLE", "REVIEW_REQUIRED",
+        }:
+            raise ValueError(f"Unsupported configuration field status: {self.status!r}.")
+        if self.workflow is not None and not self.workflow.strip():
+            raise ValueError("Configuration workflow must be non-empty when supplied.")
+
+
+@dataclass(frozen=True, slots=True)
+class EquipmentConfigurationAssessmentReadModel:
+    """Detached Application assessment; engineering values remain owned by Core."""
+
+    equipment_id: str
+    equipment_type: str
+    fields: tuple[ConfigurationFieldAssessmentReadModel, ...]
+    status: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        if not self.equipment_id or not self.equipment_type:
+            raise ValueError("Equipment configuration assessment requires an equipment identity.")
+        fields = tuple(self.fields)
+        if not all(isinstance(item, ConfigurationFieldAssessmentReadModel) for item in fields):
+            raise TypeError("Equipment configuration assessment fields must be typed field assessments.")
+        names = tuple(item.field_name for item in fields)
+        if len(set(names)) != len(names):
+            raise ValueError("Equipment configuration assessment contains duplicate fields.")
+        object.__setattr__(self, "fields", fields)
+        statuses = {item.status for item in fields}
+        if not statuses:
+            status = "REVIEW_REQUIRED"
+        elif "REVIEW_REQUIRED" in statuses:
+            status = "REVIEW_REQUIRED"
+        elif "UNAVAILABLE" in statuses:
+            status = "UNAVAILABLE"
+        elif "PENDING" in statuses:
+            status = "PENDING"
+        elif "PROVISIONAL" in statuses:
+            status = "PROVISIONAL"
+        elif statuses == {"NOT_APPLICABLE"}:
+            status = "NOT_APPLICABLE"
+        else:
+            status = "RESOLVED"
+        object.__setattr__(self, "status", status)
+
+
+@dataclass(frozen=True, slots=True)
 class ElementReadModel:
     """Stable, UI-neutral immutable snapshot of one network element."""
 
@@ -93,6 +152,7 @@ class ElementReadModel:
     connectivity_refs: tuple[str, ...]
     attributes: Mapping[str, Any]
     engineering_parameters: tuple[EngineeringParameterReadModel, ...] = ()
+    configuration_assessment: EquipmentConfigurationAssessmentReadModel | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.object_id, str) or not self.object_id:
@@ -109,6 +169,10 @@ class ElementReadModel:
             raise TypeError("ElementReadModel.engineering_parameters must be a tuple")
         if not all(isinstance(item, EngineeringParameterReadModel) for item in self.engineering_parameters):
             raise TypeError("ElementReadModel.engineering_parameters must contain EngineeringParameterReadModel values")
+        if self.configuration_assessment is not None and not isinstance(
+            self.configuration_assessment, EquipmentConfigurationAssessmentReadModel
+        ):
+            raise TypeError("ElementReadModel.configuration_assessment must be an equipment configuration assessment or None.")
         attributes = dict(self.attributes)
         semantic_type = self.element_type.strip().upper()
         for key in _CANONICAL_ATTRIBUTES.get(semantic_type, ()):
