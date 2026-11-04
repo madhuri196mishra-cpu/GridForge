@@ -79,3 +79,22 @@ def test_serialization_preserves_source_document_provenance():
     assert serialized["source_kind"] == "sld_export_snapshot"
     assert serialized["source_id"] == "document-7"
     assert serialized["source_document_id"] == "document-7"
+
+
+def test_plan_rejects_combined_sld_and_control_drawing_types():
+    with pytest.raises(ValueError, match="exactly one drawing type"):
+        DrawingPlan(
+            project_id="project", export_id="export", source_revision="revision",
+            symbol_profile=SymbolProfile.ANSI_IEEE,
+            drawing_types=("sld", "control"), entities=(),
+        )
+
+
+def test_sld_export_plan_cannot_be_labelled_as_control():
+    with pytest.raises(ValueError, match="SLD-only"):
+        DrawingPlan(
+            project_id="project", export_id="export", source_revision="revision",
+            symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("control",),
+            entities=(), source_kind="sld_export_snapshot",
+            source_id="document-1", source_document_id="document-1",
+        )
