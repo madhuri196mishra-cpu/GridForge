@@ -401,7 +401,7 @@ def validate_creation_contract_metadata(
     # Schema-4 drafts predate disposition preservation and are deliberately
     # accepted with no supplied disposition metadata. When present, however,
     # the serialized draft must match the trusted Application catalogue exactly.
-    if command_field_dispositions:
+    if command_field_dispositions is not None:
         if _plain_contract_value(command_field_dispositions) != _plain_contract_value(
             canonical_contract["command_field_dispositions"]
         ):
