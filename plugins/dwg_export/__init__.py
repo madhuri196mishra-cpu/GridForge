@@ -15,6 +15,7 @@ from .source_snapshot import ApplicationDrawingSnapshot, DrawingPlanFactory
 from .application_adapter import ApplicationDrawingSnapshotAdapter
 from .sld_projection_adapter import SLDProjectionDrawingSnapshotAdapter
 from .control_projection_adapter import ControlProjectionDrawingSnapshotAdapter
+from .control_entity_builder import ControlDrawingEntityBuilder, ControlDrawingLayout
 from .coordinate_transform import SLDCoordinateTransform
 from .sld_entity_builder import SLDNodeEntityBuilder
 from .validation import DrawingPlanValidationError, validate_drawing_plan
@@ -30,7 +31,7 @@ __all__ = [
     "SymbolCatalogueEntry", "assemble_unreviewed_symbol_definitions",
     "SymbolCatalogueCoverage", "symbol_catalogue_coverage",
     "ApplicationDrawingSnapshot", "DrawingPlanFactory",
-    "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter", "ControlProjectionDrawingSnapshotAdapter", "SLDCoordinateTransform",
+    "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter", "ControlProjectionDrawingSnapshotAdapter", "ControlDrawingEntityBuilder", "ControlDrawingLayout", "SLDCoordinateTransform",
     "SLDNodeEntityBuilder", "ODAFileConverterBackend",
     "DWGExportConfiguration", "DWGExportPlugin", "PLUGIN_DESCRIPTOR",
 ]
