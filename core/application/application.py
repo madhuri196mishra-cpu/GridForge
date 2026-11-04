@@ -3561,7 +3561,12 @@ class Application:
         equipment_id_field = None
         equipment_type = None
         resolutions: dict[str, str] = {}
-        if command_type == "model.update_generator":
+        if command_type == "model.update_bus":
+            equipment_id_field, equipment_type = "bus_id", "bus"
+            for field_name in ("voltage_pu", "angle_deg"):
+                if payload.get(field_name) is not None:
+                    resolutions[field_name] = "RESOLVED"
+        elif command_type == "model.update_generator":
             equipment_id_field, equipment_type = "generator_id", "generator"
             if payload.get("q_limits") is not None:
                 resolutions["q_limits"] = "RESOLVED"
@@ -3594,6 +3599,22 @@ class Application:
                 resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_shunt":
             equipment_id_field, equipment_type = "shunt_id", "shunt"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_switch":
+            equipment_id_field, equipment_type = "switch_id", "switch"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_disconnector":
+            equipment_id_field, equipment_type = "disconnector_id", "disconnector"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_fuse":
+            equipment_id_field, equipment_type = "fuse_id", "fuse"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_relay":
+            equipment_id_field, equipment_type = "relay_id", "relay"
             if payload.get("in_service") is not None:
                 resolutions["in_service"] = "RESOLVED"
         elif command_type in {
