@@ -130,7 +130,7 @@ def test_terminal_anchors_are_part_of_reviewed_geometry_digest():
     assert symbol_geometry_digest(first) != symbol_geometry_digest(changed)
 
 def test_catalogue_conversion_requires_explicit_millimetre_source_units():
-    with pytest.raises(ValueError, match="source_units must be explicitly declared as mm"):
+    with pytest.raises(ValueError, match="non-mm input requires a reviewed unit mapping reference"):
         convert_sld_catalogue_primitives(
             "breaker",
             ({"kind": "rect", "x": 0, "y": 0, "width": 2, "height": 3},),
@@ -213,3 +213,18 @@ def test_catalogue_coverage_reports_missing_profile_slots_and_unreviewed_definit
     )
     assert report.unreviewed == (("ansi_ieee", "breaker"),)
     assert report.export_candidate is False
+
+def test_catalogue_converter_scales_line_and_circle_coordinates_to_mm():
+    entities = convert_sld_catalogue_primitives(
+        "transformer",
+        (
+            {"kind": "line", "x1": -2, "y1": 1, "x2": 2, "y2": 1},
+            {"kind": "circle", "cx": 0, "cy": 3, "r": 2},
+        ),
+        source_units="logical-unit",
+        unit_to_mm=2.5,
+        unit_mapping_reference="unit-review:scale-25",
+    )
+    assert entities[0].geometry == {"start": (-5.0, 2.5), "end": (5.0, 2.5)}
+    assert entities[1].geometry == {"center": (0.0, 7.5), "radius": 5.0}
+    assert entities[0].metadata["unit_mapping_reference"] == "unit-review:scale-25"
