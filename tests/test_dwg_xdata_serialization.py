@@ -336,6 +336,14 @@ def test_oda_roundtrip_verifier_checks_manifest_and_entity_xdata(tmp_path, monke
             self.value = value
 
     class _CadEntity:
+        attribs = ()
+
+        def dxftype(self):
+            return "TEXT"
+
+        def dxfattribs(self):
+            return {"layer": "LABEL", "insert": (0.0, 0.0), "height": 2.5, "text": "x"}
+
         def get_xdata(self, appid):
             assert appid == "GRIDFORGE"
             return [
@@ -347,6 +355,9 @@ def test_oda_roundtrip_verifier_checks_manifest_and_entity_xdata(tmp_path, monke
     gridforge_dict = SimpleNamespace(get=lambda key: record if key == "EXPORT_MANIFEST" else None)
     document = SimpleNamespace(
         rootdict=SimpleNamespace(get=lambda key: gridforge_dict if key == "GRIDFORGE" else None),
+        header={"$INSUNITS": 4},
+        layers=(),
+        blocks=(),
         modelspace=lambda: [_CadEntity()],
     )
     fake_ezdxf = SimpleNamespace(
@@ -368,7 +379,7 @@ def test_oda_roundtrip_verifier_checks_manifest_and_entity_xdata(tmp_path, monke
         "plugins.dwg_export.backends.oda_file_converter.subprocess.run", _convert,
     )
     backend._verify_dwg_metadata_roundtrip(
-        generated, tmp_path / "verification", "ACAD2018", plan, digest,
+        generated, tmp_path / "verification", "ACAD2018", plan, digest, document,
     )
 
 
@@ -399,6 +410,14 @@ def test_oda_roundtrip_verifier_rejects_entity_metadata_drift(tmp_path, monkeypa
             self.value = value
 
     class _CadEntity:
+        attribs = ()
+
+        def dxftype(self):
+            return "TEXT"
+
+        def dxfattribs(self):
+            return {"layer": "LABEL", "insert": (0.0, 0.0), "height": 2.5, "text": "x"}
+
         def get_xdata(self, appid):
             return [
                 _Tag(1000, "entity-1"),
@@ -412,6 +431,9 @@ def test_oda_roundtrip_verifier_rejects_entity_metadata_drift(tmp_path, monkeypa
     gridforge_dict = SimpleNamespace(get=lambda key: record if key == "EXPORT_MANIFEST" else None)
     document = SimpleNamespace(
         rootdict=SimpleNamespace(get=lambda key: gridforge_dict if key == "GRIDFORGE" else None),
+        header={"$INSUNITS": 4},
+        layers=(),
+        blocks=(),
         modelspace=lambda: [_CadEntity()],
     )
     monkeypatch.setitem(sys.modules, "ezdxf", SimpleNamespace(
@@ -432,7 +454,7 @@ def test_oda_roundtrip_verifier_rejects_entity_metadata_drift(tmp_path, monkeypa
     )
     with pytest.raises(RuntimeError, match="metadata differs from the drawing plan"):
         backend._verify_dwg_metadata_roundtrip(
-            generated, tmp_path / "verification", "ACAD2018", plan, digest,
+            generated, tmp_path / "verification", "ACAD2018", plan, digest, document,
         )
 
 
@@ -464,6 +486,14 @@ def test_oda_roundtrip_verifier_rejects_manifest_provenance_drift(tmp_path, monk
             self.value = value
 
     class _CadEntity:
+        attribs = ()
+
+        def dxftype(self):
+            return "TEXT"
+
+        def dxfattribs(self):
+            return {"layer": "LABEL", "insert": (0.0, 0.0), "height": 2.5, "text": "x"}
+
         def get_xdata(self, appid):
             return [
                 _Tag(1000, "entity-1"),
@@ -474,6 +504,9 @@ def test_oda_roundtrip_verifier_rejects_manifest_provenance_drift(tmp_path, monk
     gridforge_dict = SimpleNamespace(get=lambda key: record if key == "EXPORT_MANIFEST" else None)
     document = SimpleNamespace(
         rootdict=SimpleNamespace(get=lambda key: gridforge_dict if key == "GRIDFORGE" else None),
+        header={"$INSUNITS": 4},
+        layers=(),
+        blocks=(),
         modelspace=lambda: [_CadEntity()],
     )
     monkeypatch.setitem(sys.modules, "ezdxf", SimpleNamespace(
@@ -494,5 +527,45 @@ def test_oda_roundtrip_verifier_rejects_manifest_provenance_drift(tmp_path, monk
     )
     with pytest.raises(RuntimeError, match="manifest contents do not match"):
         backend._verify_dwg_metadata_roundtrip(
-            generated, tmp_path / "verification", "ACAD2018", plan, digest,
+            generated, tmp_path / "verification", "ACAD2018", plan, digest, document,
         )
+
+
+
+def test_geometry_roundtrip_snapshot_detects_entity_transform_changes():
+    from types import SimpleNamespace
+
+    class _Entity:
+        attribs = ()
+
+        def __init__(self, insert):
+            self.insert = insert
+
+        def dxftype(self):
+            return "INSERT"
+
+        def dxfattribs(self):
+            return {
+                "layer": "SLD_SYMBOLS", "name": "breaker",
+                "insert": self.insert, "xscale": 1.0, "yscale": 1.0,
+                "zscale": 1.0, "rotation": 0.0,
+            }
+
+    def drawing(insert):
+        return SimpleNamespace(
+            header={"$INSUNITS": 4},
+            layers=(),
+            blocks=(),
+            modelspace=lambda: [_Entity(insert)],
+        )
+
+    source = drawing((100.0, 200.0, 0.0))
+    unchanged = drawing((100.0, 200.0, 0.0))
+    changed = drawing((100.0, 201.0, 0.0))
+
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) == (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(unchanged)
+    )
+    assert ODAFileConverterBackend._geometry_roundtrip_snapshot(source) != (
+        ODAFileConverterBackend._geometry_roundtrip_snapshot(changed)
+    )
