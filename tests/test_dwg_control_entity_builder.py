@@ -83,6 +83,13 @@ def test_control_builder_uses_persisted_rung_positions_and_signal_connections() 
 
     assert by_id["control-component:contact-1"].geometry["insert"] == (10.0, 20.0)
     assert by_id["control-component:coil-1"].geometry["insert"] == (210.0, 20.0)
+    component = by_id["control-component:contact-1"]
+    assert component.metadata["symbol_profile"] == SymbolProfile.ANSI_IEEE.value
+    assert component.metadata["symbol_definition_id"] == "control.contact"
+    assert component.metadata["symbol_definition_units"] == "mm"
+    assert component.metadata["symbol_review_status"] == "reviewed"
+    assert component.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
+    assert component.metadata["symbol_registry_fingerprint"] == _registry().fingerprint
     assert by_id["control-rung:rung-1"].geometry == {"start": (10.0, 20.0), "end": (910.0, 20.0)}
     connection = by_id["control-connection:contact-1:out:coil-1:in"]
     assert connection.geometry["points"] == ((18.0, 20.0), (202.0, 20.0))
