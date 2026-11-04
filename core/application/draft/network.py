@@ -121,7 +121,7 @@ class DraftEquipment:
     required_connection_terminals: tuple[str, ...] = ()
     parameter_contract: tuple[Mapping[str, Any], ...] = ()
     conditional_requirements: tuple[Mapping[str, Any], ...] = ()
-    command_field_dispositions: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    command_field_dispositions: Mapping[str, Mapping[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         if not self.draft_id.strip() or not self.equipment_type.strip(): raise ValueError("Draft equipment identity is required.")
@@ -157,8 +157,8 @@ class DraftEquipment:
         object.__setattr__(self, "required_connection_terminals", required_terminals)
         object.__setattr__(self, "parameter_contract", tuple(MappingProxyType(dict(x)) for x in self.parameter_contract))
         object.__setattr__(self, "conditional_requirements", tuple(MappingProxyType(dict(x)) for x in self.conditional_requirements))
-        dispositions = {}
-        for field_name, disposition in self.command_field_dispositions.items():
+        dispositions = None if self.command_field_dispositions is None else {}
+        for field_name, disposition in (self.command_field_dispositions or {}).items():
             if not isinstance(field_name, str) or not field_name.strip() or not isinstance(disposition, Mapping):
                 raise TypeError("Draft command-field dispositions require non-empty field names and mapping values.")
             kind = disposition.get("kind")
@@ -184,7 +184,7 @@ class DraftEquipment:
                 "kind": kind.strip(), "reason": reason.strip(),
                 **({"workflow": workflow.strip()} if isinstance(workflow, str) else {}),
             })
-        object.__setattr__(self, "command_field_dispositions", MappingProxyType(dispositions))
+        object.__setattr__(self, "command_field_dispositions", None if dispositions is None else MappingProxyType(dispositions))
 
     def to_dict(self) -> dict[str, Any]:
         return {"draft_id": self.draft_id, "equipment_type": self.equipment_type, "display_name": self.display_name,
@@ -197,11 +197,17 @@ class DraftEquipment:
                 "required_connection_terminals": list(self.required_connection_terminals),
                 "parameter_contract": [dict(x) for x in self.parameter_contract],
                 "conditional_requirements": [dict(x) for x in self.conditional_requirements],
-                "command_field_dispositions": {k: dict(v) for k, v in self.command_field_dispositions.items()}}
+                "command_field_dispositions": None if self.command_field_dispositions is None else {k: dict(v) for k, v in self.command_field_dispositions.items()}}
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "DraftEquipment":
+    def from_dict(cls, data: Mapping[str, Any], *, require_dispositions: bool = False) -> "DraftEquipment":
         placement = data.get("placement")
+        if require_dispositions and ("command_field_dispositions" not in data or not isinstance(data.get("command_field_dispositions"), Mapping)):
+            raise ValueError("Current DraftEquipment schema requires an explicit command-field disposition mapping.")
+        dispositions = (
+            None if "command_field_dispositions" not in data
+            else data.get("command_field_dispositions")
+        )
         return cls(str(data["draft_id"]), str(data["equipment_type"]), str(data.get("display_name", data["equipment_type"])),
                     tuple(str(x) for x in data.get("terminal_contract", ())), dict(data.get("engineering_data", {})),
                     {k: DraftEndpointReference.from_value(v) for k, v in dict(data.get("endpoints", {})).items()},
@@ -211,7 +217,7 @@ class DraftEquipment:
                     tuple(str(x) for x in data.get("required_connection_terminals", ())),
                     tuple(dict(x) for x in data.get("parameter_contract", ())),
                     tuple(dict(x) for x in data.get("conditional_requirements", ())),
-                    {str(k): dict(v) for k, v in dict(data.get("command_field_dispositions", {})).items()})
+                    None if dispositions is None else {str(k): dict(v) for k, v in dispositions.items()})
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,7 +310,7 @@ class DraftConnection:
 
 
 class DraftNetwork:
-    SCHEMA = 2
+    SCHEMA = 3
     def __init__(self, project_id: str, activation_generation: int):
         if not str(project_id).strip() or int(activation_generation) < 1: raise ValueError("DraftNetwork requires valid project scope.")
         self.project_id = str(project_id); self.activation_generation = int(activation_generation)
@@ -513,8 +519,12 @@ class DraftNetwork:
     def from_dict(cls, data: Mapping[str, Any], *, project_id: str, activation_generation: int) -> "DraftNetwork":
         if data.get("project_id", project_id) != project_id: raise ValueError("DraftNetwork project_id does not match project metadata.")
         if data.get("activation_generation") is not None and int(data["activation_generation"]) > activation_generation: raise ValueError("DraftNetwork generation is newer than active project generation.")
+        schema = data.get("schema", 2)
+        if isinstance(schema, bool) or not isinstance(schema, int) or schema not in {2, cls.SCHEMA}:
+            raise ValueError(f"Unsupported DraftNetwork schema: {schema!r}.")
         draft = cls(project_id, activation_generation)
-        for item in data.get("equipment", ()): draft.add_equipment(DraftEquipment.from_dict(item))
+        for item in data.get("equipment", ()):
+            draft.add_equipment(DraftEquipment.from_dict(item, require_dispositions=schema == cls.SCHEMA))
         for item in data.get("connections", ()): draft.add_connection(DraftConnection.from_dict(item))
         draft.validation_state = dict(data.get("validation_state", {})); return draft
 
