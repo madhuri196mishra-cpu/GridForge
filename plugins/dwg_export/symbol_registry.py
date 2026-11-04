@@ -5,14 +5,14 @@ is not a claim of standards certification or electrical authority.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 import hashlib
 import json
 import math
 import re
 from types import MappingProxyType
-from typing import Iterable
+from typing import Iterable, Mapping
 
 from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile, drawing_plan_to_dict
 
@@ -29,6 +29,7 @@ class SymbolDefinition:
     profile: SymbolProfile
     primitives: tuple[DrawingEntity, ...]
     base_point: tuple[float, float] = (0.0, 0.0)
+    terminal_anchors: Mapping[str, tuple[float, float]] = field(default_factory=dict)
     description: str = ""
     definition_version: str = "1.0.0"
     review_status: str = "unreviewed"
@@ -96,6 +97,26 @@ class SymbolDefinition:
         if any(not math.isfinite(float(v)) for v in point):
             raise ValueError("base_point coordinates must be finite")
         object.__setattr__(self, "base_point", (float(point[0]), float(point[1])))
+        if not isinstance(self.terminal_anchors, Mapping):
+            raise TypeError("terminal_anchors must be a mapping of terminal names to local 2D points")
+        anchors: dict[str, tuple[float, float]] = {}
+        for name, position in self.terminal_anchors.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("terminal anchor names must be non-empty strings")
+            if not isinstance(position, (tuple, list)) or len(position) != 2:
+                raise ValueError(f"terminal anchor {name!r} must be a two-coordinate point")
+            coordinates = []
+            for coordinate in position:
+                if isinstance(coordinate, bool) or not isinstance(coordinate, (int, float)):
+                    raise TypeError(f"terminal anchor {name!r} coordinates must be numeric")
+                normalized = float(coordinate)
+                if not math.isfinite(normalized):
+                    raise ValueError(f"terminal anchor {name!r} coordinates must be finite")
+                coordinates.append(normalized)
+            anchors[name.strip()] = (coordinates[0], coordinates[1])
+        if len(anchors) != len(self.terminal_anchors):
+            raise ValueError("terminal anchor names must be unique after normalization")
+        object.__setattr__(self, "terminal_anchors", MappingProxyType(anchors))
         if not isinstance(self.description, str):
             raise TypeError("description must be a string")
 
@@ -169,6 +190,10 @@ class SymbolRegistry:
                 "standard_reference": definition.standard_reference,
                 "description": definition.description,
                 "base_point": list(definition.base_point),
+                "terminal_anchors": {
+                    name: list(definition.terminal_anchors[name])
+                    for name in sorted(definition.terminal_anchors)
+                },
                 "units": definition.units,
                 "drawing_plan": drawing_plan_to_dict(plan),
             })
