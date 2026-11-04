@@ -516,7 +516,7 @@ class ODAFileConverterBackend:
             doc.header["$INSUNITS"] = 4
             doc.header["$PROJECTNAME"] = plan.project_id[:255]
             artifact_manifest = self._build_export_manifest(plan, self._symbols, version)
-            self._attach_export_manifest(doc, artifact_manifest)
+            manifest_digest = self._attach_export_manifest(doc, artifact_manifest)
             defined_blocks: set[str] = set()
             for entity in plan.entities:
                 if entity.layer not in doc.layers:
@@ -540,11 +540,7 @@ class ODAFileConverterBackend:
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
             self._verify_dwg_metadata_roundtrip(
-                generated, root, version, plan, self._attach_export_manifest.__name__ and
-                hashlib.sha256(json.dumps(
-                    _plain_json(artifact_manifest), sort_keys=True, separators=(",", ":"),
-                    ensure_ascii=False, allow_nan=False,
-                ).encode("utf-8")).hexdigest(),
+                generated, root, version, plan, manifest_digest,
             )
             self._publish_atomically(generated, destination)
         return ExportResult(
