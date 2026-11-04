@@ -102,6 +102,7 @@ def test_rectangle_primitive_becomes_closed_polyline_without_geometry_drift():
     entities = convert_sld_catalogue_primitives(
         "breaker",
         ({"kind": "rect", "x": -10, "y": -9, "width": 20, "height": 18},),
+        source_units="mm",
     )
     assert len(entities) == 1
     assert entities[0].kind == "LWPOLYLINE"
@@ -112,7 +113,7 @@ def test_rectangle_primitive_becomes_closed_polyline_without_geometry_drift():
 
 def test_catalogue_conversion_rejects_unsupported_or_ambiguous_primitive():
     with pytest.raises(ValueError, match="unsupported SLD catalogue primitive"):
-        convert_sld_catalogue_primitives("relay", ({"kind": "bezier", "points": []},))
+        convert_sld_catalogue_primitives("relay", ({"kind": "bezier", "points": []},), source_units="mm")
 
 
 def test_terminal_anchors_are_part_of_reviewed_geometry_digest():
