@@ -170,8 +170,16 @@ class ODAFileConverterBackend:
         )
 
     @staticmethod
-    def _utf8_xdata_chunks(payload: str, *, max_bytes: int = 240) -> list[str]:
-        """Split metadata on Unicode character boundaries under DXF's byte limit."""
+    def _utf8_xdata_chunks(
+        payload: str, *, max_bytes: int = 240, max_total_bytes: int = 15000,
+    ) -> list[str]:
+        """Split XDATA strings safely and reject payloads near the 16 KB entity limit."""
+        encoded_size = len(payload.encode("utf-8"))
+        if encoded_size > max_total_bytes:
+            raise ValueError(
+                "Entity metadata exceeds the safe 15,000-byte GRIDFORGE XDATA payload limit; "
+                "move large data to a drawing-level XRECORD"
+            )
         chunks: list[str] = []
         current: list[str] = []
         current_bytes = 0
@@ -188,6 +196,33 @@ class ODAFileConverterBackend:
         if current:
             chunks.append("".join(current))
         return chunks or ["{}"]
+
+    @staticmethod
+    def _xrecord_chunks(payload: str, *, max_chars: int = 2000) -> list[str]:
+        """Split JSON into DXF XRECORD string tags without splitting Unicode characters."""
+        if max_chars < 1:
+            raise ValueError("max_chars must be positive")
+        return [
+            payload[index:index + max_chars]
+            for index in range(0, len(payload), max_chars)
+        ] or ["{}"]
+
+    @staticmethod
+    def _attach_export_manifest(doc: Any, artifact_manifest: Mapping[str, Any]) -> str:
+        """Persist one drawing-level manifest in the root dictionary, including empty plans."""
+        if not hasattr(doc, "rootdict"):
+            raise TypeError("DXF document must expose rootdict for drawing-level provenance")
+        payload = json.dumps(
+            _plain_json(artifact_manifest), sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        )
+        manifest_digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        gridforge_dict = doc.rootdict.get_required_dict("GRIDFORGE")
+        if "EXPORT_MANIFEST" in gridforge_dict:
+            raise ValueError("DXF document already contains a GRIDFORGE export manifest")
+        record = gridforge_dict.add_xrecord("EXPORT_MANIFEST")
+        record.extend([(1, chunk) for chunk in ODAFileConverterBackend._xrecord_chunks(payload)])
+        return manifest_digest
 
     @staticmethod
     def _build_export_manifest(
@@ -294,12 +329,22 @@ class ODAFileConverterBackend:
                     metadata[field_name] = expected
         if artifact_manifest is not None:
             manifest = _plain_json(artifact_manifest)
-            existing_manifest = metadata.get("gridforge_export_manifest")
+            canonical_manifest = json.dumps(
+                manifest, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False, allow_nan=False,
+            )
+            manifest_digest = hashlib.sha256(canonical_manifest.encode("utf-8")).hexdigest()
+            existing_manifest = metadata.pop("gridforge_export_manifest", None)
             if existing_manifest is not None and existing_manifest != manifest:
                 raise ValueError(
                     f"Entity {entity.entity_id!r} metadata conflicts with export manifest"
                 )
-            metadata["gridforge_export_manifest"] = manifest
+            existing_digest = metadata.get("gridforge_export_manifest_sha256")
+            if existing_digest is not None and existing_digest != manifest_digest:
+                raise ValueError(
+                    f"Entity {entity.entity_id!r} metadata conflicts with export manifest digest"
+                )
+            metadata["gridforge_export_manifest_sha256"] = manifest_digest
         payload = json.dumps(_plain_json(metadata), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
@@ -365,6 +410,7 @@ class ODAFileConverterBackend:
             doc.header["$INSUNITS"] = 4
             doc.header["$PROJECTNAME"] = plan.project_id[:255]
             artifact_manifest = self._build_export_manifest(plan, self._symbols, version)
+            self._attach_export_manifest(doc, artifact_manifest)
             defined_blocks: set[str] = set()
             for entity in plan.entities:
                 if entity.layer not in doc.layers:
