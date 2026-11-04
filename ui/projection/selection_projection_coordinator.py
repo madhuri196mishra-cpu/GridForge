@@ -250,6 +250,7 @@ class SelectionProjectionCoordinator:
             connectivity_refs=tuple(element.connectivity_refs),
             status=self._status(element.attributes),
             identity_kind="element",
+            configuration_assessment=element.configuration_assessment,
             engineering_parameters=tuple(
                 EngineeringParameterState(
                     parameter_id=item.parameter_id,
