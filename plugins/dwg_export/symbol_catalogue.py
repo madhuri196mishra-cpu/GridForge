@@ -94,7 +94,10 @@ def symbol_geometry_digest(definition: SymbolDefinition) -> str:
     envelope = (
         f"{definition.units}|{definition.base_point[0]:.17g}|"
         f"{definition.base_point[1]:.17g}|"
-    ).encode("ascii") + anchors + b"|" + payload
+    ).encode("ascii") + (
+        f"{definition.source_units}|{definition.unit_to_mm:.17g}|"
+        f"{definition.unit_mapping_reference or ''}|"
+    ).encode("utf-8") + anchors + b"|" + payload
     return hashlib.sha256(envelope).hexdigest()
 
 
