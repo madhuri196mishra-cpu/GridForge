@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from core.application.sld_export_snapshot import SLDExportSnapshot
+from core.application.sld_export_snapshot import (
+    SLDAnnotationExportSnapshot, SLDExportSnapshot, SLDNodeExportSnapshot,
+    SLDSymbolPlacementSnapshot,
+)
 from plugins.dwg_export import (
     DrawingEntity, SLDCoordinateTransform, SLDProjectionDrawingSnapshotAdapter,
     SymbolProfile,
@@ -336,10 +339,5 @@ def test_adapter_composes_directly_with_sld_node_entity_builder() -> None:
     ],
 )
 def test_sld_snapshot_numeric_fields_reject_booleans(factory, field) -> None:
-    from core.application.sld_export_snapshot import (
-        SLDAnnotationExportSnapshot, SLDNodeExportSnapshot,
-        SLDSymbolPlacementSnapshot,
-    )
-
     with pytest.raises(TypeError, match="real number"):
         factory(True)
