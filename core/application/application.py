@@ -57,7 +57,11 @@ from .events import (
 from .project import ProjectContext, ProjectSnapshot
 from .project_lifecycle import ProjectLifecycleService
 from .project_transition import ProjectTransitionDecision, ProjectTransitionRequired
-from .read_models import ElementReadModel, NetworkReadModel, ProtectionReadModel, RelayReadModel, SimpleWireReadModel
+from .read_models import (
+    ConfigurationFieldAssessmentReadModel, ElementReadModel,
+    EquipmentConfigurationAssessmentReadModel, NetworkReadModel,
+    ProtectionReadModel, RelayReadModel, SimpleWireReadModel,
+)
 from .read_service import ProtectionReadService, ReadService, StudyReadService
 from .results import ApplicationResult
 from core.persistence.network_serializer import deserialize_network, serialize_network
@@ -133,6 +137,9 @@ class Application:
         self._event_bus = event_bus if event_bus is not None else ApplicationEventBus()
         self._project_lifecycle: ProjectLifecycleService | None = None
         self._measurement_lifecycle_service: ProjectLifecycleService | None = None
+        self._configuration_lifecycle_service: ProjectLifecycleService | None = None
+        self._configuration_assessments_project_id: str | None = None
+        self._equipment_configuration_assessments: dict[str, EquipmentConfigurationAssessmentReadModel] = {}
         self._workspace_dirty_provider: Callable[[], bool] | None = None
         self._draft_network: Any | None = None
         self._execution_lock = RLock()
@@ -1643,6 +1650,35 @@ class Application:
         if not isinstance(service, ProjectLifecycleService): raise TypeError("service must be a ProjectLifecycleService.")
         if self._project_lifecycle is not None and self._project_lifecycle is not service: raise RuntimeError("Application project lifecycle is already configured.")
         self._project_lifecycle = service
+        if self._configuration_lifecycle_service is not service:
+            def activate_configuration_assessments(context: ProjectContext | None, loaded: Any, network: Any, generation: int):
+                del network, generation
+                previous_project_id = self._configuration_assessments_project_id
+                previous_assessments = self._equipment_configuration_assessments
+                persisted = (
+                    getattr(loaded, "configuration_assessments", None)
+                    if context is not None and loaded is not None else None
+                )
+                if persisted is None:
+                    candidate = {}
+                elif isinstance(persisted, Mapping) and all(
+                    isinstance(value, EquipmentConfigurationAssessmentReadModel)
+                    for value in persisted.values()
+                ):
+                    candidate = dict(persisted)
+                else:
+                    raise TypeError("Loaded configuration assessments must be a mapping of typed Application read models.")
+                self._configuration_assessments_project_id = context.project_id if context is not None else None
+                self._equipment_configuration_assessments = candidate
+
+                def rollback_configuration_assessments() -> None:
+                    self._configuration_assessments_project_id = previous_project_id
+                    self._equipment_configuration_assessments = previous_assessments
+
+                return rollback_configuration_assessments
+
+            service.compose_project_state_activator(activate_configuration_assessments)
+            self._configuration_lifecycle_service = service
         if self._measurement_lifecycle_service is not service and self._measurement_channel_service is not None:
             measurement_service = self._measurement_channel_service
 
@@ -2565,6 +2601,10 @@ class Application:
                 )
             return
         if command_type == "network.commit_draft":
+            self._apply_configuration_dispositions(
+                tuple(result.metadata.get("created_elements", ())),
+                transaction,
+            )
             if self._sld_service is not None:
                 # Draft presentation is authoring state. A successful commit
                 # receives one deterministic projection identity per Core
@@ -2655,6 +2695,11 @@ class Application:
                         transaction,
                     )
             return
+
+        if command_type.startswith("model.") and self._action_from_command_type(command_type) == "delete":
+            element_id = self._element_id(command)
+            if element_id is not None:
+                self._remove_configuration_assessment(element_id, transaction)
 
         if self._sld_service is None:
             return
@@ -3342,7 +3387,106 @@ class Application:
     def read_network(self) -> NetworkReadModel:
         self._require_read_service(); return self._read_service.network()  # type: ignore[union-attr]
     def read_element(self, element_type: str, object_id: str) -> ElementReadModel:
-        self._require_read_service(); return self._read_service.element(element_type, object_id)  # type: ignore[union-attr]
+        self._require_read_service()
+        model = self._read_service.element(element_type, object_id)  # type: ignore[union-attr]
+        assessment = (
+            self._equipment_configuration_assessments.get(object_id)
+            if self._configuration_assessments_project_id == self.project_lifecycle.context.project_id
+            and self.project_lifecycle.context is not None
+            else None
+        )
+        return replace(model, configuration_assessment=assessment)
+
+    def read_equipment_configuration_assessment(
+        self, equipment_id: str
+    ) -> EquipmentConfigurationAssessmentReadModel:
+        """Return the Application-owned configuration obligation assessment."""
+        context = self.project_lifecycle.context
+        if context is None or self._configuration_assessments_project_id != context.project_id:
+            raise RuntimeError("Equipment configuration assessments are unavailable without the active project scope.")
+        try:
+            return self._equipment_configuration_assessments[equipment_id]
+        except KeyError as exc:
+            raise KeyError(f"No configuration assessment is recorded for equipment {equipment_id!r}.") from exc
+
+    def read_equipment_configuration_assessments(
+        self,
+    ) -> tuple[EquipmentConfigurationAssessmentReadModel, ...]:
+        """Return detached assessments for all equipment with a recorded creation contract."""
+        context = self.project_lifecycle.context
+        if context is None or self._configuration_assessments_project_id != context.project_id:
+            return ()
+        return tuple(self._equipment_configuration_assessments[key] for key in sorted(self._equipment_configuration_assessments))
+
+    def _apply_configuration_dispositions(self, created_elements: tuple[Mapping[str, Any], ...], transaction: Any) -> None:
+        context = self.project_lifecycle.context
+        if context is None:
+            raise RuntimeError("Cannot record equipment configuration obligations without an active project.")
+        if self._configuration_assessments_project_id not in (None, context.project_id):
+            raise RuntimeError("Equipment configuration assessments belong to a different active project.")
+        next_assessments = dict(self._equipment_configuration_assessments)
+        for item in created_elements:
+            equipment_id = str(item.get("core_id") or "").strip()
+            equipment_type = str(item.get("element_type") or "").strip().lower()
+            dispositions = item.get("configuration_dispositions")
+            if not equipment_id or not equipment_type or not isinstance(dispositions, Mapping):
+                raise ValueError("Committed equipment is missing its trusted configuration disposition contract.")
+            fields = []
+            for field_name, disposition in sorted(dispositions.items(), key=lambda pair: str(pair[0])):
+                if not isinstance(disposition, Mapping):
+                    raise TypeError(f"Configuration disposition for {field_name!r} must be a mapping.")
+                kind = str(disposition.get("kind") or "")
+                reason = str(disposition.get("reason") or "")
+                workflow = disposition.get("workflow")
+                if kind == "metadata":
+                    status = "RESOLVED"
+                elif kind == "not_applicable":
+                    status = "NOT_APPLICABLE"
+                elif kind == "provisional_default":
+                    status = "PROVISIONAL"
+                else:
+                    status = "PENDING"
+                fields.append(ConfigurationFieldAssessmentReadModel(
+                    field_name=str(field_name),
+                    kind=kind,
+                    reason=reason,
+                    workflow=str(workflow) if workflow is not None else None,
+                    status=status,
+                ))
+            if equipment_id in next_assessments:
+                raise ValueError(f"Configuration assessment already exists for equipment {equipment_id!r}.")
+            next_assessments[equipment_id] = EquipmentConfigurationAssessmentReadModel(
+                equipment_id=equipment_id,
+                equipment_type=equipment_type,
+                fields=tuple(fields),
+            )
+        previous_project_id = self._configuration_assessments_project_id
+        previous_assessments = self._equipment_configuration_assessments
+        transaction.record_undo(
+            lambda project_id=previous_project_id, assessments=previous_assessments: self._restore_configuration_assessments(project_id, assessments)
+        )
+        self._configuration_assessments_project_id = context.project_id
+        self._equipment_configuration_assessments = next_assessments
+
+    def _remove_configuration_assessment(self, equipment_id: str, transaction: Any) -> None:
+        if equipment_id not in self._equipment_configuration_assessments:
+            return
+        previous_project_id = self._configuration_assessments_project_id
+        previous_assessments = self._equipment_configuration_assessments
+        next_assessments = dict(previous_assessments)
+        next_assessments.pop(equipment_id, None)
+        transaction.record_undo(
+            lambda project_id=previous_project_id, assessments=previous_assessments: self._restore_configuration_assessments(project_id, assessments)
+        )
+        self._equipment_configuration_assessments = next_assessments
+
+    def _restore_configuration_assessments(
+        self,
+        project_id: str | None,
+        assessments: dict[str, EquipmentConfigurationAssessmentReadModel],
+    ) -> None:
+        self._configuration_assessments_project_id = project_id
+        self._equipment_configuration_assessments = assessments
     def read_simple_wire(self, connection_id: str) -> SimpleWireReadModel:
         network = self.read_network()
         for connection in network.simple_wires:
