@@ -103,6 +103,7 @@ def convert_sld_catalogue_primitives(
     symbol_id: str,
     primitives: Iterable[Mapping[str, Any]],
     *,
+    source_units: str,
     layer: str = "SYMBOL",
 ) -> tuple[DrawingEntity, ...]:
     """Convert detached SLD primitive mappings to CAD-neutral entities.
@@ -113,6 +114,8 @@ def convert_sld_catalogue_primitives(
     """
     if not isinstance(symbol_id, str) or not _SYMBOL_REFERENCE.fullmatch(symbol_id):
         raise ValueError("symbol_id must be a stable canonical identifier")
+    if not isinstance(source_units, str) or source_units.strip() != "mm":
+        raise ValueError("source_units must be explicitly declared as mm; logical SLD units need a reviewed conversion first")
     if not isinstance(layer, str) or not layer.strip():
         raise ValueError("layer must be a non-empty CAD layer name")
     converted = []
@@ -150,21 +153,6 @@ def convert_sld_catalogue_primitives(
             }
             entity_kind = "LWPOLYLINE"
             metadata["source_rectangle"] = {"x": x, "y": y, "width": width, "height": height}
-        elif normalized == "text":
-            if set(source) != {"kind", "x", "y", "width", "height", "text"}:
-                raise ValueError(f"text primitive {index} has unsupported or missing fields")
-            x, y, width, height = (source[key] for key in ("x", "y", "width", "height"))
-            value = source["text"]
-            if not isinstance(value, str):
-                raise TypeError(f"text primitive {index} text must be a string")
-            values = (x, y, width, height)
-            if any(isinstance(number, bool) or not isinstance(number, (int, float)) for number in values):
-                raise TypeError(f"text primitive {index} bounds must be numeric")
-            if not all(math.isfinite(float(number)) for number in values) or width <= 0 or height <= 0:
-                raise ValueError(f"text primitive {index} bounds must be finite with positive dimensions")
-            geometry = {"insert": (x, y), "text": value, "height": height}
-            entity_kind = "TEXT"
-            metadata["source_text_bounds"] = {"x": x, "y": y, "width": width, "height": height}
         else:
             raise ValueError(f"unsupported SLD catalogue primitive kind: {kind!r}")
         converted.append(DrawingEntity(entity_id, entity_kind, layer.strip(), geometry, metadata))
