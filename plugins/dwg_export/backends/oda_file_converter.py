@@ -216,6 +216,16 @@ class ODAFileConverterBackend:
                     f"Entity {entity.entity_id!r} has incomplete coordinate transform provenance: "
                     f"{', '.join(sorted(missing))}"
                 )
+            if (
+                mapping["target_coordinate_system"] != plan.coordinate_system
+                or mapping["target_units"] != plan.units
+                or mapping["target_coordinate_system"] != "world"
+                or mapping["target_units"] != "mm"
+            ):
+                raise ValueError(
+                    f"Entity {entity.entity_id!r} coordinate mapping target does not match "
+                    "the drawing plan's world/mm declaration"
+                )
             canonical = json.dumps(
                 _plain_json(mapping), sort_keys=True, separators=(",", ":"),
                 ensure_ascii=False, allow_nan=False,
