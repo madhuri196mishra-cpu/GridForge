@@ -250,3 +250,63 @@ def test_snapshot_capture_detaches_typed_transformer_read_values() -> None:
         ({"real": 1.0, "imag": 2.0}, {"real": 0.0, "imag": 0.0}),
         ({"real": 0.0, "imag": 0.0}, {"real": 3.0, "imag": -4.0}),
     )
+
+
+
+def test_adapter_composes_directly_with_sld_node_entity_builder() -> None:
+    from core.application.sld_export_snapshot import (
+        SLDNodeExportSnapshot, SLDSymbolPlacementSnapshot,
+    )
+    from plugins.dwg_export import (
+        SLDNodeEntityBuilder, SymbolDefinition, SymbolRegistry,
+    )
+
+    definition = SymbolDefinition(
+        symbol_id="breaker",
+        profile=SymbolProfile.ANSI_IEEE,
+        primitives=(
+            DrawingEntity(
+                "body", "LINE", "SYMBOL",
+                {"start": (-1, 0), "end": (1, 0)}, {},
+            ),
+        ),
+        review_status="reviewed",
+        reviewer="engineering-review",
+        reviewed_on="2026-11-03",
+        review_reference="review:DWG-SYMBOL-001",
+        standard_reference="standard-reference:IEEE-reviewed-source",
+    )
+    registry = SymbolRegistry((definition,))
+    node = SLDNodeExportSnapshot(
+        node_id="node-1",
+        equipment_id="equipment-1",
+        x=1.0,
+        y=2.0,
+        properties={},
+        symbol=SLDSymbolPlacementSnapshot(
+            symbol_instance_id="instance-1",
+            symbol_definition_id="breaker",
+            representation_id="symbol",
+            visible=True,
+            scale=1.5,
+            rotation_degrees=0.0,
+        ),
+    )
+    snapshot = SLDExportSnapshot(
+        project_id="project-1",
+        document_id="document-1",
+        source_revision="revision-42",
+        nodes=(node,),
+        connections=(),
+    )
+
+    result = SLDProjectionDrawingSnapshotAdapter().capture(
+        snapshot,
+        coordinate_transform=_mapping(),
+        entity_builder=SLDNodeEntityBuilder(registry).build,
+    )
+
+    assert len(result.entities) == 1
+    assert result.entities[0].kind == "INSERT"
+    assert result.entities[0].geometry["insert"] == pytest.approx((996.0, 2002.0))
+    assert result.entities[0].geometry["scale"] == pytest.approx(3.0)
