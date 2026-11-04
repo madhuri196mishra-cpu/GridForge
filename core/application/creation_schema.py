@@ -402,21 +402,6 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "z1_pu": _field_disposition("later_configuration", "Complex sequence impedance is not represented by the scalar creation schema.", "Grid sequence-impedance configuration / UpdateGridCommand"),
         "z2_pu": _field_disposition("later_configuration", "Complex sequence impedance is not represented by the scalar creation schema.", "Grid sequence-impedance configuration / UpdateGridCommand"),
         "z0_pu": _field_disposition("later_configuration", "Complex sequence impedance is not represented by the scalar creation schema.", "Grid sequence-impedance configuration / UpdateGridCommand"),
-        "impedance_base_mva": _field_disposition(
-            "later_configuration",
-            "The impedance base is engineering configuration coupled to sequence-impedance data, not an independent creation default.",
-            "Grid sequence-impedance configuration / UpdateGridCommand",
-        ),
-        "impedance_base_voltage_kv": _field_disposition(
-            "later_configuration",
-            "The impedance base voltage must be declared with its sequence-impedance reference; it is not inferred from nominal voltage.",
-            "Grid sequence-impedance configuration / UpdateGridCommand",
-        ),
-        "neutral_grounding_impedance_ohm": _field_disposition(
-            "later_configuration",
-            "Neutral grounding impedance requires the explicit physical neutral terminal and ground-electrode topology; scalar source creation cannot establish that topology.",
-            "Grid neutral-grounding configuration / physical N terminal and GROUND_ELECTRODE connection",
-        ),
         "in_service": _field_disposition("lifecycle_state", "Service state is governed by explicit lifecycle operations.", "Put/Take Grid In Service commands"),
     },
     "generator": {
@@ -433,9 +418,11 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "in_service": _field_disposition("lifecycle_state", "Service state is governed by explicit lifecycle operations.", "Shunt service lifecycle / UpdateShuntCommand"),
     },
     "line": {
+        "name": _field_disposition("metadata", "Human-facing asset label; not electrical configuration."),
         "conductor_system": _field_disposition("later_configuration", "Typed conductor construction is not a scalar creation parameter.", "Line conductor configuration / UpdateLineCommand"),
     },
     "transformer": {
+        "name": _field_disposition("metadata", "Human-facing asset label; not electrical configuration."),
         "hv_winding_connection": _field_disposition("later_configuration", "Winding connection belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
         "lv_winding_connection": _field_disposition("later_configuration", "Winding connection belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
         "hv_neutral_grounding_impedance_ohm": _field_disposition("later_configuration", "Neutral grounding evidence belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
@@ -463,6 +450,7 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "zero_sequence_two_winding_test_data": _field_disposition("later_configuration", "Two-winding test evidence belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
     },
     "cable": {
+        "name": _field_disposition("metadata", "Human-facing asset label; not electrical configuration."),
         "in_service": _field_disposition("lifecycle_state", "Service state is governed by explicit lifecycle operations.", "Cable service lifecycle / UpdateCableCommand"),
         "conductor_system": _field_disposition("later_configuration", "Typed conductor construction is not a scalar creation parameter.", "Cable conductor configuration / UpdateCableCommand"),
     },
@@ -698,6 +686,8 @@ def creation_definition_for(
             _p("voltage_kv", unit="kV", required=True, minimum=0.0),
             _p("current_a", unit="A", required=True, minimum=0.0),
             _p("interrupting_ka", unit="kA", required=True, minimum=0.0),
+            _p("closed", "Closed", "bool", default=True),
+            _p("in_service", "In service", "bool", default=True),
         ), "model.create_breaker", "breaker_id", topology=switching_topology, endpoint_mapping=switching_endpoints, terminal_names=_BUILTIN_TERMINAL_NAMES["breaker"]),
         "disconnector": _definition("disconnector", "disconnector", (
             _p("voltage_kv", unit="kV", required=True, minimum=0.0),
