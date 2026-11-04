@@ -88,6 +88,12 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
         raise DrawingPlanValidationError(f"Unsupported drawing plan schema: {plan.schema_version}")
     if not plan.coordinate_system.strip() or not plan.units.strip():
         raise DrawingPlanValidationError("Drawing plan must declare coordinate_system and units")
+    if plan.source_kind == "sld_export_snapshot" and (
+        plan.coordinate_system != "world" or plan.units != "mm"
+    ):
+        raise DrawingPlanValidationError(
+            "SLD export plans must contain transformed world-coordinate geometry in millimetres"
+        )
 
     seen: set[str] = set()
     for entity in plan.entities:
