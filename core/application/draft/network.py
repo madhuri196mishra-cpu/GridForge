@@ -163,9 +163,21 @@ class DraftEquipment:
                 raise TypeError("Draft command-field dispositions require non-empty field names and mapping values.")
             kind = disposition.get("kind")
             reason = disposition.get("reason")
-            if not isinstance(kind, str) or not kind.strip() or not isinstance(reason, str) or not reason.strip():
-                raise ValueError(f"Draft command-field disposition {field_name!r} requires kind and reason.")
+            allowed_kinds = {
+                "metadata", "operating_point", "later_configuration",
+                "lifecycle_state", "operational_state", "measurement_association",
+                "provisional_default", "not_applicable",
+            }
+            if not isinstance(kind, str) or kind not in allowed_kinds:
+                raise ValueError(f"Draft command-field disposition {field_name!r} has an unsupported kind.")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(f"Draft command-field disposition {field_name!r} requires a reason.")
             workflow = disposition.get("workflow")
+            if kind in {
+                "operating_point", "later_configuration", "lifecycle_state",
+                "operational_state", "measurement_association",
+            } and (not isinstance(workflow, str) or not workflow.strip()):
+                raise ValueError(f"Draft command-field disposition {field_name!r} requires its canonical workflow.")
             if workflow is not None and (not isinstance(workflow, str) or not workflow.strip()):
                 raise ValueError(f"Draft command-field disposition {field_name!r} has an invalid workflow.")
             dispositions[field_name.strip()] = MappingProxyType({
