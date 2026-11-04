@@ -12,6 +12,7 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 from typing import Any
 
@@ -365,6 +366,95 @@ class ODAFileConverterBackend:
         chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
 
+    def _verify_dwg_metadata_roundtrip(
+        self,
+        generated_dwg: Path,
+        verification_root: Path,
+        target_version: str,
+        plan: DrawingPlan,
+        manifest_digest: str,
+    ) -> None:
+        """Re-open ODA's DWG as DXF and verify manifest and entity XDATA survived."""
+        source_dir = verification_root / "roundtrip-source"
+        output_dir = verification_root / "roundtrip-output"
+        source_dir.mkdir()
+        output_dir.mkdir()
+        source_dwg = source_dir / generated_dwg.name
+        shutil.copy2(generated_dwg, source_dwg)
+        command = [
+            str(self._executable), str(source_dir), str(output_dir),
+            target_version, "DXF", "0", "0", "*.dwg",
+        ]
+        completed = subprocess.run(
+            command, check=False, capture_output=True, text=True,
+            timeout=self._timeout, shell=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "no converter diagnostic")[-2000:]
+            raise RuntimeError(
+                f"ODA DWG-to-DXF metadata verification failed ({completed.returncode}): {detail}"
+            )
+        roundtrip_dxf = output_dir / f"{generated_dwg.stem}.dxf"
+        if not roundtrip_dxf.is_file() or roundtrip_dxf.stat().st_size == 0:
+            raise RuntimeError("ODA did not produce the DXF required for DWG metadata verification")
+        try:
+            import ezdxf
+        except ImportError as exc:
+            raise RuntimeError("DWG metadata verification requires ezdxf") from exc
+        document = ezdxf.readfile(roundtrip_dxf)
+        gridforge_dict = document.rootdict.get("GRIDFORGE")
+        if gridforge_dict is None:
+            raise RuntimeError("Converted DWG lost the GRIDFORGE root dictionary")
+        manifest_record = gridforge_dict.get("EXPORT_MANIFEST")
+        if manifest_record is None:
+            raise RuntimeError("Converted DWG lost the GRIDFORGE export manifest XRECORD")
+        manifest_payload = "".join(
+            str(tag.value) for tag in manifest_record.tags if tag.code == 1
+        )
+        if not manifest_payload:
+            raise RuntimeError("Converted DWG export manifest XRECORD is empty")
+        actual_digest = hashlib.sha256(manifest_payload.encode("utf-8")).hexdigest()
+        if actual_digest != manifest_digest:
+            raise RuntimeError("Converted DWG export manifest XRECORD digest mismatch")
+        try:
+            manifest = json.loads(manifest_payload)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Converted DWG export manifest is not valid JSON") from exc
+        if manifest.get("entity_count") != len(plan.entities):
+            raise RuntimeError("Converted DWG manifest entity count does not match the drawing plan")
+        expected_ids = {entity.entity_id for entity in plan.entities}
+        observed_ids: set[str] = set()
+        for cad_entity in document.modelspace():
+            try:
+                tags = cad_entity.get_xdata("GRIDFORGE")
+            except (AttributeError, ezdxf.DXFError):
+                continue
+            values = [str(tag.value) for tag in tags if tag.code == 1000]
+            if not values:
+                continue
+            entity_id = values[0]
+            if entity_id in observed_ids:
+                raise RuntimeError(f"Converted DWG contains duplicate GridForge entity identity {entity_id!r}")
+            observed_ids.add(entity_id)
+            metadata_payload = "".join(values[1:])
+            try:
+                metadata = json.loads(metadata_payload)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Converted DWG metadata for entity {entity_id!r} is not valid JSON"
+                ) from exc
+            if metadata.get("gridforge_export_manifest_sha256") != manifest_digest:
+                raise RuntimeError(
+                    f"Converted DWG entity {entity_id!r} lost or changed its manifest digest"
+                )
+        if observed_ids != expected_ids:
+            missing = sorted(expected_ids - observed_ids)
+            unexpected = sorted(observed_ids - expected_ids)
+            raise RuntimeError(
+                "Converted DWG entity identity set mismatch; "
+                f"missing={missing!r}, unexpected={unexpected!r}"
+            )
+
     @staticmethod
     def _publish_atomically(generated: Path, destination: Path) -> None:
         """Publish a completed DWG using unique same-directory staging."""
@@ -449,6 +539,13 @@ class ODAFileConverterBackend:
                 signature = stream.read(6)
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
+            self._verify_dwg_metadata_roundtrip(
+                generated, root, version, plan, self._attach_export_manifest.__name__ and
+                hashlib.sha256(json.dumps(
+                    _plain_json(artifact_manifest), sort_keys=True, separators=(",", ":"),
+                    ensure_ascii=False, allow_nan=False,
+                ).encode("utf-8")).hexdigest(),
+            )
             self._publish_atomically(generated, destination)
         return ExportResult(
             destination, "dwg", len(plan.entities), self.backend_id,
