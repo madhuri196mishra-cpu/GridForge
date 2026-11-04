@@ -90,3 +90,10 @@ or hardware validation were run.
 ## Packaging and startup verification
 
 The installed distribution includes the `plugins*` package namespace in addition to `core*` and `ui*`. The startup verification inventory includes engineering plugin source files and passes the composition root's host/dashboard lifecycle handles into teardown. The current PR's last observed workflow run failed during `import main` because the installed package omitted the `plugins` namespace; the packaging correction is committed, but its outcome remains pending the next automatic workflow run.
+
+
+## Second engineering-plugin consumer — DWG Export (2026-11-03)
+
+The optional `plugins.dwg_export` package is a second, materially different consumer of the existing `GridForgePlugin` / `PluginDescriptor` / `EngineeringPluginHost` lifecycle. It is a headless integration plugin, not a UI composition plugin. It receives an explicit `dwg_export_configuration` service containing an ODA executable path and a reviewed `SymbolRegistry`; activation fails closed if that configuration or executable is unavailable.
+
+This adoption demonstrates that the existing lifecycle contract can host a non-study CAD integration without a second manager, loader, registry, event bus, or Application service owner. The plugin is not automatically discovered or activated. The current `main.py` composition root continues to activate Motor Dynamics only; DWG activation remains opt-in until an approved ODA installation and reviewed catalogue are configured. The DWG plugin's focused lifecycle tests have been added but were not run during this source-only change. The SDK API remains provisional pending test/CI and lifecycle verification.
