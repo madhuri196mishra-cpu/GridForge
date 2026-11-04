@@ -310,3 +310,36 @@ def test_adapter_composes_directly_with_sld_node_entity_builder() -> None:
     assert result.entities[0].kind == "INSERT"
     assert result.entities[0].geometry["insert"] == pytest.approx((996.0, 2002.0))
     assert result.entities[0].geometry["scale"] == pytest.approx(3.0)
+
+
+@pytest.mark.parametrize(
+    ("factory", "field"),
+    [
+        (lambda value: SLDSymbolPlacementSnapshot(
+            "instance", "definition", "representation", True, value, 0.0
+        ), "scale"),
+        (lambda value: SLDSymbolPlacementSnapshot(
+            "instance", "definition", "representation", True, 1.0, value
+        ), "rotation_degrees"),
+        (lambda value: SLDNodeExportSnapshot(
+            "node", None, value, 0.0, {}, None
+        ), "node.x"),
+        (lambda value: SLDNodeExportSnapshot(
+            "node", None, 0.0, value, {}, None
+        ), "node.y"),
+        (lambda value: SLDAnnotationExportSnapshot(
+            "annotation", "node", value, 0.0, "label", True
+        ), "annotation.x"),
+        (lambda value: SLDAnnotationExportSnapshot(
+            "annotation", "node", 0.0, value, "label", True
+        ), "annotation.y"),
+    ],
+)
+def test_sld_snapshot_numeric_fields_reject_booleans(factory, field) -> None:
+    from core.application.sld_export_snapshot import (
+        SLDAnnotationExportSnapshot, SLDNodeExportSnapshot,
+        SLDSymbolPlacementSnapshot,
+    )
+
+    with pytest.raises(TypeError, match="real number"):
+        factory(True)
