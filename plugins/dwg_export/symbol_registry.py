@@ -36,6 +36,7 @@ class SymbolDefinition:
     reviewed_on: str | None = None
     review_reference: str | None = None
     standard_reference: str | None = None
+    units: str = "mm"
 
     def __post_init__(self) -> None:
         if not isinstance(self.symbol_id, str) or not _SYMBOL_ID.fullmatch(self.symbol_id):
@@ -47,6 +48,9 @@ class SymbolDefinition:
         object.__setattr__(self, "profile", profile)
         if not isinstance(self.definition_version, str) or not _VERSION.fullmatch(self.definition_version):
             raise ValueError("definition_version must use numeric MAJOR.MINOR.PATCH form")
+        if not isinstance(self.units, str) or self.units.strip() != "mm":
+            raise ValueError("symbol definition units must be explicitly supported as mm")
+        object.__setattr__(self, "units", self.units.strip())
         if self.review_status not in {"unreviewed", "reviewed"}:
             raise ValueError("review_status must be unreviewed or reviewed")
         for name in ("reviewer", "reviewed_on", "review_reference", "standard_reference"):
@@ -165,6 +169,7 @@ class SymbolRegistry:
                 "standard_reference": definition.standard_reference,
                 "description": definition.description,
                 "base_point": list(definition.base_point),
+                "units": definition.units,
                 "drawing_plan": drawing_plan_to_dict(plan),
             })
         payload = json.dumps({
