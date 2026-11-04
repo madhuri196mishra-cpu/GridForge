@@ -403,10 +403,19 @@ class ODAFileConverterBackend:
             }
 
         def entity_record(entity: Any) -> dict[str, Any]:
+            entity_type = entity.dxftype()
             record = {
-                "type": entity.dxftype(),
+                "type": entity_type,
                 "attributes": attributes(entity),
             }
+            if entity_type == "LWPOLYLINE":
+                record["vertices"] = cls._canonical_dxf_value(
+                    entity.get_points("xyseb")
+                )
+            elif entity_type == "POLYLINE":
+                record["vertices"] = [
+                    attributes(vertex) for vertex in entity.vertices
+                ]
             attached_attributes = getattr(entity, "attribs", ())
             if attached_attributes:
                 record["attached_attributes"] = [
