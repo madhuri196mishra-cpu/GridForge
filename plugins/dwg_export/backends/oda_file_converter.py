@@ -100,6 +100,11 @@ class ODAFileConverterBackend:
             "symbol_definition_version",
             "symbol_definition_units",
             "symbol_definition_base_point",
+            "symbol_source_units",
+            "symbol_unit_to_mm",
+            "symbol_unit_mapping_reference",
+            "symbol_terminal_anchors",
+            "symbol_terminal_anchor_coordinate_system",
             "symbol_review_status",
             "symbol_reviewer",
             "symbol_reviewed_on",
@@ -122,6 +127,14 @@ class ODAFileConverterBackend:
             "symbol_definition_version": definition.definition_version,
             "symbol_definition_units": definition.units,
             "symbol_definition_base_point": definition.base_point,
+            "symbol_source_units": definition.source_units,
+            "symbol_unit_to_mm": definition.unit_to_mm,
+            "symbol_unit_mapping_reference": definition.unit_mapping_reference,
+            "symbol_terminal_anchors": {
+                name: definition.terminal_anchors[name]
+                for name in sorted(definition.terminal_anchors)
+            },
+            "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
             "symbol_review_status": definition.review_status,
             "symbol_reviewer": definition.reviewer,
             "symbol_reviewed_on": definition.reviewed_on,
@@ -141,6 +154,9 @@ class ODAFileConverterBackend:
                     f"expected {expected!r}, received {actual!r}"
                 )
         if definition.block_name not in defined_blocks:
+            # DXF BLOCK base_point is the local origin used by INSERT. Keep
+            # primitive coordinates in symbol-local mm; do not subtract the
+            # base point from primitives or add it to the world insertion.
             block = doc.blocks.new(name=definition.block_name, base_point=definition.base_point)
             for primitive in definition.primitives:
                 if primitive.layer not in doc.layers:
