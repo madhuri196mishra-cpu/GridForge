@@ -15,9 +15,39 @@ class _AppIds:
         self.values.add(value)
 
 
+class _XRecord:
+    def __init__(self):
+        self.tags = []
+
+    def extend(self, tags):
+        self.tags.extend(tags)
+
+
+class _Dictionary:
+    def __init__(self):
+        self.values = {}
+
+    def __contains__(self, key):
+        return key in self.values
+
+    def get_required_dict(self, key):
+        if key not in self.values:
+            self.values[key] = _Dictionary()
+        return self.values[key]
+
+    def add_xrecord(self, key):
+        record = _XRecord()
+        self.values[key] = record
+        return record
+
+    def __getitem__(self, key):
+        return self.values[key]
+
+
 class _Document:
     def __init__(self):
         self.appids = _AppIds()
+        self.rootdict = _Dictionary()
 
 
 class _CadEntity:
@@ -50,6 +80,44 @@ def test_xdata_identity_attaches_unicode_metadata_in_safe_chunks():
     assert "".join(chunks[1:]) == __import__("json").dumps(
         {"label": "保护继电器" * 80}, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )
+
+
+def test_xdata_rejects_payloads_that_exceed_safe_entity_limit():
+    document = _Document()
+    cad_entity = _CadEntity()
+    entity = DrawingEntity(
+        "equipment-1", "TEXT", "LABEL", {"text": "x"},
+        {"large": "x" * 15001},
+    )
+
+    with pytest.raises(ValueError, match="15,000-byte"):
+        ODAFileConverterBackend._attach_identity(document, cad_entity, entity)
+
+
+def test_xrecord_chunks_preserve_unicode_and_stay_within_string_limit():
+    payload = "电力设备" * 1200
+    chunks = ODAFileConverterBackend._xrecord_chunks(payload)
+
+    assert "".join(chunks) == payload
+    assert all(len(chunk) <= 2000 for chunk in chunks)
+
+
+def test_drawing_level_manifest_is_stored_even_for_empty_drawings():
+    document = _Document()
+    manifest = {
+        "manifest_schema_version": 1,
+        "drawing_plan_sha256": "empty-plan-digest",
+        "entity_count": 0,
+    }
+
+    digest = ODAFileConverterBackend._attach_export_manifest(document, manifest)
+
+    record = document.rootdict["GRIDFORGE"]["EXPORT_MANIFEST"]
+    payload = "".join(value for code, value in record.tags if code == 1)
+    assert payload == __import__("json").dumps(
+        manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    assert digest == __import__("hashlib").sha256(payload.encode("utf-8")).hexdigest()
 
 
 def test_xdata_rejects_entity_ids_that_exceed_safe_utf8_length():
@@ -137,7 +205,14 @@ def test_xdata_carries_deterministic_export_manifest():
 
     chunks = [value for code, value in cad_entity.xdata[1] if code == 1000][1:]
     metadata = json.loads("".join(chunks))
-    assert metadata["gridforge_export_manifest"] == manifest
+    expected_digest = __import__("hashlib").sha256(
+        json.dumps(
+            manifest, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert metadata["gridforge_export_manifest_sha256"] == expected_digest
+    assert "gridforge_export_manifest" not in metadata
 
 
 def test_export_manifest_binds_plan_registry_and_single_coordinate_mapping(tmp_path):
