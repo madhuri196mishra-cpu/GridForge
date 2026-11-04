@@ -56,6 +56,7 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.metadata["engineering_units"]["rated_voltage_kv"] == "kV"
     assert entity.metadata["source_revision"] == "revision-42"
     assert entity.metadata["symbol_definition_version"] == "1.0.0"
+    assert entity.metadata["symbol_definition_units"] == "mm"
     assert entity.metadata["symbol_review_status"] == "reviewed"
     assert entity.metadata["symbol_registry_schema_version"] == 1
     assert entity.metadata["symbol_catalogue_version"] == "1.0.0"
