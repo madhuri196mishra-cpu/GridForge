@@ -114,7 +114,7 @@ def test_oda_backend_rejects_registry_content_drift_even_when_versions_match(tmp
             "symbol_reviewer": "reviewer",
             "symbol_reviewed_on": "2026-11-03",
             "symbol_review_reference": "review:1",
-            "symbol_standard_reference": None,
+            "symbol_standard_reference": "standard-reference:IEEE-reviewed-source",
             "symbol_registry_schema_version": 1,
             "symbol_catalogue_version": "1.0.0",
             "symbol_registry_fingerprint": builder_registry.fingerprint,
