@@ -95,7 +95,9 @@ def test_adapter_transforms_all_entity_geometry_and_records_review_provenance() 
     by_id = {entity.entity_id: entity for entity in result.entities}
     assert by_id["line"].geometry["start"] == pytest.approx((1000.0, 2002.0))
     assert by_id["symbol"].geometry["insert"] == pytest.approx((1000.0, 2002.0))
-    assert by_id["symbol"].geometry["scale"] == pytest.approx(3.0)
+    # Block-reference scale is dimensionless; only its insertion point is
+    # transformed from document units to world millimetres.
+    assert by_id["symbol"].geometry["scale"] == pytest.approx(1.5)
     assert by_id["symbol"].geometry["rotation"] == pytest.approx(90.0)
     assert by_id["wire"].geometry["points"][1] == pytest.approx((1000.0, 2002.0))
     assert by_id["label"].geometry["height"] == pytest.approx(5.0)
@@ -105,6 +107,14 @@ def test_adapter_transforms_all_entity_geometry_and_records_review_provenance() 
     assert evidence["review_reference"] == "review:DWG-COORD-001"
     assert evidence["target_units"] == "mm"
 
+
+
+def test_transform_preserves_nonuniform_dimensionless_insert_scale() -> None:
+    source = DrawingEntity("symbol", "INSERT", "SYMBOL", {
+        "symbol_id": "breaker", "insert": (1, 0), "scale": (1.5, 0.75, 2.0), "rotation": 0,
+    }, {})
+    transformed = _mapping().transform_entities((source,))[0]
+    assert transformed.geometry["scale"] == pytest.approx((1.5, 0.75, 2.0))
 
 def test_transform_rejects_invalid_scale_and_missing_review_evidence() -> None:
     with pytest.raises(ValueError, match="must be positive"):
@@ -312,7 +322,7 @@ def test_adapter_composes_directly_with_sld_node_entity_builder() -> None:
     assert len(result.entities) == 1
     assert result.entities[0].kind == "INSERT"
     assert result.entities[0].geometry["insert"] == pytest.approx((996.0, 2002.0))
-    assert result.entities[0].geometry["scale"] == pytest.approx(3.0)
+    assert result.entities[0].geometry["scale"] == pytest.approx(1.5)
 
 
 @pytest.mark.parametrize(
