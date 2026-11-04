@@ -3615,8 +3615,36 @@ class Application:
                 resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_relay":
             equipment_id_field, equipment_type = "relay_id", "relay"
-            if payload.get("in_service") is not None:
-                resolutions["in_service"] = "RESOLVED"
+            for field_name in ("in_service", "enabled", "blocked"):
+                if payload.get(field_name) is not None:
+                    resolutions[field_name] = "RESOLVED"
+        elif command_type == "model.update_motor":
+            equipment_id_field, equipment_type = "motor_id", "motor"
+            for field_name in ("in_service", "running"):
+                if payload.get(field_name) is not None:
+                    resolutions[field_name] = "RESOLVED"
+        elif command_type == "model.update_breaker":
+            equipment_id_field, equipment_type = "breaker_id", "breaker"
+            for field_name in ("in_service", "closed", "failed"):
+                if payload.get(field_name) is not None:
+                    resolutions[field_name] = "RESOLVED"
+        elif command_type in {"model.open_breaker", "model.close_breaker", "model.trip_breaker"}:
+            equipment_id_field, equipment_type = "breaker_id", "breaker"
+            resolutions["closed"] = "RESOLVED"
+        elif command_type in {
+            "model.put_breaker_in_service", "model.take_breaker_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "breaker_id", "breaker"
+            resolutions["in_service"] = "RESOLVED"
+        elif command_type in {"model.open_switch", "model.close_switch"}:
+            equipment_id_field, equipment_type = "switch_id", "switch"
+            resolutions["closed"] = "RESOLVED"
+        elif command_type in {"model.open_disconnector", "model.close_disconnector"}:
+            equipment_id_field, equipment_type = "disconnector_id", "disconnector"
+            resolutions["closed"] = "RESOLVED"
+        elif command_type in {"model.blow_fuse", "model.reset_fuse"}:
+            equipment_id_field, equipment_type = "fuse_id", "fuse"
+            resolutions["blown"] = "RESOLVED"
         elif command_type in {
             "model.put_switch_in_service", "model.take_switch_out_of_service",
         }:
