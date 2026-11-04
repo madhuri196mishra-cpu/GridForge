@@ -98,6 +98,81 @@ def symbol_geometry_digest(definition: SymbolDefinition) -> str:
     return hashlib.sha256(envelope).hexdigest()
 
 
+
+def convert_sld_catalogue_primitives(
+    symbol_id: str,
+    primitives: Iterable[Mapping[str, Any]],
+    *,
+    layer: str = "SYMBOL",
+) -> tuple[DrawingEntity, ...]:
+    """Convert detached SLD primitive mappings to CAD-neutral entities.
+
+    RECT is represented as a closed LWPOLYLINE using the exact x/y/width/height
+    local bounds. This function does not import UI code, assign units, or mark
+    converted geometry as reviewed.
+    """
+    if not isinstance(symbol_id, str) or not _SYMBOL_REFERENCE.fullmatch(symbol_id):
+        raise ValueError("symbol_id must be a stable canonical identifier")
+    if not isinstance(layer, str) or not layer.strip():
+        raise ValueError("layer must be a non-empty CAD layer name")
+    converted = []
+    for index, source in enumerate(primitives):
+        if not isinstance(source, Mapping):
+            raise TypeError(f"primitive {index} must be a mapping")
+        kind = source.get("kind")
+        if not isinstance(kind, str):
+            raise ValueError(f"primitive {index} requires a string kind")
+        normalized = kind.strip().lower()
+        entity_id = f"{symbol_id}:primitive:{index:03d}"
+        metadata = {"source_primitive_kind": normalized}
+        if normalized == "line":
+            if set(source) != {"kind", "x1", "y1", "x2", "y2"}:
+                raise ValueError(f"line primitive {index} has unsupported or missing fields")
+            geometry = {"start": (source["x1"], source["y1"]), "end": (source["x2"], source["y2"])}
+            entity_kind = "LINE"
+        elif normalized == "circle":
+            if set(source) != {"kind", "cx", "cy", "r"}:
+                raise ValueError(f"circle primitive {index} has unsupported or missing fields")
+            geometry = {"center": (source["cx"], source["cy"]), "radius": source["r"]}
+            entity_kind = "CIRCLE"
+        elif normalized == "rect":
+            if set(source) != {"kind", "x", "y", "width", "height"}:
+                raise ValueError(f"rect primitive {index} has unsupported or missing fields")
+            x, y, width, height = (source[key] for key in ("x", "y", "width", "height"))
+            values = (x, y, width, height)
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+                raise TypeError(f"rect primitive {index} values must be numeric")
+            if not all(math.isfinite(float(value)) for value in values) or width <= 0 or height <= 0:
+                raise ValueError(f"rect primitive {index} bounds must be finite with positive dimensions")
+            geometry = {
+                "points": ((x, y), (x + width, y), (x + width, y + height), (x, y + height)),
+                "closed": True,
+            }
+            entity_kind = "LWPOLYLINE"
+            metadata["source_rectangle"] = {"x": x, "y": y, "width": width, "height": height}
+        elif normalized == "text":
+            if set(source) != {"kind", "x", "y", "width", "height", "text"}:
+                raise ValueError(f"text primitive {index} has unsupported or missing fields")
+            x, y, width, height = (source[key] for key in ("x", "y", "width", "height"))
+            value = source["text"]
+            if not isinstance(value, str):
+                raise TypeError(f"text primitive {index} text must be a string")
+            values = (x, y, width, height)
+            if any(isinstance(number, bool) or not isinstance(number, (int, float)) for number in values):
+                raise TypeError(f"text primitive {index} bounds must be numeric")
+            if not all(math.isfinite(float(number)) for number in values) or width <= 0 or height <= 0:
+                raise ValueError(f"text primitive {index} bounds must be finite with positive dimensions")
+            geometry = {"insert": (x, y), "text": value, "height": height}
+            entity_kind = "TEXT"
+            metadata["source_text_bounds"] = {"x": x, "y": y, "width": width, "height": height}
+        else:
+            raise ValueError(f"unsupported SLD catalogue primitive kind: {kind!r}")
+        converted.append(DrawingEntity(entity_id, entity_kind, layer.strip(), geometry, metadata))
+    if not converted:
+        raise ValueError("symbol catalogue entry must contain at least one primitive")
+    return tuple(converted)
+
+
 def build_reviewed_symbol_registry(
     definitions: Iterable[SymbolDefinition],
     evidence_records: Iterable[SymbolReviewEvidence],
@@ -190,5 +265,6 @@ def build_reviewed_symbol_registry(
 __all__ = [
     "SymbolReviewEvidence",
     "symbol_geometry_digest",
+    "convert_sld_catalogue_primitives",
     "build_reviewed_symbol_registry",
 ]
