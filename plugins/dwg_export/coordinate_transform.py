@@ -103,14 +103,11 @@ class SLDCoordinateTransform:
                 geometry["points"] = tuple(self.transform_point(point) for point in geometry["points"])
             elif kind in {"INSERT", "TEXT"}:
                 geometry["insert"] = self.transform_point(geometry["insert"])
-                if kind == "INSERT":
-                    symbol_scale = geometry.get("scale", 1.0)
-                    if isinstance(symbol_scale, (int, float)) and not isinstance(symbol_scale, bool):
-                        geometry["scale"] = float(symbol_scale) * scale_factor
-                    else:
-                        geometry["scale"] = tuple(float(value) * scale_factor for value in symbol_scale)
-                else:
+                if kind == "TEXT":
                     geometry["height"] = float(geometry.get("height", 2.5)) * scale_factor
+                # INSERT scale is dimensionless: the block definition is local
+                # geometry and the instance scale must not absorb the document
+                # unit conversion. Only the insertion point is in SLD units.
                 geometry["rotation"] = float(geometry.get("rotation", 0.0)) + angle
             else:
                 raise ValueError(f"Unsupported SLD export primitive for coordinate transform: {kind!r}")
