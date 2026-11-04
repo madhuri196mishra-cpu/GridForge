@@ -383,6 +383,15 @@ class CommitNetworkHandler:
                 "x": x,
                 "y": y,
                 "presentation": dict(item.presentation),
+                # Carry the exact trusted Application catalogue decisions across
+                # the commit event boundary. The following Application lifecycle
+                # service persists/resolves these obligations; they are not Core
+                # engineering attributes and are not inferred from absent values.
+                "configuration_dispositions": {
+                    str(field_name): dict(disposition)
+                    for field_name, disposition
+                    in canonical_contract["command_field_dispositions"].items()
+                },
                 "sld_node_id": f"sld-core-{core_ids[item.draft_id]}",
             })
 
