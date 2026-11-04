@@ -140,3 +140,23 @@ def test_unreviewed_definition_may_omit_standard_reference():
 def test_symbol_definition_rejects_units_not_supported_by_dwg_backend():
     with pytest.raises(ValueError, match="units must be explicitly supported as mm"):
         SymbolDefinition("inch-symbol", SymbolProfile.ANSI_IEEE, (_definition().primitives[0],), units="inch")
+
+def test_registry_fingerprint_tracks_terminal_anchor_changes():
+    primitive = _definition().primitives
+    first = SymbolRegistry((SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE, primitive,
+        terminal_anchors={"from": (-1, 0)},
+    ),))
+    changed = SymbolRegistry((SymbolDefinition(
+        "breaker", SymbolProfile.ANSI_IEEE, primitive,
+        terminal_anchors={"from": (-2, 0)},
+    ),))
+    assert first.fingerprint != changed.fingerprint
+
+
+def test_terminal_anchors_reject_non_finite_or_malformed_points():
+    primitive = _definition().primitives
+    with pytest.raises(ValueError, match="finite"):
+        SymbolDefinition("bad-anchor", SymbolProfile.ANSI_IEEE, primitive, terminal_anchors={"from": (0, float("inf"))})
+    with pytest.raises(ValueError, match="two-coordinate"):
+        SymbolDefinition("bad-anchor", SymbolProfile.ANSI_IEEE, primitive, terminal_anchors={"from": (0,)})
