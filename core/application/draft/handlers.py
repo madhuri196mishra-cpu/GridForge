@@ -307,6 +307,7 @@ class CommitNetworkHandler:
                 parameter_contract=item.parameter_contract,
                 conditional_requirements=item.conditional_requirements,
                 canonical_contract=canonical_contract,
+                command_field_dispositions=item.command_field_dispositions,
             )
             canonical_contracts[item.draft_id] = canonical_contract
 
