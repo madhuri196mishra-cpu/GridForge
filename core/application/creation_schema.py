@@ -698,8 +698,6 @@ def creation_definition_for(
             _p("voltage_kv", unit="kV", required=True, minimum=0.0),
             _p("current_a", unit="A", required=True, minimum=0.0),
             _p("interrupting_ka", unit="kA", required=True, minimum=0.0),
-            _p("closed", "Closed", "bool", default=True),
-            _p("in_service", "In service", "bool", default=True),
         ), "model.create_breaker", "breaker_id", topology=switching_topology, endpoint_mapping=switching_endpoints, terminal_names=_BUILTIN_TERMINAL_NAMES["breaker"]),
         "disconnector": _definition("disconnector", "disconnector", (
             _p("voltage_kv", unit="kV", required=True, minimum=0.0),
