@@ -20,7 +20,6 @@ class SLDNodeEntityBuilder:
     def build(
         self,
         snapshot: SLDExportSnapshot,
-        *,
         profile: SymbolProfile,
         include_hidden: bool = False,
     ) -> tuple[DrawingEntity, ...]:
