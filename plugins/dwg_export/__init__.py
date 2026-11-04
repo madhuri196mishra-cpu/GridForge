@@ -8,7 +8,8 @@ from .symbol_registry import SymbolDefinition, SymbolRegistry
 from .symbol_catalogue import (
     SymbolReviewEvidence, build_reviewed_symbol_registry, symbol_geometry_digest,
     convert_sld_catalogue_primitives, SymbolCatalogueEntry,
-    assemble_unreviewed_symbol_definitions,
+    assemble_unreviewed_symbol_definitions, SymbolCatalogueCoverage,
+    symbol_catalogue_coverage,
 )
 from .source_snapshot import ApplicationDrawingSnapshot, DrawingPlanFactory
 from .application_adapter import ApplicationDrawingSnapshotAdapter
@@ -26,6 +27,7 @@ __all__ = [
     "SymbolRegistry", "SymbolReviewEvidence", "build_reviewed_symbol_registry",
     "symbol_geometry_digest", "convert_sld_catalogue_primitives",
     "SymbolCatalogueEntry", "assemble_unreviewed_symbol_definitions",
+    "SymbolCatalogueCoverage", "symbol_catalogue_coverage",
     "ApplicationDrawingSnapshot", "DrawingPlanFactory",
     "ApplicationDrawingSnapshotAdapter", "SLDProjectionDrawingSnapshotAdapter", "SLDCoordinateTransform",
     "SLDNodeEntityBuilder", "ODAFileConverterBackend",
