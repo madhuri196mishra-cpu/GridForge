@@ -273,6 +273,7 @@ def test_oda_backend_rejects_standard_reference_provenance_drift(tmp_path: Path)
         "symbol_profile": SymbolProfile.ANSI_IEEE.value,
         "symbol_definition_id": definition.symbol_id,
         "symbol_definition_version": definition.definition_version,
+        "symbol_definition_units": definition.units,
         "symbol_definition_base_point": definition.base_point,
         "symbol_source_units": definition.source_units,
         "symbol_unit_to_mm": definition.unit_to_mm,
@@ -294,6 +295,50 @@ def test_oda_backend_rejects_standard_reference_provenance_drift(tmp_path: Path)
     )
     backend = ODAFileConverterBackend(executable, symbol_registry=registry)
     with pytest.raises(ValueError, match="symbol_standard_reference"):
+        backend._add_insert(type("Doc", (), {})(), entity, set(), SymbolProfile.ANSI_IEEE)
+
+
+def test_oda_backend_rejects_source_unit_mapping_provenance_drift(tmp_path: Path):
+    from plugins.dwg_export import DrawingEntity, SymbolDefinition, SymbolProfile, SymbolRegistry
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    definition = SymbolDefinition(
+        "inch-source-symbol", SymbolProfile.ANSI_IEEE,
+        (DrawingEntity("body", "LINE", "SYMBOL", {"start": (0, 0), "end": (25.4, 0)}, {}),),
+        source_units="inch", unit_to_mm=25.4,
+        unit_mapping_reference="reviewed-unit-map:inch-to-mm",
+        review_status="reviewed", reviewer="reviewer", reviewed_on="2026-11-03",
+        review_reference="review:unit-map", standard_reference="standard-reference:reviewed-symbol",
+    )
+    registry = SymbolRegistry((definition,))
+    metadata = {
+        "symbol_profile": definition.profile.value,
+        "symbol_definition_id": definition.symbol_id,
+        "symbol_definition_version": definition.definition_version,
+        "symbol_definition_units": definition.units,
+        "symbol_definition_base_point": definition.base_point,
+        "symbol_source_units": "inch",
+        "symbol_unit_to_mm": 1.0,
+        "symbol_unit_mapping_reference": definition.unit_mapping_reference,
+        "symbol_terminal_anchors": {},
+        "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
+        "symbol_review_status": definition.review_status,
+        "symbol_reviewer": definition.reviewer,
+        "symbol_reviewed_on": definition.reviewed_on,
+        "symbol_review_reference": definition.review_reference,
+        "symbol_standard_reference": definition.standard_reference,
+        "symbol_registry_schema_version": registry.schema_version,
+        "symbol_catalogue_version": registry.catalogue_version,
+        "symbol_registry_fingerprint": registry.fingerprint,
+    }
+    entity = DrawingEntity(
+        "sld-node:unit-drift", "INSERT", "SLD_SYMBOLS",
+        {"symbol_id": definition.symbol_id, "insert": (0, 0)}, metadata,
+    )
+    backend = ODAFileConverterBackend(executable, symbol_registry=registry)
+    with pytest.raises(ValueError, match="symbol_unit_to_mm"):
         backend._add_insert(type("Doc", (), {})(), entity, set(), SymbolProfile.ANSI_IEEE)
 
 
