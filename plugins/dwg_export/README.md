@@ -39,6 +39,14 @@ The plugin is an engineering plugin, not a `ui.plugins` composition plugin. UI a
 - ODA publication uses unique staging files, a timeout, process status checks, DWG signature checks and atomic replacement.
 - The optional Python extra is installed with `pip install -e '.[dwg-export]'`; ODA File Converter is installed and configured separately. Neither dependency is required by the base GridForge installation.
 
+### SLD symbol geometry and terminal anchors
+
+The registry definition carries a separate immutable `terminal_anchors` mapping in local symbol coordinates. Those named coordinates are retained on each exported INSERT as `symbol_terminal_anchors`; they are not converted into electrical connectivity and do not replace persisted endpoint references. Anchor coordinates participate in both the review geometry digest and registry fingerprint, so changing a terminal location invalidates the reviewed geometry binding.
+
+`convert_sld_catalogue_primitives()` is a detached mapping adapter for explicit LINE, CIRCLE and RECT source records. RECT bounds `(x, y, width, height)` become a closed four-vertex LWPOLYLINE in the same local coordinate frame; the original rectangle bounds are retained as metadata. The adapter requires an explicit `source_units="mm"` declaration and rejects non-positive or non-finite rectangle dimensions. The built-in SLD catalogue currently declares logical dimensions, not millimetres, so it cannot be passed through this adapter until an independently reviewed unit mapping is supplied. Text primitives are rejected because the current source text bounding-box alignment cannot be proven equivalent to CAD TEXT baseline placement. Unknown primitive kinds and ambiguous field sets fail closed.
+
+This adapter does not import the UI symbol package, certify the source glyphs, or change a definition's review status. Converted geometry remains unreviewed until the source, standard edition, license terms, review record and exact geometry digest are independently supplied.
+
 ## SLD snapshot boundary
 
 The renderer-independent DTOs live in `core.application.sld_export_snapshot`. They contain project/document identity, source revision, coordinate-system and unit labels, stable node/equipment IDs, symbol identity/profile inputs, placement/transforms, engineering attributes/units, explicit connection identity/endpoints, authored route points and persisted annotations.
