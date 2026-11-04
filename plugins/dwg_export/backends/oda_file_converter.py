@@ -420,8 +420,11 @@ class ODAFileConverterBackend:
             manifest = json.loads(manifest_payload)
         except (TypeError, ValueError) as exc:
             raise RuntimeError("Converted DWG export manifest is not valid JSON") from exc
-        if manifest.get("entity_count") != len(plan.entities):
-            raise RuntimeError("Converted DWG manifest entity count does not match the drawing plan")
+        expected_manifest = self._build_export_manifest(plan, self._symbols, target_version)
+        if manifest != _plain_json(expected_manifest):
+            raise RuntimeError(
+                "Converted DWG export manifest contents do not match the drawing plan and registry"
+            )
         expected_ids = {entity.entity_id for entity in plan.entities}
         observed_ids: set[str] = set()
         for cad_entity in document.modelspace():
@@ -446,6 +449,33 @@ class ODAFileConverterBackend:
             if metadata.get("gridforge_export_manifest_sha256") != manifest_digest:
                 raise RuntimeError(
                     f"Converted DWG entity {entity_id!r} lost or changed its manifest digest"
+                )
+            source_fields = {
+                "source_project_id": plan.project_id,
+                "source_revision": plan.source_revision,
+                "source_kind": plan.source_kind,
+                "source_id": plan.source_id,
+                "source_document_id": plan.source_document_id,
+            }
+            expected_metadata = dict(entity.metadata)
+            for field_name, expected in source_fields.items():
+                existing = expected_metadata.get(field_name)
+                if existing is not None and existing != expected:
+                    raise RuntimeError(
+                        f"Drawing-plan entity {entity_id!r} has conflicting {field_name} provenance"
+                    )
+                if expected is not None:
+                    expected_metadata[field_name] = expected
+            expected_metadata.pop("gridforge_export_manifest", None)
+            existing_digest = expected_metadata.get("gridforge_export_manifest_sha256")
+            if existing_digest is not None and existing_digest != manifest_digest:
+                raise RuntimeError(
+                    f"Drawing-plan entity {entity_id!r} has conflicting export manifest digest"
+                )
+            expected_metadata["gridforge_export_manifest_sha256"] = manifest_digest
+            if metadata != _plain_json(expected_metadata):
+                raise RuntimeError(
+                    f"Converted DWG entity {entity_id!r} metadata differs from the drawing plan"
                 )
         if observed_ids != expected_ids:
             missing = sorted(expected_ids - observed_ids)
