@@ -377,6 +377,7 @@ def validate_creation_contract_metadata(
     parameter_contract: tuple[Mapping[str, Any], ...],
     conditional_requirements: tuple[Mapping[str, Any], ...],
     canonical_contract: Mapping[str, Any],
+    command_field_dispositions: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> None:
     """Reject draft/intent metadata that differs from the trusted composition snapshot."""
     actual = {
@@ -396,6 +397,17 @@ def validate_creation_contract_metadata(
             raise ValueError(
                 f"{actual['equipment_type']}: draft creation metadata for {field!r} "
                 "does not match the trusted canonical Application contract."
+            )
+    # Schema-4 drafts predate disposition preservation and are deliberately
+    # accepted with no supplied disposition metadata. When present, however,
+    # the serialized draft must match the trusted Application catalogue exactly.
+    if command_field_dispositions:
+        if _plain_contract_value(command_field_dispositions) != _plain_contract_value(
+            canonical_contract["command_field_dispositions"]
+        ):
+            raise ValueError(
+                f"{actual['equipment_type']}: draft command-field dispositions "
+                "do not match the trusted canonical Application contract."
             )
 
 
