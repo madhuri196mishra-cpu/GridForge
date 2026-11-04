@@ -366,6 +366,85 @@ class ODAFileConverterBackend:
         chunks = ODAFileConverterBackend._utf8_xdata_chunks(payload)
         cad_entity.set_xdata("GRIDFORGE", [(1000, entity_id), *[(1000, chunk) for chunk in chunks]])
 
+    @staticmethod
+    def _canonical_dxf_value(value: Any) -> Any:
+        """Convert ezdxf attribute values into deterministic JSON-compatible values."""
+        if isinstance(value, Mapping):
+            return {
+                str(key): ODAFileConverterBackend._canonical_dxf_value(item)
+                for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            }
+        if isinstance(value, (tuple, list)):
+            return [ODAFileConverterBackend._canonical_dxf_value(item) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        if isinstance(value, bytes):
+            return {"bytes_hex": value.hex()}
+        try:
+            return [
+                ODAFileConverterBackend._canonical_dxf_value(item)
+                for item in value
+            ]
+        except TypeError as exc:
+            raise TypeError(
+                f"Unsupported DXF attribute value for round-trip comparison: {type(value).__name__}"
+            ) from exc
+
+    @classmethod
+    def _geometry_roundtrip_snapshot(cls, document: Any) -> dict[str, Any]:
+        """Capture modelspace, block geometry, layers and drawing units without volatile handles."""
+        volatile_attributes = {"handle", "owner"}
+
+        def attributes(entity: Any) -> dict[str, Any]:
+            return {
+                str(name): cls._canonical_dxf_value(value)
+                for name, value in sorted(entity.dxfattribs().items())
+                if name not in volatile_attributes
+            }
+
+        def entity_record(entity: Any) -> dict[str, Any]:
+            record = {
+                "type": entity.dxftype(),
+                "attributes": attributes(entity),
+            }
+            attached_attributes = getattr(entity, "attribs", ())
+            if attached_attributes:
+                record["attached_attributes"] = [
+                    entity_record(attribute) for attribute in attached_attributes
+                ]
+            return record
+
+        def ordered_entities(layout: Any) -> list[dict[str, Any]]:
+            records = [entity_record(entity) for entity in layout]
+            return sorted(
+                records,
+                key=lambda record: json.dumps(
+                    record, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                    allow_nan=False,
+                ),
+            )
+
+        blocks = []
+        for layout in document.blocks:
+            blocks.append({
+                "name": layout.name,
+                "definition": attributes(layout.block),
+                "entities": ordered_entities(layout),
+            })
+        blocks.sort(key=lambda record: record["name"].casefold())
+
+        layers = [
+            attributes(layer)
+            for layer in document.layers
+        ]
+        layers.sort(key=lambda record: str(record.get("name", "")).casefold())
+        return {
+            "insunits": document.header.get("$INSUNITS"),
+            "layers": layers,
+            "modelspace": ordered_entities(document.modelspace()),
+            "blocks": blocks,
+        }
+
     def _verify_dwg_metadata_roundtrip(
         self,
         generated_dwg: Path,
@@ -373,8 +452,9 @@ class ODAFileConverterBackend:
         target_version: str,
         plan: DrawingPlan,
         manifest_digest: str,
+        source_document: Any,
     ) -> None:
-        """Re-open ODA's DWG as DXF and verify manifest and entity XDATA survived."""
+        """Re-open ODA's DWG as DXF and verify geometry, manifest and entity XDATA survived."""
         source_dir = verification_root / "roundtrip-source"
         output_dir = verification_root / "roundtrip-output"
         source_dir.mkdir()
@@ -402,6 +482,13 @@ class ODAFileConverterBackend:
         except ImportError as exc:
             raise RuntimeError("DWG metadata verification requires ezdxf") from exc
         document = ezdxf.readfile(roundtrip_dxf)
+        source_geometry = self._geometry_roundtrip_snapshot(source_document)
+        converted_geometry = self._geometry_roundtrip_snapshot(document)
+        if converted_geometry != source_geometry:
+            raise RuntimeError(
+                "Converted DWG geometry, block definitions, layers or drawing units "
+                "differ from the source DXF"
+            )
         gridforge_dict = document.rootdict.get("GRIDFORGE")
         if gridforge_dict is None:
             raise RuntimeError("Converted DWG lost the GRIDFORGE root dictionary")
@@ -570,7 +657,7 @@ class ODAFileConverterBackend:
             if signature != _DWG_SIGNATURES[version]:
                 raise RuntimeError(f"DWG signature mismatch for {version}: expected {_DWG_SIGNATURES[version]!r}, got {signature!r}")
             self._verify_dwg_metadata_roundtrip(
-                generated, root, version, plan, manifest_digest,
+                generated, root, version, plan, manifest_digest, doc,
             )
             self._publish_atomically(generated, destination)
         return ExportResult(
