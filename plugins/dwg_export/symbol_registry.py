@@ -23,7 +23,7 @@ _SUPPORTED_PRIMITIVES = frozenset({"LINE", "CIRCLE", "ARC", "TEXT", "LWPOLYLINE"
 
 @dataclass(frozen=True, slots=True)
 class SymbolDefinition:
-    """One profile-specific reusable symbol, expressed as local-space primitives."""
+    """One profile-specific reusable symbol with local primitives and base point in millimetres."""
 
     symbol_id: str
     profile: SymbolProfile
