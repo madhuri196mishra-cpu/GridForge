@@ -265,6 +265,8 @@ class ODAFileConverterBackend:
                 f"received {plan.coordinate_system!r}"
             )
         destination = Path(destination)
+        if destination.suffix.lower() != ".dwg":
+            raise ValueError("ODA backend destination extension must be .dwg")
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="gridforge-dwg-") as temp:
             root = Path(temp)
