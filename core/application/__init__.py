@@ -38,7 +38,9 @@ from .protection_execution import (
 from .project_transition import ProjectTransitionDecision, ProjectTransitionRequired
 from .project_presentation import ProjectPresentationCollection
 from .read_models import (
+    ConfigurationFieldAssessmentReadModel,
     ElementReadModel,
+    EquipmentConfigurationAssessmentReadModel,
     NetworkReadModel,
     ProtectionReadModel,
     RelayInputBindingReadModel,
@@ -102,7 +104,9 @@ __all__ = [
     "ProjectTransitionDecision",
     "ProjectTransitionRequired",
     "ProjectPresentationCollection",
+    "ConfigurationFieldAssessmentReadModel",
     "ElementReadModel",
+    "EquipmentConfigurationAssessmentReadModel",
     "NetworkReadModel",
     "ProtectionReadModel",
     "RelayInputBindingReadModel",
