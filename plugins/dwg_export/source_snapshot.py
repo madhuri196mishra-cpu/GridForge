@@ -46,6 +46,15 @@ class ApplicationDrawingSnapshot:
         entities = tuple(self.entities)
         if not drawing_types or any(not isinstance(item, str) or not item.strip() for item in drawing_types):
             raise ValueError("drawing_types must contain non-empty names")
+        if len(drawing_types) != 1:
+            raise ValueError(
+                "each ApplicationDrawingSnapshot must represent exactly one drawing type; "
+                "SLD and Control require separate source snapshots"
+            )
+        if self.source_kind == "sld_export_snapshot" and tuple(
+            item.strip() for item in drawing_types
+        ) != ("sld",):
+            raise ValueError("SLD export snapshots must be SLD-only")
         if any(not isinstance(item, DrawingEntity) for item in entities):
             raise TypeError("snapshot entities must be immutable DrawingEntity values")
         object.__setattr__(self, "drawing_types", tuple(item.strip() for item in drawing_types))
