@@ -3565,9 +3565,11 @@ class Application:
             equipment_id_field, equipment_type = "generator_id", "generator"
             if payload.get("q_limits") is not None:
                 resolutions["q_limits"] = "RESOLVED"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_grid":
             equipment_id_field, equipment_type = "grid_id", "grid"
-            for field_name in ("voltage_pu", "angle_deg", "p_mw", "q_mvar", "z1_pu", "z2_pu", "z0_pu"):
+            for field_name in ("voltage_pu", "angle_deg", "p_mw", "q_mvar", "z1_pu", "z2_pu", "z0_pu", "in_service"):
                 if payload.get(field_name) is not None:
                     resolutions[field_name] = "RESOLVED"
         elif command_type == "model.update_line":
@@ -3576,12 +3578,24 @@ class Application:
                 resolutions["conductor_system"] = "RESOLVED"
             elif payload.get("clear_conductor_system") is True:
                 resolutions["conductor_system"] = "PENDING"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_cable":
             equipment_id_field, equipment_type = "cable_id", "cable"
             if payload.get("conductor_system") is not None:
                 resolutions["conductor_system"] = "RESOLVED"
             elif payload.get("clear_conductor_system") is True:
                 resolutions["conductor_system"] = "PENDING"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_load":
+            equipment_id_field, equipment_type = "load_id", "load"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_shunt":
+            equipment_id_field, equipment_type = "shunt_id", "shunt"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
 
         if not resolutions or equipment_id_field is None or equipment_type is None:
             return
