@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
+from types import MappingProxyType
 from datetime import date
 import hashlib
 import json
@@ -108,22 +109,28 @@ def convert_sld_catalogue_primitives(
     primitives: Iterable[Mapping[str, Any]],
     *,
     source_units: str,
+    unit_to_mm: float = 1.0,
+    unit_mapping_reference: str | None = None,
     layer: str = "SYMBOL",
 ) -> tuple[DrawingEntity, ...]:
-    """Convert detached SLD primitive mappings to CAD-neutral entities.
-
-    RECT is represented as a closed LWPOLYLINE using the exact x/y/width/height
-    local bounds. Source units must explicitly be millimetres. Text primitives
-    are rejected because their SLD bounding-box alignment has no proven
-    equivalent in the current CAD TEXT contract. This function does not import
-    UI code or mark converted geometry as reviewed.
-    """
+    """Convert detached LINE, CIRCLE and RECT records into CAD entities."""
     if not isinstance(symbol_id, str) or not _SYMBOL_REFERENCE.fullmatch(symbol_id):
         raise ValueError("symbol_id must be a stable canonical identifier")
-    if not isinstance(source_units, str) or source_units.strip() != "mm":
-        raise ValueError("source_units must be explicitly declared as mm; logical SLD units need a reviewed conversion first")
+    if not isinstance(source_units, str) or not source_units.strip():
+        raise ValueError("source_units must be explicitly declared")
+    if isinstance(unit_to_mm, bool) or not isinstance(unit_to_mm, (int, float)):
+        raise TypeError("unit_to_mm must be numeric")
+    factor = float(unit_to_mm)
+    if not math.isfinite(factor) or factor <= 0:
+        raise ValueError("unit_to_mm must be finite and positive")
+    if source_units.strip() == "mm":
+        if factor != 1.0 or unit_mapping_reference is not None:
+            raise ValueError("mm input requires factor 1 and no unit mapping reference")
+    elif not isinstance(unit_mapping_reference, str) or not unit_mapping_reference.strip():
+        raise ValueError("non-mm input requires a reviewed unit mapping reference")
     if not isinstance(layer, str) or not layer.strip():
         raise ValueError("layer must be a non-empty CAD layer name")
+
     converted = []
     for index, source in enumerate(primitives):
         if not isinstance(source, Mapping):
@@ -137,35 +144,211 @@ def convert_sld_catalogue_primitives(
         if normalized == "line":
             if set(source) != {"kind", "x1", "y1", "x2", "y2"}:
                 raise ValueError(f"line primitive {index} has unsupported or missing fields")
-            geometry = {"start": (source["x1"], source["y1"]), "end": (source["x2"], source["y2"])}
+            values = tuple(source[key] for key in ("x1", "y1", "x2", "y2"))
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+                raise TypeError(f"line primitive {index} coordinates must be numeric")
+            if not all(math.isfinite(float(v)) for v in values):
+                raise ValueError(f"line primitive {index} coordinates must be finite")
+            geometry = {
+                "start": (values[0] * factor, values[1] * factor),
+                "end": (values[2] * factor, values[3] * factor),
+            }
             entity_kind = "LINE"
         elif normalized == "circle":
             if set(source) != {"kind", "cx", "cy", "r"}:
                 raise ValueError(f"circle primitive {index} has unsupported or missing fields")
-            geometry = {"center": (source["cx"], source["cy"]), "radius": source["r"]}
+            values = tuple(source[key] for key in ("cx", "cy", "r"))
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+                raise TypeError(f"circle primitive {index} values must be numeric")
+            if not all(math.isfinite(float(v)) for v in values) or values[2] <= 0:
+                raise ValueError(f"circle primitive {index} values must be finite with positive radius")
+            geometry = {
+                "center": (values[0] * factor, values[1] * factor),
+                "radius": values[2] * factor,
+            }
             entity_kind = "CIRCLE"
         elif normalized == "rect":
             if set(source) != {"kind", "x", "y", "width", "height"}:
                 raise ValueError(f"rect primitive {index} has unsupported or missing fields")
             x, y, width, height = (source[key] for key in ("x", "y", "width", "height"))
             values = (x, y, width, height)
-            if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
                 raise TypeError(f"rect primitive {index} values must be numeric")
-            if not all(math.isfinite(float(value)) for value in values) or width <= 0 or height <= 0:
+            if not all(math.isfinite(float(v)) for v in values) or width <= 0 or height <= 0:
                 raise ValueError(f"rect primitive {index} bounds must be finite with positive dimensions")
             geometry = {
-                "points": ((x, y), (x + width, y), (x + width, y + height), (x, y + height)),
+                "points": (
+                    (x * factor, y * factor),
+                    ((x + width) * factor, y * factor),
+                    ((x + width) * factor, (y + height) * factor),
+                    (x * factor, (y + height) * factor),
+                ),
                 "closed": True,
             }
             entity_kind = "LWPOLYLINE"
             metadata["source_rectangle"] = {"x": x, "y": y, "width": width, "height": height}
         else:
             raise ValueError(f"unsupported SLD catalogue primitive kind: {kind!r}")
+        if source_units.strip() != "mm":
+            metadata.update({
+                "source_units": source_units.strip(),
+                "unit_to_mm": factor,
+                "unit_mapping_reference": unit_mapping_reference,
+            })
         converted.append(DrawingEntity(entity_id, entity_kind, layer.strip(), geometry, metadata))
     if not converted:
         raise ValueError("symbol catalogue entry must contain at least one primitive")
     return tuple(converted)
 
+
+@dataclass(frozen=True, slots=True)
+class SymbolCatalogueEntry:
+    """Detached profile-specific source record; never implicitly review-approved."""
+
+    symbol_id: str
+    profile: SymbolProfile
+    source_units: str
+    primitives: tuple[Mapping[str, Any], ...]
+    base_point: tuple[float, float]
+    terminal_anchors: Mapping[str, tuple[float, float]]
+    unit_to_mm: float = 1.0
+    unit_mapping_reference: str | None = None
+    description: str = ""
+    definition_version: str = "1.0.0"
+
+    def __post_init__(self) -> None:
+        try:
+            profile = self.profile if isinstance(self.profile, SymbolProfile) else SymbolProfile(self.profile)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("profile must be ansi_ieee or iec_60617") from exc
+        object.__setattr__(self, "profile", profile)
+        if not isinstance(self.symbol_id, str) or not _SYMBOL_REFERENCE.fullmatch(self.symbol_id):
+            raise ValueError("symbol_id must be a stable canonical identifier")
+        if not isinstance(self.source_units, str) or not self.source_units.strip():
+            raise ValueError("source_units must be explicit")
+        if isinstance(self.unit_to_mm, bool) or not isinstance(self.unit_to_mm, (int, float)):
+            raise TypeError("unit_to_mm must be numeric")
+        factor = float(self.unit_to_mm)
+        if not math.isfinite(factor) or factor <= 0:
+            raise ValueError("unit_to_mm must be finite and positive")
+        if self.source_units.strip() == "mm":
+            if factor != 1.0 or self.unit_mapping_reference is not None:
+                raise ValueError("mm entries require factor 1 and no mapping reference")
+        elif not isinstance(self.unit_mapping_reference, str) or not self.unit_mapping_reference.strip():
+            raise ValueError("non-mm entries require a reviewed unit mapping reference")
+        primitives = tuple(self.primitives)
+        if not primitives or any(not isinstance(item, Mapping) for item in primitives):
+            raise ValueError("primitives must be a non-empty sequence of mapping records")
+        point = tuple(self.base_point)
+        if len(point) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in point):
+            raise ValueError("base_point must contain two numeric coordinates")
+        if not all(math.isfinite(float(v)) for v in point):
+            raise ValueError("base_point coordinates must be finite")
+        if not isinstance(self.terminal_anchors, Mapping):
+            raise TypeError("terminal_anchors must be a mapping")
+        anchors = {}
+        for name, coordinates in self.terminal_anchors.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("terminal anchor names must be non-empty")
+            values = tuple(coordinates)
+            if len(values) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in values):
+                raise ValueError(f"terminal anchor {name!r} must have two numeric coordinates")
+            if not all(math.isfinite(float(v)) for v in values):
+                raise ValueError(f"terminal anchor {name!r} coordinates must be finite")
+            anchors[name.strip()] = (float(values[0]) * factor, float(values[1]) * factor)
+        if len(anchors) != len(self.terminal_anchors):
+            raise ValueError("terminal anchor names must be unique after normalization")
+        object.__setattr__(self, "source_units", self.source_units.strip())
+        object.__setattr__(self, "unit_to_mm", factor)
+        object.__setattr__(self, "primitives", tuple(MappingProxyType(dict(item)) for item in primitives))
+        object.__setattr__(self, "base_point", (float(point[0]) * factor, float(point[1]) * factor))
+        object.__setattr__(self, "terminal_anchors", MappingProxyType(anchors))
+
+
+def assemble_unreviewed_symbol_definitions(
+    entries: Iterable[SymbolCatalogueEntry],
+) -> tuple[SymbolDefinition, ...]:
+    """Assemble CAD definitions from detached records, always unreviewed."""
+    definitions = []
+    seen = set()
+    for entry in entries:
+        if not isinstance(entry, SymbolCatalogueEntry):
+            raise TypeError("entries must contain SymbolCatalogueEntry values")
+        key = (entry.profile, entry.symbol_id)
+        if key in seen:
+            raise ValueError(f"duplicate catalogue entry for {entry.profile.value}:{entry.symbol_id}")
+        seen.add(key)
+        primitives = convert_sld_catalogue_primitives(
+            entry.symbol_id,
+            entry.primitives,
+            source_units=entry.source_units,
+            unit_to_mm=entry.unit_to_mm,
+            unit_mapping_reference=entry.unit_mapping_reference,
+        )
+        definitions.append(SymbolDefinition(
+            symbol_id=entry.symbol_id,
+            profile=entry.profile,
+            primitives=primitives,
+            base_point=entry.base_point,
+            description=entry.description,
+            definition_version=entry.definition_version,
+            review_status="unreviewed",
+            units="mm",
+            terminal_anchors=entry.terminal_anchors,
+            source_units=entry.source_units,
+            unit_to_mm=entry.unit_to_mm,
+            unit_mapping_reference=entry.unit_mapping_reference,
+        ))
+    return tuple(sorted(definitions, key=lambda item: (item.profile.value, item.symbol_id)))
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolCatalogueCoverage:
+    """Coverage report; it does not independently validate review evidence."""
+
+    required: tuple[tuple[str, str], ...]
+    present: tuple[tuple[str, str], ...]
+    missing: tuple[tuple[str, str], ...]
+    unreviewed: tuple[tuple[str, str], ...]
+
+    @property
+    def export_candidate(self) -> bool:
+        return not self.missing and not self.unreviewed
+
+
+def symbol_catalogue_coverage(
+    definitions: Iterable[SymbolDefinition],
+    *,
+    required_symbol_ids: Iterable[str],
+) -> SymbolCatalogueCoverage:
+    """Report missing and unreviewed profile slots without certifying evidence."""
+    if isinstance(required_symbol_ids, str):
+        raise TypeError("required_symbol_ids must be an iterable of IDs, not one string")
+    required_ids = tuple(required_symbol_ids)
+    if not required_ids or any(
+        not isinstance(item, str) or not item.strip() or item != item.strip()
+        for item in required_ids
+    ) or len(set(required_ids)) != len(required_ids):
+        raise ValueError("required_symbol_ids must contain unique canonical IDs")
+    required = tuple(
+        (profile.value, symbol_id)
+        for profile in SymbolProfile
+        for symbol_id in required_ids
+    )
+    by_key = {}
+    for definition in definitions:
+        if not isinstance(definition, SymbolDefinition):
+            raise TypeError("definitions must contain SymbolDefinition values")
+        key = (definition.profile.value, definition.symbol_id)
+        if key not in required:
+            raise ValueError(f"definition uses non-canonical symbol ID: {key[1]}")
+        if key in by_key:
+            raise ValueError(f"duplicate symbol definition for {key[0]}:{key[1]}")
+        by_key[key] = definition
+    present = tuple(key for key in required if key in by_key)
+    missing = tuple(key for key in required if key not in by_key)
+    unreviewed = tuple(key for key in present if by_key[key].review_status != "reviewed")
+    return SymbolCatalogueCoverage(required, present, missing, unreviewed)
 
 def build_reviewed_symbol_registry(
     definitions: Iterable[SymbolDefinition],
