@@ -94,3 +94,13 @@ def test_sld_plan_factory_rejects_untransformed_source_coordinates():
     )
     with pytest.raises(DrawingPlanValidationError, match="transformed world-coordinate"):
         DrawingPlanFactory.from_snapshot(snapshot)
+
+
+def test_application_snapshot_rejects_combined_sld_and_control_drawings():
+    with pytest.raises(ValueError, match="exactly one drawing type"):
+        ApplicationDrawingSnapshot(
+            project_id="project-a", export_id="export-a", source_revision="rev-1",
+            source_kind="sld_export_snapshot", source_id="document-a",
+            symbol_profile=SymbolProfile.ANSI_IEEE,
+            drawing_types=("sld", "control"), entities=(),
+        )
