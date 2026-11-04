@@ -202,7 +202,9 @@ class DraftEquipment:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], *, require_dispositions: bool = False) -> "DraftEquipment":
         placement = data.get("placement")
-        if require_dispositions and ("command_field_dispositions" not in data or not isinstance(data.get("command_field_dispositions"), Mapping)):
+        if "command_field_dispositions" in data and not isinstance(data.get("command_field_dispositions"), Mapping):
+            raise ValueError("Draft command-field dispositions must be an explicit mapping when present.")
+        if require_dispositions and "command_field_dispositions" not in data:
             raise ValueError("Current DraftEquipment schema requires an explicit command-field disposition mapping.")
         dispositions = (
             None if "command_field_dispositions" not in data
