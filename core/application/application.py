@@ -3623,14 +3623,14 @@ class Application:
             equipment_id_field, equipment_type = "transformer_id", "current_transformer"
             resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_capacitive_voltage_transformer":
-            equipment_id_field, equipment_type = "transformer_id", "capacitive_voltage_transformer"
+            equipment_id_field, equipment_type = "transformer_id", "cvt"
             if payload.get("in_service") is not None:
                 resolutions["in_service"] = "RESOLVED"
         elif command_type in {
             "model.put_capacitive_voltage_transformer_in_service",
             "model.take_capacitive_voltage_transformer_out_of_service",
         }:
-            equipment_id_field, equipment_type = "transformer_id", "capacitive_voltage_transformer"
+            equipment_id_field, equipment_type = "transformer_id", "cvt"
             resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_line":
             equipment_id_field, equipment_type = "line_id", "line"
