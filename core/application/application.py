@@ -2587,6 +2587,7 @@ class Application:
         )
 
         command_type = command.command_type
+        self._resolve_configuration_update(command_type, command.payload, transaction)
         if command_type in {
             "protection.create_configuration",
             "protection.update_configuration",
@@ -3541,6 +3542,74 @@ class Application:
             lambda project_id=previous_project_id, assessments=previous_assessments: self._restore_configuration_assessments(project_id, assessments)
         )
         self._configuration_assessments_project_id = context.project_id
+        self._equipment_configuration_assessments = next_assessments
+
+    def _resolve_configuration_update(
+        self,
+        command_type: str,
+        payload: Mapping[str, Any],
+        transaction: Any,
+    ) -> None:
+        """Resolve only obligations explicitly supplied by a successful typed update command.
+
+        This is an Application read-side lifecycle transition. Engineering values
+        remain owned by Core and are changed only by the existing typed handlers.
+        """
+        if not isinstance(payload, Mapping):
+            return
+
+        equipment_id_field = None
+        equipment_type = None
+        resolutions: dict[str, str] = {}
+        if command_type == "model.update_generator":
+            equipment_id_field, equipment_type = "generator_id", "generator"
+            if payload.get("q_limits") is not None:
+                resolutions["q_limits"] = "RESOLVED"
+        elif command_type == "model.update_grid":
+            equipment_id_field, equipment_type = "grid_id", "grid"
+            for field_name in ("voltage_pu", "angle_deg", "p_mw", "q_mvar", "z1_pu", "z2_pu", "z0_pu"):
+                if payload.get(field_name) is not None:
+                    resolutions[field_name] = "RESOLVED"
+        elif command_type == "model.update_line":
+            equipment_id_field, equipment_type = "line_id", "line"
+            if payload.get("conductor_system") is not None:
+                resolutions["conductor_system"] = "RESOLVED"
+            elif payload.get("clear_conductor_system") is True:
+                resolutions["conductor_system"] = "PENDING"
+        elif command_type == "model.update_cable":
+            equipment_id_field, equipment_type = "cable_id", "cable"
+            if payload.get("conductor_system") is not None:
+                resolutions["conductor_system"] = "RESOLVED"
+            elif payload.get("clear_conductor_system") is True:
+                resolutions["conductor_system"] = "PENDING"
+
+        if not resolutions or equipment_id_field is None or equipment_type is None:
+            return
+        equipment_id = str(payload.get(equipment_id_field) or "").strip()
+        assessment = self._equipment_configuration_assessments.get(equipment_id)
+        if not equipment_id or assessment is None or assessment.equipment_type != equipment_type:
+            # Legacy equipment without trusted creation provenance remains
+            # REVIEW_REQUIRED; a generic update cannot invent its obligations.
+            return
+
+        next_fields = tuple(
+            replace(field, status=resolutions[field.field_name])
+            if field.field_name in resolutions and field.status != resolutions[field.field_name]
+            else field
+            for field in assessment.fields
+        )
+        if next_fields == assessment.fields:
+            return
+
+        previous_assessments = self._equipment_configuration_assessments
+        next_assessments = dict(previous_assessments)
+        next_assessments[equipment_id] = replace(assessment, fields=next_fields)
+        transaction.record_undo(
+            lambda assessments=previous_assessments: self._restore_configuration_assessments(
+                self._configuration_assessments_project_id,
+                assessments,
+            )
+        )
         self._equipment_configuration_assessments = next_assessments
 
     def _remove_configuration_assessment(self, equipment_id: str, transaction: Any) -> None:
