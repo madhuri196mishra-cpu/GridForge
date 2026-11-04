@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from core.application.services.control_service import ControlProgramReadModel
 
+from .control_coordinate_transform import ControlCoordinateTransform
 from .drawing_plan import DrawingEntity, SymbolProfile
 from .source_snapshot import ApplicationDrawingSnapshot
 
@@ -23,9 +24,13 @@ class ControlProjectionDrawingSnapshotAdapter:
         application: object,
         *,
         project_id: str,
+        coordinate_transform: ControlCoordinateTransform,
         symbol_profile: SymbolProfile = SymbolProfile.ANSI_IEEE,
         entity_builder: Callable[[ControlProgramReadModel, SymbolProfile], tuple[DrawingEntity, ...]],
     ) -> ApplicationDrawingSnapshot:
+        if not isinstance(coordinate_transform, ControlCoordinateTransform):
+            raise TypeError("coordinate_transform must be an explicitly reviewed ControlCoordinateTransform.")
+        coordinate_transform.assert_reviewed_fingerprint()
         if application is None or not callable(getattr(application, "read_control", None)):
             raise TypeError("application must expose read_control().")
         if not isinstance(project_id, str) or not project_id.strip():
@@ -55,9 +60,10 @@ class ControlProjectionDrawingSnapshotAdapter:
             raise RuntimeError("Control read model has no stable program identity.")
 
         profile = symbol_profile if isinstance(symbol_profile, SymbolProfile) else SymbolProfile(symbol_profile)
-        entities = tuple(entity_builder(read_model, profile))
-        if any(not isinstance(entity, DrawingEntity) for entity in entities):
+        source_entities = tuple(entity_builder(read_model, profile))
+        if any(not isinstance(entity, DrawingEntity) for entity in source_entities):
             raise TypeError("entity_builder must return only DrawingEntity values.")
+        entities = coordinate_transform.transform_entities(source_entities)
 
         revision_after = application.revision
         if revision_before != revision_after:
@@ -80,7 +86,7 @@ class ControlProjectionDrawingSnapshotAdapter:
             drawing_types=("control",),
             entities=entities,
             units="mm",
-            coordinate_system="control-ladder-local",
+            coordinate_system="world",
         )
 
 
