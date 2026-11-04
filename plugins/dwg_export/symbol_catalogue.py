@@ -9,11 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import hashlib
+import json
+import math
 import re
 from urllib.parse import urlsplit
-from typing import Iterable
+from typing import Any, Iterable, Mapping
 
-from .drawing_plan import DrawingPlan, SymbolProfile, serialize_drawing_plan
+from .drawing_plan import DrawingEntity, DrawingPlan, SymbolProfile, serialize_drawing_plan
 from .symbol_registry import SymbolDefinition, SymbolRegistry
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -85,10 +87,14 @@ def symbol_geometry_digest(definition: SymbolDefinition) -> str:
         entities=definition.primitives,
     )
     payload = serialize_drawing_plan(plan).encode("utf-8")
+    anchors = json.dumps(
+        {name: list(definition.terminal_anchors[name]) for name in sorted(definition.terminal_anchors)},
+        sort_keys=True, separators=(",", ":"), allow_nan=False,
+    ).encode("utf-8")
     envelope = (
         f"{definition.units}|{definition.base_point[0]:.17g}|"
         f"{definition.base_point[1]:.17g}|"
-    ).encode("ascii") + payload
+    ).encode("ascii") + anchors + b"|" + payload
     return hashlib.sha256(envelope).hexdigest()
 
 
