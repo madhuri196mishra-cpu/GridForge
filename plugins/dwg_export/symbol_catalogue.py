@@ -256,5 +256,7 @@ __all__ = [
     "SymbolReviewEvidence",
     "symbol_geometry_digest",
     "convert_sld_catalogue_primitives",
+    "SymbolCatalogueEntry",
+    "assemble_unreviewed_symbol_definitions",
     "build_reviewed_symbol_registry",
 ]
