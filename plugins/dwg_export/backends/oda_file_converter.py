@@ -52,12 +52,15 @@ class ODAFileConverterBackend:
             raise FileNotFoundError(f"ODA File Converter executable not found: {path}")
         if not os.access(path, os.X_OK) and os.name != "nt":
             raise PermissionError(f"ODA File Converter is not executable: {path}")
-        if isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
+            raise TypeError("timeout_seconds must be a finite positive number")
+        timeout_value = float(timeout_seconds)
+        if not math.isfinite(timeout_value) or timeout_value <= 0:
+            raise ValueError("timeout_seconds must be a finite positive number")
         if symbol_registry is not None and not isinstance(symbol_registry, SymbolRegistry):
             raise TypeError("symbol_registry must be a SymbolRegistry")
         self._executable = path
-        self._timeout = float(timeout_seconds)
+        self._timeout = timeout_value
         self._symbols = symbol_registry if symbol_registry is not None else SymbolRegistry()
 
     @staticmethod
