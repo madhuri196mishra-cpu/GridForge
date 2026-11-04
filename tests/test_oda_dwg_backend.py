@@ -59,6 +59,24 @@ def test_oda_backend_rejects_unsupported_target_version_before_conversion(tmp_pa
         backend.export(plan, tmp_path / "drawing.dwg", target_version="ACAD2030")
 
 
+def test_oda_backend_rejects_non_dwg_destination_without_export_service(tmp_path: Path) -> None:
+    from plugins.dwg_export import DrawingPlan, SymbolProfile
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    backend = ODAFileConverterBackend(executable)
+    plan = DrawingPlan(
+        project_id="p", export_id="e", source_revision="r",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",), entities=(),
+    )
+
+    with pytest.raises(ValueError, match="extension must be .dwg"):
+        backend.export(plan, tmp_path / "drawing.dxf")
+
+    assert not (tmp_path / "drawing.dxf").exists()
+
+
 def test_oda_backend_validates_plan_when_called_without_export_service(tmp_path: Path) -> None:
     from plugins.dwg_export import DrawingEntity, DrawingPlan, SymbolProfile
     from plugins.dwg_export.validation import DrawingPlanValidationError
