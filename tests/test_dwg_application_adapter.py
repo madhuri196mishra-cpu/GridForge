@@ -146,7 +146,7 @@ def test_control_adapter_captures_its_own_program_snapshot_and_provenance() -> N
     assert snapshot.source_id == "ladder-main"
     assert snapshot.drawing_types == ("control",)
     assert snapshot.coordinate_system == "control-ladder-local"
-    assert snapshot.units == "control-layout-unit"
+    assert snapshot.units == "mm"
     assert snapshot.entities[0].entity_id == "control-component-1"
 
 
