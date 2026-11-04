@@ -66,13 +66,13 @@ def test_sld_snapshot_promotes_document_identity_to_plan_provenance():
         project_id="project-a", export_id="export-a", source_revision="rev-9",
         source_kind="sld_export_snapshot", source_id="document-42",
         symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
-        entities=(), units="sld-unit", coordinate_system="sld-document-local",
+        entities=(), units="mm", coordinate_system="world",
     )
     plan = DrawingPlanFactory.from_snapshot(snapshot)
     assert plan.source_document_id == "document-42"
     assert plan.source_id == "document-42"
-    assert plan.coordinate_system == "sld-document-local"
-    assert plan.units == "sld-unit"
+    assert plan.coordinate_system == "world"
+    assert plan.units == "mm"
 
 
 def test_sld_plan_requires_explicit_document_identity():
@@ -83,3 +83,14 @@ def test_sld_plan_requires_explicit_document_identity():
             symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
             entities=(), source_kind="sld_export_snapshot",
         )
+
+
+def test_sld_plan_factory_rejects_untransformed_source_coordinates():
+    snapshot = ApplicationDrawingSnapshot(
+        project_id="project-a", export_id="export-a", source_revision="rev-9",
+        source_kind="sld_export_snapshot", source_id="document-42",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(), units="sld-unit", coordinate_system="sld-document-local",
+    )
+    with pytest.raises(DrawingPlanValidationError, match="transformed world-coordinate"):
+        DrawingPlanFactory.from_snapshot(snapshot)
