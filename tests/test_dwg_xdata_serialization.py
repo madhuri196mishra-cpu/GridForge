@@ -305,3 +305,69 @@ def test_export_manifest_rejects_mixed_coordinate_mapping_provenance(tmp_path):
     )
     with pytest.raises(ValueError, match="conflicting coordinate mapping provenance"):
         backend._build_export_manifest(plan, SymbolRegistry(), "ACAD2018")
+
+
+def test_oda_roundtrip_verifier_checks_manifest_and_entity_xdata(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    import sys
+    from types import SimpleNamespace
+    from plugins.dwg_export import DrawingPlan, SymbolProfile
+
+    payload = json.dumps(
+        {"manifest_schema_version": 1, "entity_count": 1},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    class _Tag:
+        def __init__(self, code, value):
+            self.code = code
+            self.value = value
+
+    class _CadEntity:
+        def get_xdata(self, appid):
+            assert appid == "GRIDFORGE"
+            return [
+                _Tag(1000, "entity-1"),
+                _Tag(1000, json.dumps({"gridforge_export_manifest_sha256": digest})),
+            ]
+
+    record = SimpleNamespace(tags=[_Tag(1, payload)])
+    gridforge_dict = SimpleNamespace(get=lambda key: record if key == "EXPORT_MANIFEST" else None)
+    document = SimpleNamespace(
+        rootdict=SimpleNamespace(get=lambda key: gridforge_dict if key == "GRIDFORGE" else None),
+        modelspace=lambda: [_CadEntity()],
+    )
+    fake_ezdxf = SimpleNamespace(
+        readfile=lambda path: document,
+        DXFError=type("DXFError", (Exception,), {}),
+    )
+    monkeypatch.setitem(sys.modules, "ezdxf", fake_ezdxf)
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    backend = ODAFileConverterBackend(executable)
+    generated = tmp_path / "gridforge_export.dwg"
+    generated.write_bytes(b"AC1032-dwg")
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-1", source_revision="revision-1",
+        symbol_profile=SymbolProfile.ANSI_IEEE, drawing_types=("sld",),
+        entities=(DrawingEntity("entity-1", "TEXT", "LABEL", {"text": "x"}, {}),),
+    )
+
+    def _convert(command, **kwargs):
+        output_dir = Path(command[2])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "gridforge_export.dxf").write_text("roundtrip", encoding="utf-8")
+        return SimpleNamespace(returncode=0, stderr="", stdout="")
+
+    from pathlib import Path
+    monkeypatch.setattr(
+        "plugins.dwg_export.backends.oda_file_converter.subprocess.run", _convert,
+    )
+
+    backend._verify_dwg_metadata_roundtrip(
+        generated, tmp_path / "verification", "ACAD2018", plan, digest,
+    )
