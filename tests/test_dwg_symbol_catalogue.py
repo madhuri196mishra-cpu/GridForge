@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from plugins.dwg_export import (
@@ -62,9 +64,7 @@ def test_review_evidence_rejects_geometry_drift():
 
 def test_review_evidence_rejects_profile_or_reference_mismatch():
     definition, evidence = _reviewed_definition()
-    wrong_profile = SymbolReviewEvidence(
-        **{**evidence.__dict__, "profile": SymbolProfile.IEC_60617}
-    )
+    wrong_profile = replace(evidence, profile=SymbolProfile.IEC_60617)
     with pytest.raises(ValueError, match="missing review evidence"):
         build_reviewed_symbol_registry(
             (definition,), (wrong_profile,), required_symbol_ids=("breaker",), require_complete=False,
