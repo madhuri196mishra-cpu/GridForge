@@ -39,6 +39,14 @@ The plugin is an engineering plugin, not a `ui.plugins` composition plugin. UI a
 - ODA publication uses unique staging files, a timeout, process status checks, DWG signature checks and atomic replacement.
 - The optional Python extra is installed with `pip install -e '.[dwg-export]'`; ODA File Converter is installed and configured separately. Neither dependency is required by the base GridForge installation.
 
+### Detached catalogue assembly and coverage
+
+`SymbolCatalogueEntry` is a plugin-owned, detached input record. `assemble_unreviewed_symbol_definitions()` converts only supported LINE, CIRCLE and RECT primitives into CAD-neutral definitions. It carries the profile, stable ID, base point and named anchors, and always creates definitions with `review_status="unreviewed"`. It cannot create review evidence or enable export.
+
+All source coordinates are converted into millimetres using an explicit positive `unit_to_mm` factor. Non-mm source units additionally require a `unit_mapping_reference`; the original unit label, factor and reference are retained in the definition, registry fingerprint and review digest. The reference is an auditable identifier supplied by the curator, not proof that the conversion is correct. A conversion factor must be independently established before use.
+
+`symbol_catalogue_coverage()` reports the required profile/ID slots, present definitions, missing slots and unreviewed slots. Its `export_candidate` flag is only a completeness/status indicator; the evidence-gated `build_reviewed_symbol_registry()` remains mandatory before export.
+
 ### SLD symbol geometry and terminal anchors
 
 The registry definition carries a separate immutable `terminal_anchors` mapping in local symbol coordinates. Those named coordinates are retained on each exported INSERT as `symbol_terminal_anchors`; they are not converted into electrical connectivity and do not replace persisted endpoint references. Anchor coordinates participate in both the review geometry digest and registry fingerprint, so changing a terminal location invalidates the reviewed geometry binding.
