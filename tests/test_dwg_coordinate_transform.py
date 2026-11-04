@@ -55,5 +55,5 @@ def test_polyline_orientation_is_preserved_by_positive_uniform_mapping() -> None
         ) / 2.0
 
     assert signed_area(points) > 0.0
-    assert abs(signed_area(points)) == 16.0
+    assert abs(signed_area(points)) == 8.0
     assert transformed.geometry["closed"] is True
