@@ -40,7 +40,7 @@ class SLDProjectionDrawingSnapshotAdapter:
         if not callable(entity_builder):
             raise TypeError("entity_builder must be callable")
         profile = symbol_profile if isinstance(symbol_profile, SymbolProfile) else SymbolProfile(symbol_profile)
-        source_entities = tuple(entity_builder(snapshot, profile))
+        source_entities = tuple(entity_builder(snapshot, profile=profile))
         if any(not isinstance(entity, DrawingEntity) for entity in source_entities):
             raise TypeError("entity_builder must return only DrawingEntity values")
         entities = coordinate_transform.transform_entities(source_entities)
