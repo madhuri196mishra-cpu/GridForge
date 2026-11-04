@@ -29,7 +29,6 @@ class SymbolDefinition:
     profile: SymbolProfile
     primitives: tuple[DrawingEntity, ...]
     base_point: tuple[float, float] = (0.0, 0.0)
-    terminal_anchors: Mapping[str, tuple[float, float]] = field(default_factory=dict)
     description: str = ""
     definition_version: str = "1.0.0"
     review_status: str = "unreviewed"
@@ -38,6 +37,7 @@ class SymbolDefinition:
     review_reference: str | None = None
     standard_reference: str | None = None
     units: str = "mm"
+    terminal_anchors: Mapping[str, tuple[float, float]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.symbol_id, str) or not _SYMBOL_ID.fullmatch(self.symbol_id):
