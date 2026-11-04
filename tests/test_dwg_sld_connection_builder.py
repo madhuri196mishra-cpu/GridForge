@@ -49,13 +49,24 @@ def test_explicit_connection_route_is_preserved_without_topology_inference() -> 
     )
     entity = next(item for item in entities if item.kind == "LWPOLYLINE")
     assert entity.kind == "LWPOLYLINE"
-    assert entity.geometry["points"] == ((1.0, 2.0), (30.0, 2.0), (30.0, 45.0))
+    assert entity.geometry["points"] == (
+        (0.0, 0.0), (1.0, 2.0), (30.0, 2.0), (30.0, 45.0), (100.0, 50.0),
+    )
     assert entity.metadata["route_ownership"] == "engineer"
     assert entity.metadata["route_routing_mode"] == "manual"
     assert entity.metadata["route_geometry_source"] == "persisted_route"
     assert entity.metadata["gridforge_connection_id"] == "wire-9"
     assert entity.metadata["persisted_connection_properties"]["core_connection_id"] == "core-wire-9"
     assert entity.metadata["core_connection_id"] == "core-wire-9"
+
+
+def test_single_authored_bend_is_preserved_between_both_connection_endpoints() -> None:
+    entities = SLDNodeEntityBuilder(_registry()).build(
+        _plan(((40, 20),)), profile=SymbolProfile.ANSI_IEEE,
+    )
+    entity = next(item for item in entities if item.kind == "LWPOLYLINE")
+    assert entity.geometry["points"] == ((0.0, 0.0), (40.0, 20.0), (100.0, 50.0))
+    assert entity.metadata["route_geometry_source"] == "persisted_route"
 
 
 def test_unrouted_explicit_connection_uses_positions_only_as_display_endpoints() -> None:
