@@ -3577,6 +3577,61 @@ class Application:
             for field_name in ("voltage_pu", "angle_deg", "p_mw", "q_mvar", "z1_pu", "z2_pu", "z0_pu", "in_service"):
                 if payload.get(field_name) is not None:
                     resolutions[field_name] = "RESOLVED"
+        elif command_type == "model.update_transformer":
+            equipment_id_field, equipment_type = "transformer_id", "transformer"
+            transformer_fields = (
+                "hv_winding_connection", "lv_winding_connection",
+                "hv_neutral_grounding_impedance_ohm", "lv_neutral_grounding_impedance_ohm",
+                "hv_neutral_earth_return_impedance_ohm", "lv_neutral_earth_return_impedance_ohm",
+                "hv_neutral_terminal_role", "lv_neutral_terminal_role",
+                "hv_phase_roles", "lv_phase_roles", "hv_terminal_role", "lv_terminal_role",
+                "impedance_reference_winding", "zero_sequence_resistance_ohm",
+                "zero_sequence_reactance_ohm", "core_construction", "zero_sequence_test_basis",
+                "vector_group_configuration", "zero_sequence_test_configuration",
+                "zero_sequence_two_winding_test_data",
+            )
+            for field_name in transformer_fields:
+                if payload.get(field_name) is not None:
+                    resolutions[field_name] = "RESOLVED"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+            if payload.get("replace_physical_conductor_configuration") is True:
+                for field_name in (
+                    "hv_neutral_earth_return_impedance_ohm", "lv_neutral_earth_return_impedance_ohm",
+                    "hv_neutral_terminal_role", "lv_neutral_terminal_role", "hv_phase_roles", "lv_phase_roles",
+                ):
+                    resolutions[field_name] = (
+                        "RESOLVED" if payload.get(field_name) is not None else "PENDING"
+                    )
+            if payload.get("replace_phase_domain_multiport_configuration") is True:
+                for field_name in (
+                    "phase_domain_terminal_admittance_siemens", "zero_sequence_multiport_evidence",
+                    "phase_domain_delta_loop_states", "phase_domain_multiport_tap_ratio",
+                    "phase_domain_multiport_phase_shift_rad",
+                ):
+                    resolutions[field_name] = (
+                        "RESOLVED" if payload.get(field_name) is not None else "PENDING"
+                    )
+        elif command_type == "model.update_current_transformer":
+            equipment_id_field, equipment_type = "transformer_id", "current_transformer"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type in {
+            "model.put_current_transformer_in_service",
+            "model.take_current_transformer_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "transformer_id", "current_transformer"
+            resolutions["in_service"] = "RESOLVED"
+        elif command_type == "model.update_capacitive_voltage_transformer":
+            equipment_id_field, equipment_type = "transformer_id", "capacitive_voltage_transformer"
+            if payload.get("in_service") is not None:
+                resolutions["in_service"] = "RESOLVED"
+        elif command_type in {
+            "model.put_capacitive_voltage_transformer_in_service",
+            "model.take_capacitive_voltage_transformer_out_of_service",
+        }:
+            equipment_id_field, equipment_type = "transformer_id", "capacitive_voltage_transformer"
+            resolutions["in_service"] = "RESOLVED"
         elif command_type == "model.update_line":
             equipment_id_field, equipment_type = "line_id", "line"
             if payload.get("conductor_system") is not None:
