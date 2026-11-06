@@ -174,6 +174,21 @@ class ProjectWorkspaceApplicationAdapter:
         project_id = state.project.project_id if state.project is not None else ""
         self._publish(f"rollback_{operation}", state, project_id)
 
+    def _reconcile_projection_after_document_rollback(self, *, operation: str) -> None:
+        """Re-publish restored document state through the existing projection subscribers."""
+        state = self._lifecycle.state
+        if self._application.presentation is not state.document:
+            _logger.error(
+                "Skipping document rollback projection reconciliation because Application and "
+                "workspace presentations disagree: operation=%s application_document=%r workspace_document=%r",
+                operation,
+                getattr(self._application.presentation, "document_id", None),
+                getattr(state.document, "document_id", None),
+            )
+            return
+        project_id = state.project.project_id if state.project is not None else ""
+        self._publish(f"rollback_{operation}", state, project_id)
+
     def configure_save_as_path_provider(self, provider: Callable[[object], str | None]) -> None:
         """Bind the existing UI Save As path-selection workflow for unsaved projects."""
         if not callable(provider):
@@ -597,6 +612,7 @@ class ProjectWorkspaceApplicationAdapter:
                         ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous))
                     )
             self._recover_independently(primary, tuple(recovery))
+            self._reconcile_projection_after_document_rollback(operation="activate_document")
             raise
 
     def replace_document(self, document: SLDDocument) -> ProjectWorkspaceState:
@@ -630,6 +646,7 @@ class ProjectWorkspaceApplicationAdapter:
                     ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous))
                 )
             self._recover_independently(primary, tuple(recovery))
+            self._reconcile_projection_after_document_rollback(operation="replace_document")
             raise
 
     def new_sld_document(self, name: str | None = None) -> SLDDocument:
@@ -642,6 +659,7 @@ class ProjectWorkspaceApplicationAdapter:
         if self._document_transition_guard is not None:
             self._document_transition_guard()
         document: SLDDocument | None = None
+        activation_failed = False
         try:
             document_name = name or f"SLD-{len(tuple(self._lifecycle.documents.documents())) + 1:02d}"
             document = self._lifecycle.create_document(
@@ -658,7 +676,11 @@ class ProjectWorkspaceApplicationAdapter:
                 document_id=document.document_id,
                 view_type="sld",
             ))
-            self.activate_document(document.document_id)
+            try:
+                self.activate_document(document.document_id)
+            except BaseException:
+                activation_failed = True
+                raise
             return document
         except BaseException as primary:
             recovery: list[tuple[str, Callable[[], None]]] = []
@@ -678,6 +700,8 @@ class ProjectWorkspaceApplicationAdapter:
                         ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous))
                     )
             self._recover_independently(primary, tuple(recovery))
+            if not activation_failed:
+                self._reconcile_projection_after_document_rollback(operation="new_sld_document")
             raise
 
     def close_document(
@@ -718,9 +742,14 @@ class ProjectWorkspaceApplicationAdapter:
                     if save_path is None or not str(save_path).strip():
                         # Save As was cancelled; do not close or clean the document.
                         return self._lifecycle.state
+                activation_failed = False
                 try:
                     if previous_active is not document:
-                        self.activate_document(document_id)
+                        try:
+                            self.activate_document(document_id)
+                        except BaseException:
+                            activation_failed = True
+                            raise
                     if context is not None and getattr(context, "path", None) is not None:
                         self._application.save_project()
                     else:
@@ -738,6 +767,8 @@ class ProjectWorkspaceApplicationAdapter:
                                 ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous_active))
                             )
                     self._recover_independently(primary, tuple(recovery))
+                    if not activation_failed:
+                        self._reconcile_projection_after_document_rollback(operation="close_document_save")
                     raise
             elif decision == "discard":
                 # Discard authorizes removal; do not clear dirty state before
@@ -769,9 +800,10 @@ class ProjectWorkspaceApplicationAdapter:
                         ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous))
                     )
             self._recover_independently(primary, tuple(recovery))
+            self._reconcile_projection_after_document_rollback(operation="close_document")
             raise
 
-    def is_document_dirty(self, document_id: str) -> bool:
+    def is_document_dirty(self, document_id: str):
         return self._lifecycle.documents.is_dirty(document_id)
 
     def save_project(self) -> ProjectContext:
