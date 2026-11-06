@@ -203,27 +203,14 @@ class SimulationEvent:
     ) -> None:
 
         try:
+            self.time = float(self.time)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise EventError("Event time must be a finite numeric value.") from exc
 
-            self.time = float(
-                self.time
-            )
-
-        except (
-            TypeError,
-            ValueError,
-        ) as exc:
-
-            raise EventError(
-                "Event time must be "
-                "numeric."
-            ) from exc
-
+        if not math.isfinite(self.time):
+            raise EventError("Event time must be finite.")
         if self.time < 0.0:
-
-            raise EventError(
-                "Event time cannot "
-                "be negative."
-            )
+            raise EventError("Event time cannot be negative.")
 
         if not str(
             self.event_id
@@ -478,16 +465,17 @@ class EventManager:
         tolerance: float = 1e-9,
     ) -> None:
 
-        if tolerance < 0.0:
+        try:
+            resolved_tolerance = float(tolerance)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise EventError("Event tolerance must be a finite numeric value.") from exc
 
-            raise EventError(
-                "Event tolerance "
-                "cannot be negative."
-            )
+        if not math.isfinite(resolved_tolerance):
+            raise EventError("Event tolerance must be finite.")
+        if resolved_tolerance < 0.0:
+            raise EventError("Event tolerance cannot be negative.")
 
-        self._tolerance = float(
-            tolerance
-        )
+        self._tolerance = resolved_tolerance
 
         self._events: dict[
             str,
@@ -1106,27 +1094,14 @@ class EventManager:
         """Validate a simulation time."""
 
         try:
+            value = float(time)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise EventError("Simulation time must be a finite numeric value.") from exc
 
-            value = float(
-                time
-            )
-
-        except (
-            TypeError,
-            ValueError,
-        ) as exc:
-
-            raise EventError(
-                "Simulation time must "
-                "be numeric."
-            ) from exc
-
+        if not math.isfinite(value):
+            raise EventError("Simulation time must be finite.")
         if value < 0.0:
-
-            raise EventError(
-                "Simulation time cannot "
-                "be negative."
-            )
+            raise EventError("Simulation time cannot be negative.")
 
         return value
 
