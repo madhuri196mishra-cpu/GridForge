@@ -77,6 +77,13 @@ class _ClipboardPasteInteraction:
             return float(point[0]), float(point[1])
         raise TypeError("Clipboard placement position must expose x/y coordinates.")
 
+    def _clear_preview(self) -> None:
+        # Remove only this interaction's items. PreviewLayer is shared with
+        # other active tools, so clipboard cancellation must not clear their
+        # unrelated transient graphics.
+        for item in self._items:
+            self._preview_layer.remove(item)
+
     def _move_to(self, event: Any) -> None:
         x, y = self._event_point(event)
         self._delta = (x - self._origin[0], y - self._origin[1])
@@ -101,7 +108,7 @@ class _ClipboardPasteInteraction:
             return False
         self._finished = True
         self._active = False
-        self._preview_layer.clear_preview()
+        self._clear_preview()
         return True
 
     def key_press(self, event: Any) -> bool:
@@ -120,7 +127,7 @@ class _ClipboardPasteInteraction:
         had_preview = self._active or bool(self._items)
         self._finished = True
         self._active = False
-        self._preview_layer.clear_preview()
+        self._clear_preview()
         return had_preview
 
 
@@ -526,7 +533,11 @@ class ToolManager:
         interaction = _ClipboardPasteInteraction(
             self.preview_layer, tuple(preview_items), origin, on_accept
         )
-        self.preview_layer.replace(interaction._items)
+        try:
+            self.preview_layer.add_items(interaction._items)
+        except Exception:
+            interaction._clear_preview()
+            raise
         interaction.activate()
         self._interaction_tool = interaction
         return True
