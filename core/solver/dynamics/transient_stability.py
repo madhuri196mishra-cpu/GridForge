@@ -411,10 +411,16 @@ class TransientStabilitySolver:
     def step(self, dt: float | None = None) -> DAESolution:
         if self._state is None:
             raise TransientStabilityError("Transient-stability solver must be initialized before step().")
+        # Validate the public step request before clearing prior step evidence
+        # or performing event/end-time boundary arithmetic. A non-finite value
+        # must not be made to look valid by clipping it to the remaining horizon.
+        try:
+            requested_dt = self.dt if dt is None else float(dt)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("dt must be a finite number greater than zero.") from exc
+        if not math.isfinite(requested_dt) or requested_dt <= 0.0:
+            raise ValueError("dt must be a finite number greater than zero.")
         self._last_step_discontinuity = None
-        requested_dt = self.dt if dt is None else float(dt)
-        if requested_dt <= 0.0:
-            raise ValueError("dt must be greater than zero.")
         if self._time >= self.end_time - self.event_manager.tolerance:
             raise TransientStabilityError("Simulation has reached end_time.")
         # Keep incremental stepping consistent with run(): dispatch events
