@@ -1138,13 +1138,18 @@ def _build_application_impl(
         next_document_id = document.document_id if isinstance(document, SLDDocument) else None
 
         def clear_previous_canvas_state() -> None:
+            # New/open/close project boundaries are cleared by the canonical
+            # Application-event projection before its canvas refresh. This
+            # handler owns only in-project document close/replacement cleanup.
+            if change.operation in {"new", "open", "close"}:
+                return
             current_context = engineering_context.current
             if (
                 current_context.document_id != next_document_id
                 or current_context.project_id != getattr(project, "project_id", None)
                 or change.operation == "replace_document"
             ):
-                # Run only after the Application transition commits. A failed
+                # Run only after the document transition commits. A failed
                 # transition therefore keeps the previous document's transient
                 # interaction state available for rollback.
                 canvas_composition.clear_project_state()
@@ -1342,7 +1347,7 @@ def _build_application_impl(
         properties_panel.handle_sld_document_changed()
     else:
         properties_panel.clear_sld_annotation_controls()
-    sld_update_coordinator = SLDUpdateCoordinator(application=gridforge_application, synchronizer=sld_read_synchronizer, canvas_refresh=synchronize_canvas, draft_projection=canvas_composition.draft_sld_projection)
+    sld_update_coordinator = SLDUpdateCoordinator(application=gridforge_application, synchronizer=sld_read_synchronizer, canvas_refresh=synchronize_canvas, draft_projection=canvas_composition.draft_sld_projection, project_state_clear=canvas_composition.clear_project_state)
     control_update_coordinator = ControlUpdateCoordinator(application=gridforge_application, canvas=control_workspace.canvas, canvas_refresh=control_workspace.refresh)
     element_list_panel.bind_selection_manager(canvas_composition.selection_manager)
     bind_project_selection = getattr(project_panel, "bind_selection_manager", None)
