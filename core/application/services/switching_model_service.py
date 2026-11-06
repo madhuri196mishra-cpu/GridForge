@@ -368,7 +368,7 @@ class SwitchingModelService(ModelServiceSupport):
                 self._network.invalidate_topology()
         transaction.record_undo(restore); return self._success(disconnector, "disconnector", disconnector_id, f"Disconnector {'put in service' if in_service else 'taken out of service'}: {disconnector_id}")
 
-    def create_fuse(self, *, fuse_id: str, endpoint_from: Bus | Terminal | None = None, endpoint_to: Bus | Terminal | None = None, name: str = "", rated_current_a: float = 1.0, rated_voltage_v: float = 1.0, interrupting_rating_ka: float = 0.0, in_service: bool = True, blown: bool = False, transaction: Transaction) -> ApplicationResult[Fuse]:
+    def create_fuse(self, *, fuse_id: str, endpoint_from: Bus | Terminal | None = None, endpoint_to: Bus | Terminal | None = None, name: str = "", rated_current_a: float | None = None, rated_voltage_v: float | None = None, interrupting_rating_ka: float | None = None, in_service: bool = True, blown: bool = False, transaction: Transaction) -> ApplicationResult[Fuse]:
         self._require_transaction(transaction); self._require_id(fuse_id, "fuse_id")
         if endpoint_from is not None: self._validate_endpoint(endpoint_from, "endpoint_from")
         if endpoint_to is not None: self._validate_endpoint(endpoint_to, "endpoint_to")
