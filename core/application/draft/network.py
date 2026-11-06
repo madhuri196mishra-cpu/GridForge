@@ -390,14 +390,14 @@ class DraftNetwork:
         """Return an orientation-independent key for one semantic wire pair."""
         return tuple(sorted((source, target), key=lambda endpoint: repr(endpoint.to_dict())))
 
-    def validate_connection_candidate(self, connection: DraftConnection) -> None:
+    def validate_connection_candidate(self, connection: DraftConnection, *, network: Any | None = None) -> None:
         """Validate a candidate without changing draft state or transaction history."""
         if connection.connection_id in self._connections:
             raise ValueError(f"Draft connection already exists: {connection.connection_id}")
         if connection.connection_kind != "simple_wire":
             raise ValueError("Only simple_wire DraftConnection is supported by the canonical authoring contract.")
-        self._validate_endpoint(connection.source, connection_id=connection.connection_id)
-        self._validate_endpoint(connection.target, connection_id=connection.connection_id)
+        self._validate_endpoint(connection.source, connection_id=connection.connection_id, network=network)
+        self._validate_endpoint(connection.target, connection_id=connection.connection_id, network=network)
         if connection.source == connection.target:
             raise ValueError(f"{connection.connection_id}: self-connection is invalid.")
 
@@ -425,8 +425,8 @@ class DraftNetwork:
                     f"already used by {existing.connection_id}."
                 )
 
-    def add_connection(self, connection: DraftConnection) -> None:
-        self.validate_connection_candidate(connection)
+    def add_connection(self, connection: DraftConnection, *, network: Any | None = None) -> None:
+        self.validate_connection_candidate(connection, network=network)
         # Mutate only after every preflight check succeeds, so a rejected wire
         # cannot leave partially updated draft state.
         self._connections[connection.connection_id] = connection
