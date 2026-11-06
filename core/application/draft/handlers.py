@@ -13,7 +13,7 @@ from core.model import EndpointReference, EquipmentType
 from ..creation import CreationCommitIntent, CreationCommandPreparer, validate_creation_contract_metadata
 from ..results import ApplicationResult
 from ..services.simple_wire_service import SimpleWireConnectionService
-from .network import DraftConnection, DraftNetwork
+from .network import DraftConnection, DraftEquipment, DraftNetwork
 
 
 def _thaw_payload(value: Any) -> Any:
@@ -53,6 +53,7 @@ class DraftCommandHandlers:
             "draft.add_connection": self.add_connection,
             "draft.create_connection": self.add_connection,
             "draft.remove_connection": self.remove_connection,
+            "draft.paste_selection": self.paste_selection,
         }
 
     def add_equipment(self, command, context, transaction):
@@ -95,6 +96,54 @@ class DraftCommandHandlers:
         _record_draft_undo(draft, transaction)
         connection = draft.remove_connection(str(command.payload["connection_id"]))
         return ApplicationResult.success_result(value={"connection_id": connection.connection_id})
+
+    def paste_selection(self, command, context, transaction):
+        """Preflight and add a complete clipboard graph under one transaction."""
+        draft = self._draft()
+        payload = _thaw_payload(command.payload)
+        equipment = tuple(
+            DraftEquipment.from_dict(item)
+            for item in payload.get("equipment", ())
+        )
+        connections = tuple(
+            DraftConnection.from_dict(item)
+            for item in payload.get("connections", ())
+        )
+        if not equipment:
+            raise ValueError("A draft clipboard paste requires at least one equipment item.")
+        equipment_ids = tuple(item.draft_id for item in equipment)
+        connection_ids = tuple(item.connection_id for item in connections)
+        if len(set(equipment_ids)) != len(equipment_ids):
+            raise ValueError("Clipboard paste contains duplicate draft equipment identities.")
+        if len(set(connection_ids)) != len(connection_ids):
+            raise ValueError("Clipboard paste contains duplicate draft connection identities.")
+        if set(equipment_ids) & {item.draft_id for item in draft.equipment}:
+            raise ValueError("Clipboard paste collides with existing DraftNetwork equipment.")
+        if set(connection_ids) & {item.connection_id for item in draft.connections}:
+            raise ValueError("Clipboard paste collides with existing DraftNetwork connections.")
+
+        # Validate the entire candidate graph before touching the live DraftNetwork.
+        candidate = DraftNetwork.from_dict(
+            draft.to_dict(),
+            project_id=draft.project_id,
+            activation_generation=draft.activation_generation,
+        )
+        for item in equipment:
+            candidate.add_equipment(item)
+        for connection in connections:
+            candidate.add_connection(connection)
+
+        # One inverse snapshot means CommandManager rollback restores the complete
+        # pre-paste draft, including every connection, if this command fails.
+        _record_draft_undo(draft, transaction)
+        for item in equipment:
+            draft.add_equipment(item)
+        for connection in connections:
+            draft.add_connection(connection)
+        return ApplicationResult.success_result(
+            value={"draft_ids": equipment_ids, "connection_ids": connection_ids},
+            metadata={"draft_ids": equipment_ids, "connection_ids": connection_ids},
+        )
 
 
 class DraftConnectivityResolver:
