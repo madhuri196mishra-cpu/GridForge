@@ -1847,6 +1847,11 @@ class StudyReadService:
             if isinstance(value, UUID):
                 return {"$type": "uuid", "value": str(value)}
             if isinstance(value, Enum):
+                if type(value) not in (CTPolarity, CVTPolarity):
+                    raise ValueError(
+                        "Transient comparison export cannot encode unregistered enum "
+                        f"{type(value).__module__}.{type(value).__qualname__}."
+                    )
                 return {
                     "$type": "enum",
                     "class": f"{type(value).__module__}.{type(value).__qualname__}",
@@ -1878,14 +1883,29 @@ class StudyReadService:
             if hasattr(value, "item") and callable(value.item) and type(value).__module__.startswith("numpy"):
                 return encode(value.item(), _active)
             if is_dataclass(value) and not isinstance(value, type):
-                qualified = f"{type(value).__module__}.{type(value).__qualname__}"
                 known_tags = {
-                    transient_name: "solver_result",
-                    f"{EventExecution.__module__}.{EventExecution.__qualname__}": "event_execution",
-                    f"{TransientDiscontinuity.__module__}.{TransientDiscontinuity.__qualname__}": "transient_discontinuity",
+                    TransientStabilityResult: "solver_result",
+                    EventExecution: "event_execution",
+                    EventTransition: "event_transition",
+                    TransientDiscontinuity: "transient_discontinuity",
+                    AlgebraicNetworkSolution: "algebraic_network_solution",
+                    ProjectRevision: "project_revision",
+                    StudyResultNumericDeltaReadModel: "numeric_delta",
+                    TransientDiscontinuitySignalDeltaReadModel: "discontinuity_signal_delta",
+                    TransientDiscontinuityDeltaReadModel: "discontinuity_delta",
+                    TransientSemanticEventMatchReadModel: "semantic_event_match",
+                    TransientSignalDeltaReadModel: "signal_delta",
                 }
+                value_type = type(value)
+                tag = known_tags.get(value_type)
+                if tag is None:
+                    raise ValueError(
+                        "Transient comparison export cannot encode unregistered dataclass "
+                        f"{value_type.__module__}.{value_type.__qualname__}."
+                    )
+                qualified = f"{value_type.__module__}.{value_type.__qualname__}"
                 return encode_compound(lambda: {
-                    "$type": known_tags.get(qualified, "dataclass"),
+                    "$type": tag,
                     "class": qualified,
                     "fields": {item.name: encode(getattr(value, item.name), _active) for item in fields(value)},
                 })
