@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from math import isfinite
 from typing import Any, Optional
 
-from ui.core.qt import QBrush, QFont, QGraphicsItem, QLineF, QPainter, QPen, QRectF, QPointF, QTransform, Qt, QColor, Signal
+from ui.core.qt import QBrush, QFont, QGraphicsItem, QLineF, QPainter, QPainterPath, QPainterPathStroker, QPen, QRectF, QPointF, QTransform, Qt, QColor, Signal
 from ui.equipment.equipment_base import EquipmentBase
 from ui.equipment.symbol.symbol_base import SymbolBase
 from ui.equipment.symbol.symbol_definition import SymbolDefinition
@@ -121,6 +121,7 @@ class EquipmentItem(BaseItem):
         super().__init__(object_id, parent)
         self._element_type = element_type
         self._symbol_definition = symbol_definition
+        self._hit_shape = self._build_hit_shape()
         self._equipment = equipment
         if symbol_instance is None:
             symbol_instance = SymbolBase(
@@ -207,27 +208,79 @@ class EquipmentItem(BaseItem):
             })
         return tuple(points)
 
+    def _build_hit_shape(self) -> QPainterPath:
+        """Build a local-coordinate hit shape from the actual symbol primitives.
+
+        QGraphicsItem applies the item's rotation, scale, and reflection to
+        this path for scene hit testing. Keeping the path in symbol-local
+        coordinates makes visual geometry, hit testing, and transformed
+        terminal anchors share the same transform without maintaining a
+        second scene-space bounding frame.
+        """
+        hit_shape = QPainterPath()
+        for primitive in self._symbol_definition.primitives:
+            kind = primitive.get("kind")
+            geometry = QPainterPath()
+            if kind == "line":
+                geometry.moveTo(float(primitive["x1"]), float(primitive["y1"]))
+                geometry.lineTo(float(primitive["x2"]), float(primitive["y2"]))
+                visual_width = float(primitive.get("stroke_width", 1.8))
+            elif kind == "rect":
+                geometry.addRect(QRectF(
+                    float(primitive["x"]),
+                    float(primitive["y"]),
+                    float(primitive["width"]),
+                    float(primitive["height"]),
+                ))
+                visual_width = 1.8
+            elif kind == "circle":
+                radius = float(primitive["r"])
+                geometry.addEllipse(QRectF(
+                    float(primitive["cx"]) - radius,
+                    float(primitive["cy"]) - radius,
+                    radius * 2.0,
+                    radius * 2.0,
+                ))
+                visual_width = 1.8
+            elif kind == "text":
+                geometry.addRect(QRectF(
+                    float(primitive["x"]),
+                    float(primitive["y"]),
+                    float(primitive["width"]),
+                    float(primitive["height"]),
+                ))
+                visual_width = 1.8
+            else:
+                continue
+
+            stroker = QPainterPathStroker()
+            # Retain a practical pointer target while avoiding the broad
+            # logical rectangle that previously made empty symbol space
+            # selectable. Qt transforms this local hit path with the item.
+            stroker.setWidth(max(4.0, visual_width + 2.0))
+            hit_shape.addPath(stroker.createStroke(geometry))
+        return hit_shape
+
+    def shape(self) -> QPainterPath:
+        """Return the symbol's precise local hit geometry."""
+        return QPainterPath(self._hit_shape)
+
     def boundingRect(self) -> QRectF:
-        # QGraphicsItem bounds must include the painted pen extents. Keep a
-        # stable margin around the declared logical symbol box so terminals
-        # at its edges and heavier IEEE/ANSI busbar strokes are not clipped.
-        margin = max(
-            2.0,
-            max(
-                (
-                    float(primitive.get("stroke_width", 1.8)) / 2.0
-                    for primitive in self._symbol_definition.primitives
-                    if primitive.get("kind") == "line"
-                ),
-                default=0.9,
-            ) + 0.2,
-        )
-        return QRectF(
-            -self._symbol_definition.width / 2 - margin,
-            -self._symbol_definition.height / 2 - margin,
-            self._symbol_definition.width + 2 * margin,
-            self._symbol_definition.height + 2 * margin,
-        )
+        """Return bounds for the actual hit/paint geometry in local space.
+
+        QGraphicsItem maps these bounds through its current transform for
+        scene indexing, so rotated and mirrored symbols retain aligned
+        selection geometry without a manually cached axis-aligned frame.
+        """
+        if self._hit_shape.isEmpty():
+            margin = 2.0
+            return QRectF(
+                -self._symbol_definition.width / 2 - margin,
+                -self._symbol_definition.height / 2 - margin,
+                self._symbol_definition.width + 2 * margin,
+                self._symbol_definition.height + 2 * margin,
+            )
+        return self._hit_shape.boundingRect().adjusted(-0.5, -0.5, 0.5, 0.5)
 
     def _effective_state(self) -> VisualState:
         if self._visual_state not in {VisualState.NORMAL, VisualState.HOVER}:
