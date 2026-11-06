@@ -593,6 +593,9 @@ class ToolManager:
 
     def reset(self) -> None:
         self._ensure_active()
+        # Reset is a lifecycle boundary for every transient interaction,
+        # including staged clipboard previews that have not reached Application.
+        self._clear_interaction_tool()
         if self._active_tool is not None:
             self._active_tool.reset()
         had_draft = self.creation_context.active
