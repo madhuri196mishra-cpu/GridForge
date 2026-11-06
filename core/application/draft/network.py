@@ -121,6 +121,7 @@ class DraftEquipment:
     required_connection_terminals: tuple[str, ...] = ()
     parameter_contract: tuple[Mapping[str, Any], ...] = ()
     conditional_requirements: tuple[Mapping[str, Any], ...] = ()
+    command_field_dispositions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.draft_id.strip() or not self.equipment_type.strip(): raise ValueError("Draft equipment identity is required.")
@@ -156,6 +157,18 @@ class DraftEquipment:
         object.__setattr__(self, "required_connection_terminals", required_terminals)
         object.__setattr__(self, "parameter_contract", tuple(MappingProxyType(dict(x)) for x in self.parameter_contract))
         object.__setattr__(self, "conditional_requirements", tuple(MappingProxyType(dict(x)) for x in self.conditional_requirements))
+        dispositions = {}
+        if not isinstance(self.command_field_dispositions, Mapping):
+            raise TypeError("Draft command-field dispositions must be a mapping.")
+        for field_name, disposition in self.command_field_dispositions.items():
+            if not isinstance(field_name, str) or not field_name.strip() or not isinstance(disposition, Mapping):
+                raise TypeError("Draft command-field dispositions require named mapping values.")
+            kind = disposition.get("kind")
+            reason = disposition.get("reason")
+            if not isinstance(kind, str) or not kind.strip() or not isinstance(reason, str) or not reason.strip():
+                raise ValueError("Draft command-field dispositions require explicit kind and reason.")
+            dispositions[field_name.strip()] = MappingProxyType({str(k): str(v) for k, v in disposition.items()})
+        object.__setattr__(self, "command_field_dispositions", MappingProxyType(dispositions))
 
     def to_dict(self) -> dict[str, Any]:
         return {"draft_id": self.draft_id, "equipment_type": self.equipment_type, "display_name": self.display_name,
@@ -167,7 +180,8 @@ class DraftEquipment:
                 "parameter_mapping": dict(self.parameter_mapping), "endpoint_mapping": dict(self.endpoint_mapping),
                 "required_connection_terminals": list(self.required_connection_terminals),
                 "parameter_contract": [dict(x) for x in self.parameter_contract],
-                "conditional_requirements": [dict(x) for x in self.conditional_requirements]}
+                "conditional_requirements": [dict(x) for x in self.conditional_requirements],
+                "command_field_dispositions": {k: dict(v) for k, v in self.command_field_dispositions.items()}}
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "DraftEquipment":
@@ -180,7 +194,8 @@ class DraftEquipment:
                     dict(data.get("parameter_mapping", {})), dict(data.get("endpoint_mapping", {})),
                     tuple(str(x) for x in data.get("required_connection_terminals", ())),
                     tuple(dict(x) for x in data.get("parameter_contract", ())),
-                    tuple(dict(x) for x in data.get("conditional_requirements", ())))
+                    tuple(dict(x) for x in data.get("conditional_requirements", ())),
+                    {str(k): dict(v) for k, v in dict(data.get("command_field_dispositions", {})).items()})
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,7 +308,7 @@ class DraftNetwork:
         current = self.require_equipment(draft_id); allowed = {"display_name","engineering_data","endpoints","placement","presentation","validation_state"}
         unknown = set(changes) - allowed
         if unknown: raise ValueError(f"Unsupported DraftEquipment fields: {sorted(unknown)!r}")
-        values = {name: getattr(current, name) for name in ("draft_id","equipment_type","display_name","terminal_contract","engineering_data","endpoints","placement","presentation","validation_state","command_type","id_field","parameter_mapping","endpoint_mapping","required_connection_terminals","parameter_contract","conditional_requirements")}
+        values = {name: getattr(current, name) for name in ("draft_id","equipment_type","display_name","terminal_contract","engineering_data","endpoints","placement","presentation","validation_state","command_type","id_field","parameter_mapping","endpoint_mapping","required_connection_terminals","parameter_contract","conditional_requirements","command_field_dispositions")}
         values.update(changes); updated = DraftEquipment(**values); self._equipment[draft_id] = updated; self.validation_state = {}; return updated
 
     def remove_equipment(self, draft_id: str) -> DraftEquipment:
