@@ -1,5 +1,6 @@
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from enum import Enum
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -525,6 +526,40 @@ def test_study_comparison_read_contract_accepts_live_and_archived_results():
             live_result, unsupported_record_id, project_id=project_id,
             activation_generation=4, current_revision=revision,
         )
+
+    @dataclass(frozen=True)
+    class UnregisteredExportDataclass:
+        value: str
+
+    class UnregisteredExportEnum(Enum):
+        VALUE = "value"
+
+    for unsupported_value in (
+        UnregisteredExportDataclass("must not be serialized by fallback"),
+        UnregisteredExportEnum.VALUE,
+    ):
+        rejected_provenance = dict(provenance)
+        rejected_provenance["unregistered_value"] = unsupported_value
+        rejected_record_id = uuid4()
+        rejected_record = SimpleNamespace(
+            record_id=rejected_record_id,
+            saved_at="2026-11-05T10:00:00+00:00",
+            result=SimpleNamespace(
+                study_id=uuid4(), project_id=project_id, activation_generation=3,
+                source_revision=revision, study_type="transient_stability", status="completed",
+                value=transient_result(0.1, provenance_override=rejected_provenance),
+                message="", metadata={},
+            ),
+        )
+        rejected_service = StudyReadService(studies, SimpleNamespace(
+            load_all=lambda *args, **kwargs: (rejected_record,),
+            load_latest=lambda *args, **kwargs: None,
+        ))
+        with pytest.raises(ValueError, match="unregistered"):
+            rejected_service.export_study_comparison(
+                live_result, rejected_record_id, project_id=project_id,
+                activation_generation=4, current_revision=revision,
+            )
 
     cyclic_metadata = {}
     cyclic_metadata["self"] = cyclic_metadata
