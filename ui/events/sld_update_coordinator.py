@@ -31,6 +31,7 @@ from ui.sld.sld_document import SLDDocument
 from ui.canvas.draft_sld_projection import DraftSLDProjection
 
 CanvasRefresh = Callable[[], None]
+ProjectStateClear = Callable[[], None]
 
 
 class SLDUpdateCoordinator:
@@ -57,6 +58,7 @@ class SLDUpdateCoordinator:
         synchronizer: SLDReadSynchronizer,
         canvas_refresh: CanvasRefresh,
         draft_projection: DraftSLDProjection | None = None,
+        project_state_clear: ProjectStateClear | None = None,
     ) -> None:
         if not isinstance(application, Application):
             raise TypeError("application must be an Application")
@@ -74,6 +76,9 @@ class SLDUpdateCoordinator:
         # must never construct or retain a second projection authority.
         self._projection_manager = synchronizer.projection_manager
         self._canvas_refresh = canvas_refresh
+        if project_state_clear is not None and not callable(project_state_clear):
+            raise TypeError("project_state_clear must be callable or None")
+        self._project_state_clear = project_state_clear
         if draft_projection is not None and not isinstance(draft_projection, DraftSLDProjection):
             raise TypeError("draft_projection must be a DraftSLDProjection or None")
         self._draft_projection = draft_projection
@@ -158,19 +163,24 @@ class SLDUpdateCoordinator:
 
         if isinstance(event, ProjectClosed):
             # ProjectClosed is the authoritative successful transition boundary.
-            # Clear all projection-domain state so the next project cannot
-            # inherit registry entries from the closed project.
+            # Clear canvas-owned transient state before refreshing the empty
+            # Application presentation; the later workspace notification must
+            # not perform this project-boundary cleanup a second time.
+            if self._project_state_clear is not None:
+                self._project_state_clear()
             self._projection_manager.clear()
             self.detach_document()
             self._refresh_canvas()
             return
 
         if isinstance(event, ProjectLoaded):
-            # ProjectLoaded is a project-boundary fact, not a presentation
-            # reset instruction. ProjectClosed owns destructive cleanup.
-            # Keeping the registry intact prevents repeated/late
-            # ProjectLoaded delivery from making committed SLD content
-            # disappear during ordinary interaction.
+            # ProjectLoaded is published only after the Application activation
+            # transaction commits. Clear the prior project's canvas resources
+            # here, before reconciling or presenting the newly active document.
+            # Failed activations publish no ProjectLoaded event and therefore
+            # retain the previous canvas for rollback.
+            if self._project_state_clear is not None:
+                self._project_state_clear()
             presentation = self._application.presentation
             if isinstance(presentation, SLDDocument):
                 self.bind_document(presentation)
