@@ -243,13 +243,15 @@ class EquipmentItem(BaseItem):
                 ))
                 visual_width = 1.8
             elif kind == "text":
-                geometry.addRect(QRectF(
+                # Text occupies its declared label rectangle rather than a
+                # stroked outline; include the label area in the hit shape.
+                hit_shape.addRect(QRectF(
                     float(primitive["x"]),
                     float(primitive["y"]),
                     float(primitive["width"]),
                     float(primitive["height"]),
                 ))
-                visual_width = 1.8
+                continue
             else:
                 continue
 
