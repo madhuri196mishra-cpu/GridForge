@@ -173,10 +173,15 @@ class CanvasPlugin:
         draft_snapshot = draft_projection.project()
 
         if application_document is None:
-            clear = getattr(surface, "clear_document", None)
-            if not callable(clear):
-                raise RuntimeError("Canonical SLDCanvasSurface cannot clear its document.")
-            clear()
+            # The committed ProjectClosed boundary already clears the aggregate's
+            # project-scoped interaction/selection/preview/renderer state. Keep
+            # this read-side reconciliation safe when called independently by
+            # resetting only surface metadata; synchronize(empty) removes any
+            # remaining realized items without issuing a second renderer.clear().
+            reset_document_state = getattr(surface, "reset_document_state", None)
+            if not callable(reset_document_state):
+                raise RuntimeError("Canonical SLDCanvasSurface cannot reset document metadata.")
+            reset_document_state()
             snapshot = CompositeSLDCanvasSnapshot(
                 committed=SLDCanvasSnapshot(nodes=(), connections=()),
                 draft=draft_snapshot,
