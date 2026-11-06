@@ -631,7 +631,7 @@ def _build_application_impl(
             labels = dict(source.get("labels", {}))
             source_x, source_y = source["position"]
             name = str(labels.get("name") or attributes.get("name") or element_type.title())
-            new_id = f"{element_type}-copy-{uuid4().hex[:8]}"
+            new_id = f"{element_type}-copy-{uuid4().hex}"
             x = float(source_x) + offset_x
             y = float(source_y) + offset_y
             in_service = bool(attributes.get("in_service", True))
