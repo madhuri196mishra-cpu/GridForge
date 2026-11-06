@@ -59,6 +59,9 @@ def test_fuse_create_command_carries_only_endpoint_references():
     assert annotations["endpoint_to"] == "EndpointReference | None"
     assert any(isinstance(n, ast.Call) and getattr(n.func, "id", None) == "_endpoint" for n in ast.walk(init))
     assert "from core.model import EndpointReference" in source
+    assert "rated_current_a: float | None = None" in source
+    assert "rated_voltage_v: float | None = None" in source
+    assert "interrupting_rating_ka: float | None = None" in source
 
 
 def test_fuse_create_handler_resolves_both_endpoints_before_service():
@@ -76,6 +79,9 @@ def test_fuse_create_service_accepts_resolved_endpoints_and_uses_network_lifecyc
     section = _function_source(path, "create_fuse")
     assert "endpoint_from: Bus | Terminal | None" in section
     assert "endpoint_to: Bus | Terminal | None" in section
+    assert "rated_current_a: float | None = None" in section
+    assert "rated_voltage_v: float | None = None" in section
+    assert "interrupting_rating_ka: float | None = None" in section
     assert "self._validate_endpoint(endpoint_from" in section
     assert "self._validate_endpoint(endpoint_to" in section
     assert "Fuse(" in section
