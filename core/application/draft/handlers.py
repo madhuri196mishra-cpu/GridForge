@@ -87,9 +87,10 @@ class DraftCommandHandlers:
         # Reject invalid candidates before registering a transaction inverse.
         # A failed preflight must not trigger snapshot restoration that replaces
         # otherwise unchanged draft objects and can stale UI projection references.
-        draft.validate_connection_candidate(connection)
+        network = getattr(context, "network", None)
+        draft.validate_connection_candidate(connection, network=network)
         _record_draft_undo(draft, transaction)
-        draft.add_connection(connection)
+        draft.add_connection(connection, network=network)
         return ApplicationResult.success_result(value={"connection_id": connection.connection_id})
 
     def remove_connection(self, command, context, transaction):
@@ -131,8 +132,9 @@ class DraftCommandHandlers:
         )
         for item in equipment:
             candidate.add_equipment(item)
+        network = getattr(context, "network", None)
         for connection in connections:
-            candidate.add_connection(connection)
+            candidate.add_connection(connection, network=network)
 
         # One inverse snapshot means CommandManager rollback restores the complete
         # pre-paste draft, including every connection, if this command fails.
@@ -140,7 +142,7 @@ class DraftCommandHandlers:
         for item in equipment:
             draft.add_equipment(item)
         for connection in connections:
-            draft.add_connection(connection)
+            draft.add_connection(connection, network=network)
         return ApplicationResult.success_result(
             value={"draft_ids": equipment_ids, "connection_ids": connection_ids},
             metadata={"draft_ids": equipment_ids, "connection_ids": connection_ids},
