@@ -632,7 +632,7 @@ def _build_application_impl(
             endpoint_b = dict(wire.endpoint_b)
             def endpoint_object_id(endpoint):
                 nested = endpoint.get("endpoint", endpoint)
-                return str(nested.get("object_id", "")) if isinstance(nested, dict) else ""
+                return str(nested.get("object_id", "")) if hasattr(nested, "get") else ""
             if not ({endpoint_object_id(endpoint_a), endpoint_object_id(endpoint_b)} & copied_ids):
                 continue
             if endpoint_a.get("kind") == "junction" or endpoint_b.get("kind") == "junction":
