@@ -232,7 +232,10 @@ class EquipmentItem(BaseItem):
                     float(primitive["width"]),
                     float(primitive["height"]),
                 ))
-                visual_width = 1.8
+                # Symbol rectangles are painted with the active symbol
+                # brush, so their complete filled area is selectable.
+                hit_shape.addPath(geometry)
+                continue
             elif kind == "circle":
                 radius = float(primitive["r"])
                 geometry.addEllipse(QRectF(
@@ -241,7 +244,9 @@ class EquipmentItem(BaseItem):
                     radius * 2.0,
                     radius * 2.0,
                 ))
-                visual_width = 1.8
+                # Match the filled ellipse used by EquipmentItem.paint().
+                hit_shape.addPath(geometry)
+                continue
             elif kind == "text":
                 # Text occupies its declared label rectangle rather than a
                 # stroked outline; include the label area in the hit shape.
