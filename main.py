@@ -29,6 +29,7 @@ from ui.control.control_workspace import ControlWorkspace
 from ui.protection.protection_workspace import ProtectionWorkspace
 from ui.canvas.sld_canvas_projection import SLDCanvasProjection
 from ui.canvas.sld_canvas_render_system import SLDCanvasRenderSystem
+from ui.canvas.symbol_preview_item import SymbolPreviewItem
 from ui.controllers.study_case_controller import StudyCaseController
 from ui.core.controller import Controller
 from ui.core.action_router import UIActionRouter
@@ -651,46 +652,82 @@ def _build_application_impl(
         if not sld_clipboard:
             return
         offset_x, offset_y = 40.0, 40.0
+        source_items = tuple(sld_clipboard)
         source_to_draft_id = {
             str(source["source_id"]): f"paste-{uuid4().hex}"
-            for source in tuple(sld_clipboard)
+            for source in source_items
         }
         equipment_payload = []
-        for source in tuple(sld_clipboard):
-            element_type = str(source["element_type"]).strip().lower()
-            contract = gridforge_application.creation_contract_registry.resolve(element_type)
-            parameter_mapping = dict(contract["parameter_mapping"])
-            attributes = dict(source.get("attributes", {}))
-            engineering_data = {}
-            parameter_defaults = {
-                str(item["parameter_id"]): item.get("default_value")
-                for item in contract.get("parameter_contract", ())
-            }
-            parameter_values = dict(source.get("engineering_parameters", {}))
-            for parameter_id, command_field in parameter_mapping.items():
-                value = parameter_values.get(parameter_id, attributes.get(command_field, parameter_defaults.get(parameter_id)))
-                if value is not None:
-                    engineering_data[str(parameter_id)] = value
-            labels = dict(source.get("labels", {}))
-            source_x, source_y = source["position"]
-            equipment_payload.append({
-                "draft_id": source_to_draft_id[str(source["source_id"])],
-                "equipment_type": element_type,
-                "display_name": str(labels.get("name") or attributes.get("name") or element_type.title()),
-                "terminal_contract": tuple(contract["terminal_contract"]),
-                "engineering_data": engineering_data,
-                "endpoints": {},
-                "placement": (float(source_x) + offset_x, float(source_y) + offset_y),
-                "presentation": dict(source.get("presentation") or {}),
-                "validation_state": {},
-                "command_type": str(contract["command_type"]),
-                "id_field": str(contract["id_field"]),
-                "parameter_mapping": parameter_mapping,
-                "endpoint_mapping": dict(contract["endpoint_mapping"]),
-                "required_connection_terminals": tuple(contract.get("required_connection_terminals", ())),
-                "parameter_contract": tuple(dict(item) for item in contract.get("parameter_contract", ())),
-                "conditional_requirements": tuple(dict(item) for item in contract.get("conditional_requirements", ())),
-            })
+        preview_items = []
+        preview_positions = []
+        symbol_registry = presentation_bootstrap.symbol_registry
+
+        try:
+            for source in source_items:
+                element_type = str(source["element_type"]).strip().lower()
+                contract = gridforge_application.creation_contract_registry.resolve(element_type)
+                parameter_mapping = dict(contract["parameter_mapping"])
+                attributes = dict(source.get("attributes", {}))
+                engineering_data = {}
+                parameter_defaults = {
+                    str(item["parameter_id"]): item.get("default_value")
+                    for item in contract.get("parameter_contract", ())
+                }
+                parameter_values = dict(source.get("engineering_parameters", {}))
+                for parameter_id, command_field in parameter_mapping.items():
+                    value = parameter_values.get(
+                        parameter_id,
+                        attributes.get(command_field, parameter_defaults.get(parameter_id)),
+                    )
+                    if value is not None:
+                        engineering_data[str(parameter_id)] = value
+                labels = dict(source.get("labels", {}))
+                source_x, source_y = source["position"]
+                placement = (float(source_x) + offset_x, float(source_y) + offset_y)
+                presentation = dict(source.get("presentation") or {})
+                equipment_payload.append({
+                    "draft_id": source_to_draft_id[str(source["source_id"])],
+                    "equipment_type": element_type,
+                    "display_name": str(
+                        labels.get("name") or attributes.get("name") or element_type.title()
+                    ),
+                    "terminal_contract": tuple(contract["terminal_contract"]),
+                    "engineering_data": engineering_data,
+                    "endpoints": {},
+                    "placement": placement,
+                    "presentation": presentation,
+                    "validation_state": {},
+                    "command_type": str(contract["command_type"]),
+                    "id_field": str(contract["id_field"]),
+                    "parameter_mapping": parameter_mapping,
+                    "endpoint_mapping": dict(contract["endpoint_mapping"]),
+                    "required_connection_terminals": tuple(
+                        contract.get("required_connection_terminals", ())
+                    ),
+                    "parameter_contract": tuple(
+                        dict(item) for item in contract.get("parameter_contract", ())
+                    ),
+                    "conditional_requirements": tuple(
+                        dict(item) for item in contract.get("conditional_requirements", ())
+                    ),
+                })
+                # A preview has no draft/Core identity and cannot participate
+                # in snapping, selection, or electrical topology before accept.
+                definition = symbol_registry.require(element_type)
+                preview = SymbolPreviewItem(
+                    definition,
+                    position=placement,
+                    rotation=float(presentation.get("rotation", 0.0)),
+                    presentation_state=presentation,
+                    draft_id=None,
+                    terminal_names=(),
+                    element_type=element_type,
+                )
+                preview_items.append(preview)
+                preview_positions.append(placement)
+        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+            messages_panel.append_message(f"Paste preview unavailable: {exc}")
+            return
 
         def remap_endpoint(raw):
             endpoint = dict(raw)
@@ -716,31 +753,77 @@ def _build_application_impl(
                 f"Clipboard cannot preserve unsupported topology endpoint kind {kind!r}."
             )
 
-        connection_payload = []
-        source_connections = tuple(sld_clipboard[0].get("connections", ()))
-        for wire in source_connections:
-            connection_payload.append({
+        try:
+            connection_payload = tuple({
                 "connection_id": f"paste-wire-{uuid4().hex}",
                 "source": remap_endpoint(wire["endpoint_a"]),
                 "target": remap_endpoint(wire["endpoint_b"]),
                 "connection_kind": "simple_wire",
                 "route": {},
                 "validation_state": {},
-            })
+            } for wire in tuple(source_items[0].get("connections", ())))
+        except (KeyError, TypeError, ValueError) as exc:
+            messages_panel.append_message(f"Paste preview unavailable: {exc}")
+            return
 
-        result = gridforge_application.execute(
-            PasteDraftSelectionCommand(
-                equipment=tuple(equipment_payload),
-                connections=tuple(connection_payload),
-            )
+        # Position the group by its centre. The preview remains presentation-
+        # only until the accepting mouse release submits one atomic command.
+        origin = (
+            sum(point[0] for point in preview_positions) / len(preview_positions),
+            sum(point[1] for point in preview_positions) / len(preview_positions),
         )
-        if not result.success:
-            raise RuntimeError(result.message)
 
-        selection = canvas_composition.selection_manager
-        selection.clear()
-        for draft_id in result.value.get("draft_ids", ()):
-            selection.add_to_selection(str(draft_id))
+        def accept_paste(delta):
+            dx, dy = float(delta[0]), float(delta[1])
+            shifted_equipment = tuple({
+                **item,
+                "placement": (
+                    float(item["placement"][0]) + dx,
+                    float(item["placement"][1]) + dy,
+                ),
+            } for item in equipment_payload)
+            try:
+                result = gridforge_application.execute(
+                    PasteDraftSelectionCommand(
+                        equipment=shifted_equipment,
+                        connections=connection_payload,
+                    )
+                )
+            except Exception as exc:
+                messages_panel.append_message(f"Paste rejected; no draft items were added: {exc}")
+                return False
+            if not result.success:
+                messages_panel.append_message(
+                    f"Paste rejected; no draft items were added: {result.message}"
+                )
+                return False
+
+            selection = canvas_composition.selection_manager
+            selection.clear()
+            for draft_id in result.value.get("draft_ids", ()):
+                selection.add_to_selection(str(draft_id))
+            messages_panel.append_message(
+                "Clipboard selection added to DraftNetwork. Use Commit Network to commit the drawing."
+            )
+            return True
+
+        try:
+            started = tool_manager.begin_clipboard_paste(
+                preview_items=tuple(preview_items),
+                origin=origin,
+                on_accept=accept_paste,
+            )
+        except (RuntimeError, TypeError, ValueError) as exc:
+            messages_panel.append_message(f"Paste preview could not start: {exc}")
+            return
+        if not started:
+            messages_panel.append_message(
+                "Paste preview could not start: another canvas interaction is active."
+            )
+            return
+        messages_panel.append_message(
+            "Paste preview active. Move the selection and click to accept, or press Escape to cancel."
+        )
 
     def _delete_selection() -> None:
         selected_ids = tuple(canvas_composition.selection_manager.get_selected_ids())
