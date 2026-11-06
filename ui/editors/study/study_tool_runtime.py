@@ -21,7 +21,10 @@ class StudyToolRuntime:
         ToolDefinition("compare_results", "Compare Results", "Select Study Results for comparison.", icon_id=None, editor_types=("study",), capabilities=("result", "compare"), supported_modes=("select",), default_mode="select", category="results"),
         ToolDefinition("plot", "Plot", "Prepare the selected Study Result for plotting.", icon_id="plot", editor_types=("study",), capabilities=("result", "plot"), supported_modes=("select",), default_mode="select", category="results"),
         ToolDefinition("filter", "Filter", "Filter visible Study Results.", icon_id="filter", editor_types=("study",), capabilities=("result", "filter"), supported_modes=("select",), default_mode="select", category="results"),
-        ToolDefinition("export", "Export", "Export the selected Study Result through the presentation/Application boundary.", icon_id="export", editor_types=("study",), capabilities=("result", "export"), supported_modes=("select",), default_mode="select", category="results"),
+        # Export is intentionally not advertised as a selectable UI tool yet.
+        # The Application/controller can produce a comparison payload, but the
+        # Study editor has no bound destination/save workflow. Exposing this
+        # definition would create an apparently actionable but incomplete tool.
         ToolDefinition("navigate", "Navigate", "Navigate Study result views.", icon_id="navigate", editor_types=("study",), capabilities=("view", "navigate"), supported_modes=("pan", "zoom"), default_mode="pan", category="view"),
     )
 
