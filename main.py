@@ -636,11 +636,6 @@ def _build_application_impl(
                 return str(nested.get("object_id", "")) if hasattr(nested, "get") else ""
             if not ({endpoint_object_id(endpoint_a), endpoint_object_id(endpoint_b)} & copied_ids):
                 continue
-            if endpoint_a.get("kind") == "junction" or endpoint_b.get("kind") == "junction":
-                messages_panel.append_message(
-                    "Copy skipped a Simple Wire through a Junction; Junction topology is not part of the current clipboard endpoint contract."
-                )
-                continue
             clipboard_connections.append({
                 "endpoint_a": endpoint_a,
                 "endpoint_b": endpoint_b,
@@ -748,6 +743,15 @@ def _build_application_impl(
                     "terminal_role": str(nested["terminal_role"]),
                     "equipment_type": str(nested["equipment_type"]).strip().lower(),
                     "scope": scope,
+                }
+            if kind == "junction":
+                junction_id = str(nested.get("junction_id", nested.get("object_id", "")))
+                if not junction_id:
+                    raise ValueError("Clipboard Junction endpoint has no canonical junction_id.")
+                return {
+                    "kind": "junction",
+                    "object_id": junction_id,
+                    "scope": "core",
                 }
             raise ValueError(
                 f"Clipboard cannot preserve unsupported topology endpoint kind {kind!r}."
