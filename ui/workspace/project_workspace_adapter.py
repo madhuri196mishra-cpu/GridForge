@@ -583,7 +583,12 @@ class ProjectWorkspaceApplicationAdapter:
                         f"{type(recovery_error).__name__}: {recovery_error}"
                     )
 
-    def activate_document(self, document_id: str) -> ProjectWorkspaceState:
+    def activate_document(
+        self,
+        document_id: str,
+        *,
+        _publish_rollback: bool = True,
+    ) -> ProjectWorkspaceState:
         """Atomically activate one canonical workspace document and presentation."""
         document = self._lifecycle.documents.require(document_id)
         if not isinstance(document, SLDDocument):
@@ -612,7 +617,8 @@ class ProjectWorkspaceApplicationAdapter:
                         ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous))
                     )
             self._recover_independently(primary, tuple(recovery))
-            self._reconcile_projection_after_document_rollback(operation="activate_document")
+            if _publish_rollback:
+                self._reconcile_projection_after_document_rollback(operation="activate_document")
             raise
 
     def replace_document(self, document: SLDDocument) -> ProjectWorkspaceState:
@@ -659,7 +665,6 @@ class ProjectWorkspaceApplicationAdapter:
         if self._document_transition_guard is not None:
             self._document_transition_guard()
         document: SLDDocument | None = None
-        activation_failed = False
         try:
             document_name = name or f"SLD-{len(tuple(self._lifecycle.documents.documents())) + 1:02d}"
             document = self._lifecycle.create_document(
@@ -676,11 +681,7 @@ class ProjectWorkspaceApplicationAdapter:
                 document_id=document.document_id,
                 view_type="sld",
             ))
-            try:
-                self.activate_document(document.document_id)
-            except BaseException:
-                activation_failed = True
-                raise
+            self.activate_document(document.document_id, _publish_rollback=False)
             return document
         except BaseException as primary:
             recovery: list[tuple[str, Callable[[], None]]] = []
@@ -700,8 +701,7 @@ class ProjectWorkspaceApplicationAdapter:
                         ("presentation bridge restoration", lambda: self._presentation_activation_bridge(previous))
                     )
             self._recover_independently(primary, tuple(recovery))
-            if not activation_failed:
-                self._reconcile_projection_after_document_rollback(operation="new_sld_document")
+            self._reconcile_projection_after_document_rollback(operation="new_sld_document")
             raise
 
     def close_document(
