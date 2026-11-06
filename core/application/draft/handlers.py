@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from core.model import EndpointReference, EquipmentType
+from core.network import TopologyEndpointReference
 from ..creation import CreationCommitIntent, CreationCommandPreparer, validate_creation_contract_metadata
 from ..results import ApplicationResult
 from ..services.simple_wire_service import SimpleWireConnectionService
@@ -158,6 +159,9 @@ class DraftConnectivityResolver:
                 ) from exc
         else:
             core_id = endpoint.object_id
+
+        if endpoint.is_junction:
+            return TopologyEndpointReference.from_junction(core_id)
 
         if endpoint.is_bus:
             return EndpointReference.bus(
