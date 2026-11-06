@@ -392,7 +392,16 @@ class SelectionProjectionCoordinator:
             object_id=str(item["draft_id"]),
             display_type=equipment_type,
             labels=(str(item.get("display_name") or equipment_type), "Draft"),
-            status="draft",
+            # Later-configuration fields remain pending review, not universally
+            # mandatory. Study applicability is resolved by owning workflows.
+            status=(
+                "configuration_review_required"
+                if any(
+                    disposition.get("kind") == "later_configuration"
+                    for disposition in dict(item.get("command_field_dispositions", {})).values()
+                )
+                else "draft"
+            ),
             engineering_parameters=parameters,
             identity_kind="draft",
             geometry=item.get("placement"),
