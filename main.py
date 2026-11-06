@@ -617,6 +617,7 @@ def _build_application_impl(
                 "source_id": str(element.object_id),
                 "element_type": element_type,
                 "attributes": dict(getattr(read_model, "attributes", {}) or {}),
+                "engineering_parameters": {item.parameter_id: item.value for item in getattr(read_model, "engineering_parameters", ())},
                 "labels": dict(getattr(read_model, "labels", {}) or {}),
                 "position": (float(node.x), float(node.y)),
                 "presentation": None if node.presentation is None else node.presentation.to_dict(),
@@ -633,6 +634,11 @@ def _build_application_impl(
                 nested = endpoint.get("endpoint", endpoint)
                 return str(nested.get("object_id", "")) if isinstance(nested, dict) else ""
             if not ({endpoint_object_id(endpoint_a), endpoint_object_id(endpoint_b)} & copied_ids):
+                continue
+            if endpoint_a.get("kind") == "junction" or endpoint_b.get("kind") == "junction":
+                messages_panel.append_message(
+                    "Copy skipped a Simple Wire through a Junction; Junction topology is not part of the current clipboard endpoint contract."
+                )
                 continue
             clipboard_connections.append({
                 "endpoint_a": endpoint_a,
@@ -660,8 +666,9 @@ def _build_application_impl(
                 str(item["parameter_id"]): item.get("default_value")
                 for item in contract.get("parameter_contract", ())
             }
+            parameter_values = dict(source.get("engineering_parameters", {}))
             for parameter_id, command_field in parameter_mapping.items():
-                value = attributes.get(command_field, parameter_defaults.get(parameter_id))
+                value = parameter_values.get(parameter_id, attributes.get(command_field, parameter_defaults.get(parameter_id)))
                 if value is not None:
                     engineering_data[str(parameter_id)] = value
             labels = dict(source.get("labels", {}))
