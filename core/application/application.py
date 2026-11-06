@@ -4935,6 +4935,7 @@ class Application:
         if command.command_type in {
             "draft.add_equipment", "draft.update_equipment", "draft.remove_equipment",
             "draft.add_connection", "draft.create_connection", "draft.remove_connection",
+            "draft.paste_selection",
         }:
             self._event_bus.publish(DraftChanged(
                 operation=operation,
