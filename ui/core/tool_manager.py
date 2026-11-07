@@ -24,6 +24,113 @@ from ui.creation.creation_context import CreationContext
 ToolFactory = Callable[..., Any]
 
 
+class _ClipboardPasteInteraction:
+    """Transient canvas interaction for accepting or cancelling a clipboard preview.
+
+    It owns no engineering state. The supplied callback submits the one
+    Application command only after the user accepts the preview.
+    """
+
+    tool_id = "clipboard-paste"
+    cancel_parent_tool_on_cancel = False
+    cancel_creation_context_on_cancel = False
+    cancel_creation_context_on_complete = False
+
+    def __init__(self, preview_layer: Any, items: tuple[Any, ...], origin: tuple[float, float], on_accept: Callable[[tuple[float, float]], bool]) -> None:
+        if preview_layer is None or not items or not callable(on_accept):
+            raise ValueError("Clipboard preview requires a PreviewLayer, graphics items, and an acceptance callback.")
+        self._preview_layer = preview_layer
+        self._items = tuple(items)
+        self._origin = (float(origin[0]), float(origin[1]))
+        self._on_accept = on_accept
+        self._base_positions = tuple(
+            (float(item.pos().x()), float(item.pos().y())) for item in self._items
+        )
+        self._delta = (0.0, 0.0)
+        self._active = False
+        self._finished = False
+
+    def activate(self) -> None:
+        if self._finished:
+            raise RuntimeError("Clipboard preview interaction is already finished.")
+        self._active = True
+
+    def deactivate(self) -> None:
+        self.cancel()
+
+    @staticmethod
+    def _event_point(event: Any) -> tuple[float, float]:
+        point = getattr(event, "scene_position", None)
+        if point is None:
+            point = getattr(event, "position", None)
+            if callable(point):
+                point = point()
+        if isinstance(event, dict):
+            point = event.get("scene_position", event.get("position", point))
+        if point is None:
+            raise AttributeError("Clipboard placement event has no scene position.")
+        if hasattr(point, "x") and hasattr(point, "y"):
+            x = point.x() if callable(point.x) else point.x
+            y = point.y() if callable(point.y) else point.y
+            return float(x), float(y)
+        if isinstance(point, (tuple, list)) and len(point) >= 2:
+            return float(point[0]), float(point[1])
+        raise TypeError("Clipboard placement position must expose x/y coordinates.")
+
+    def _clear_preview(self) -> None:
+        # Remove only this interaction's items. PreviewLayer is shared with
+        # other active tools, so clipboard cancellation must not clear their
+        # unrelated transient graphics.
+        for item in self._items:
+            self._preview_layer.remove(item)
+
+    def _move_to(self, event: Any) -> None:
+        x, y = self._event_point(event)
+        self._delta = (x - self._origin[0], y - self._origin[1])
+        dx, dy = self._delta
+        for item, (base_x, base_y) in zip(self._items, self._base_positions):
+            item.setPos(base_x + dx, base_y + dy)
+
+    def mouse_move(self, event: Any) -> bool:
+        if not self._active or self._finished:
+            return False
+        self._move_to(event)
+        return True
+
+    def mouse_press(self, event: Any) -> bool:
+        return self._active and not self._finished
+
+    def mouse_release(self, event: Any) -> bool:
+        if not self._active or self._finished:
+            return False
+        self._move_to(event)
+        if not self._on_accept(self._delta):
+            return False
+        self._finished = True
+        self._active = False
+        self._clear_preview()
+        return True
+
+    def key_press(self, event: Any) -> bool:
+        key = getattr(event, "key", None)
+        if callable(key):
+            key = key()
+        if isinstance(event, dict):
+            key = event.get("key", key)
+        if key not in ("Escape", "escape", "Key_Escape", 0x01000000, 16777216):
+            return False
+        return self.cancel()
+
+    def cancel(self) -> bool:
+        if self._finished:
+            return False
+        had_preview = self._active or bool(self._items)
+        self._finished = True
+        self._active = False
+        self._clear_preview()
+        return had_preview
+
+
 class ToolManager:
     """Own registered UI tools, activation lifecycle, and input dispatch."""
 
@@ -314,13 +421,11 @@ class ToolManager:
         if tool is None:
             return False
 
-        # A creation tool may remain selected after draft placement. The
-        # placement interaction ends and clears the transient CreationDraft,
-        # while the tool remains active so repeated placements are still possible.
-        # Re-establish the canonical transient session at the next input
-        # boundary instead of allowing the tool to reach require_draft()
-        # without an active session.
-        self._ensure_creation_session()
+        # Only the active equipment-placement tool requires a CreationDraft.
+        # Temporary interactions such as clipboard placement own their own
+        # transient lifecycle and must not start or cancel an unrelated form.
+        if self._interaction_tool is None:
+            self._ensure_creation_session()
 
         handler = getattr(tool, method_name, None)
         if not callable(handler):
@@ -342,8 +447,11 @@ class ToolManager:
             # with its parent placement tool. Escape must clear both owners'
             # transient state before the next CreationDraft can be started.
             if self._interaction_tool is not None:
+                cancel_parent = getattr(
+                    self._interaction_tool, "cancel_parent_tool_on_cancel", True
+                )
                 parent_tool = self._active_tool
-                if parent_tool is not None and parent_tool is not self._interaction_tool:
+                if cancel_parent and parent_tool is not None and parent_tool is not self._interaction_tool:
                     try:
                         parent_tool.cancel()
                     except Exception:
@@ -351,18 +459,25 @@ class ToolManager:
                             "Failed to clear parent tool state after Escape; "
                             "continuing transient creation cancellation"
                         )
-            self.creation_context.cancel()
-            callback = getattr(self.controller, "_on_creation_cancelled", None)
-            if callable(callback) and had_draft:
-                callback()
+            cancel_context = getattr(
+                self._interaction_tool, "cancel_creation_context_on_cancel", True
+            )
+            if cancel_context:
+                self.creation_context.cancel()
+                callback = getattr(self.controller, "_on_creation_cancelled", None)
+                if callable(callback) and had_draft:
+                    callback()
 
         if self._interaction_tool is not None and method_name in {"mouse_release", "key_press"}:
             if method_name == "key_press" and not cancel_requested:
                 return handled
             if method_name == "mouse_release" and not handled:
                 return handled
+            interaction = self._interaction_tool
             self._clear_interaction_tool()
-            if method_name == "mouse_release":
+            if method_name == "mouse_release" and getattr(
+                interaction, "cancel_creation_context_on_complete", True
+            ):
                 self.creation_context.cancel()
         return handled
 
@@ -401,6 +516,31 @@ class ToolManager:
         if not handled:
             self._clear_interaction_tool()
         return handled
+
+    def begin_clipboard_paste(
+        self,
+        *,
+        preview_items: tuple[Any, ...],
+        origin: tuple[float, float],
+        on_accept: Callable[[tuple[float, float]], bool],
+    ) -> bool:
+        """Begin a staged clipboard placement without mutating DraftNetwork."""
+        self._ensure_active()
+        if self._interaction_tool is not None:
+            return False
+        if self.preview_layer is None:
+            raise RuntimeError("Clipboard placement requires the canonical PreviewLayer.")
+        interaction = _ClipboardPasteInteraction(
+            self.preview_layer, tuple(preview_items), origin, on_accept
+        )
+        try:
+            self.preview_layer.add_items(interaction._items)
+        except Exception:
+            interaction._clear_preview()
+            raise
+        interaction.activate()
+        self._interaction_tool = interaction
+        return True
 
     def _clear_interaction_tool(self) -> None:
         tool = self._interaction_tool
@@ -464,6 +604,9 @@ class ToolManager:
 
     def reset(self) -> None:
         self._ensure_active()
+        # Reset is a lifecycle boundary for every transient interaction,
+        # including staged clipboard previews that have not reached Application.
+        self._clear_interaction_tool()
         if self._active_tool is not None:
             self._active_tool.reset()
         had_draft = self.creation_context.active

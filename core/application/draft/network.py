@@ -16,7 +16,7 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True, slots=True)
 class DraftEndpointReference:
-    """Stable authoring identity for a draft terminal or a Bus attachment."""
+    """Stable authoring identity for a terminal, Bus attachment, or Core Junction."""
     kind: str
     object_id: str
     terminal_role: str | None = None
@@ -25,8 +25,8 @@ class DraftEndpointReference:
     scope: str = "draft"
 
     def __post_init__(self) -> None:
-        if self.kind not in {"terminal", "bus"}:
-            raise ValueError("Draft endpoint kind must be 'terminal' or 'bus'.")
+        if self.kind not in {"terminal", "bus", "junction"}:
+            raise ValueError("Draft endpoint kind must be terminal, bus, or junction.")
         if not isinstance(self.object_id, str) or not self.object_id.strip():
             raise ValueError("Draft endpoint object_id must be non-empty.")
         object.__setattr__(self, "object_id", self.object_id.strip())
@@ -41,7 +41,7 @@ class DraftEndpointReference:
                 raise ValueError("Draft terminal endpoint cannot carry attachment_id.")
             object.__setattr__(self, "terminal_role", self.terminal_role.strip())
             object.__setattr__(self, "equipment_type", self.equipment_type.strip().lower())
-        else:
+        elif self.kind == "bus":
             if not isinstance(self.attachment_id, str) or not self.attachment_id.strip():
                 raise ValueError("Draft Bus endpoint requires attachment_id.")
             if self.terminal_role is not None or self.equipment_type is not None:
@@ -53,6 +53,11 @@ class DraftEndpointReference:
                     "with an index in the supported range 0..8."
                 )
             object.__setattr__(self, "attachment_id", attachment_id)
+        else:
+            if self.scope != "core":
+                raise ValueError("Junction endpoints must reference an existing Core Junction.")
+            if self.terminal_role is not None or self.attachment_id is not None or self.equipment_type is not None:
+                raise ValueError("Junction endpoints cannot carry terminal or Bus attachment identity.")
 
     @classmethod
     def terminal(cls, *, draft_id: str, equipment_type: str, terminal_role: str, scope: str = "draft") -> "DraftEndpointReference":
@@ -78,6 +83,8 @@ class DraftEndpointReference:
     def is_terminal(self) -> bool: return self.kind == "terminal"
     @property
     def is_bus(self) -> bool: return self.kind == "bus"
+    @property
+    def is_junction(self) -> bool: return self.kind == "junction"
 
     def to_dict(self) -> dict[str, Any]:
         return {"kind": self.kind, "object_id": self.object_id, "terminal_role": self.terminal_role,
@@ -86,6 +93,9 @@ class DraftEndpointReference:
     def to_core_reference(self):
         """Translate this canonical authoring identity without substituting endpoints."""
         from core.model import EndpointReference, EquipmentType
+        if self.is_junction:
+            from core.network import TopologyEndpointReference
+            return TopologyEndpointReference.from_junction(self.object_id)
         if self.is_bus:
             return EndpointReference.bus(self.object_id, self.attachment_id or "")
         return EndpointReference.terminal(
@@ -317,6 +327,17 @@ class DraftNetwork:
 
     def _validate_endpoint(self, endpoint: DraftEndpointReference, *, connection_id: str | None = None, network: Any | None = None) -> None:
         prefix = f"{connection_id}: " if connection_id else ""
+        if endpoint.is_junction:
+            if endpoint.scope != "core":
+                raise ValueError(f"{prefix}Junction endpoints must reference Core topology.")
+            if network is not None:
+                try:
+                    network.get_junction(endpoint.object_id)
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"{prefix}unknown Core Junction {endpoint.object_id!r}."
+                    ) from exc
+            return
         if endpoint.is_bus:
             if endpoint.terminal_role is not None or endpoint.equipment_type is not None:
                 raise ValueError(f"{prefix}Draft Bus endpoint cannot carry terminal identity.")
@@ -369,14 +390,14 @@ class DraftNetwork:
         """Return an orientation-independent key for one semantic wire pair."""
         return tuple(sorted((source, target), key=lambda endpoint: repr(endpoint.to_dict())))
 
-    def validate_connection_candidate(self, connection: DraftConnection) -> None:
+    def validate_connection_candidate(self, connection: DraftConnection, *, network: Any | None = None) -> None:
         """Validate a candidate without changing draft state or transaction history."""
         if connection.connection_id in self._connections:
             raise ValueError(f"Draft connection already exists: {connection.connection_id}")
         if connection.connection_kind != "simple_wire":
             raise ValueError("Only simple_wire DraftConnection is supported by the canonical authoring contract.")
-        self._validate_endpoint(connection.source, connection_id=connection.connection_id)
-        self._validate_endpoint(connection.target, connection_id=connection.connection_id)
+        self._validate_endpoint(connection.source, connection_id=connection.connection_id, network=network)
+        self._validate_endpoint(connection.target, connection_id=connection.connection_id, network=network)
         if connection.source == connection.target:
             raise ValueError(f"{connection.connection_id}: self-connection is invalid.")
 
@@ -387,13 +408,14 @@ class DraftNetwork:
             EndpointCompatibility,
             EndpointCompatibilityError,
         )
-        try:
-            EndpointCompatibility.validate_pair(
-                connection.source.to_core_reference(),
-                connection.target.to_core_reference(),
-            )
-        except EndpointCompatibilityError as exc:
-            raise ValueError(f"{connection.connection_id}: {exc}") from exc
+        if not (connection.source.is_junction or connection.target.is_junction):
+            try:
+                EndpointCompatibility.validate_pair(
+                    connection.source.to_core_reference(),
+                    connection.target.to_core_reference(),
+                )
+            except EndpointCompatibilityError as exc:
+                raise ValueError(f"{connection.connection_id}: {exc}") from exc
 
         candidate_pair = self._endpoint_pair_key(connection.source, connection.target)
         for existing in self._connections.values():
@@ -403,8 +425,8 @@ class DraftNetwork:
                     f"already used by {existing.connection_id}."
                 )
 
-    def add_connection(self, connection: DraftConnection) -> None:
-        self.validate_connection_candidate(connection)
+    def add_connection(self, connection: DraftConnection, *, network: Any | None = None) -> None:
+        self.validate_connection_candidate(connection, network=network)
         # Mutate only after every preflight check succeeds, so a rejected wire
         # cannot leave partially updated draft state.
         self._connections[connection.connection_id] = connection
