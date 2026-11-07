@@ -22,7 +22,7 @@ from ui.canvas.navigation_controller import NavigationController
 from ui.canvas.engineering_canvas_contract import CanvasInteractionContract
 from ui.canvas.preview_layer import PreviewLayer
 from ui.core.controller import Controller
-from ui.core.qt import QComboBox, QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTabWidget, QVBoxLayout, QWidget
+from ui.core.qt import QComboBox, QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTabWidget, QVBoxLayout, QWidget, Qt
 from ui.core.selection_manager import SelectionManager
 from ui.core.snap_system import SnapSystem
 from ui.core.tool_manager import ToolManager
@@ -570,6 +570,7 @@ class CanvasComposer:
         properties_panel: Any = None,
         sld_canvas_projection: SLDCanvasProjection | None = None,
         sld_canvas_render_system: SLDCanvasRenderSystem | None = None,
+        comparison_viewport: ReadOnlySLDViewport | None = None,
     ) -> CanvasComposition:
         """Compose the canvas and unwind every acquired resource on failure."""
         cleanup_stack: list[tuple[str, Any]] = []
@@ -596,6 +597,7 @@ class CanvasComposer:
                 properties_panel=properties_panel,
                 sld_canvas_projection=sld_canvas_projection,
                 sld_canvas_render_system=sld_canvas_render_system,
+                comparison_viewport=comparison_viewport,
                 _cleanup_stack=cleanup_stack,
             )
         except BaseException:
@@ -619,6 +621,7 @@ class CanvasComposer:
         properties_panel: Any = None,
         sld_canvas_projection: SLDCanvasProjection | None = None,
         sld_canvas_render_system: SLDCanvasRenderSystem | None = None,
+        comparison_viewport: ReadOnlySLDViewport | None = None,
         _cleanup_stack: list[tuple[str, Any]],
     ) -> CanvasComposition:
         """Construct one complete Canvas service graph.
@@ -717,6 +720,7 @@ class CanvasComposer:
             navigation_controller=navigation_controller,
             sld_canvas_projection=sld_canvas_projection,
             sld_canvas_render_system=sld_canvas_render_system,
+            comparison_viewport=comparison_viewport,
             parent=parent,
         )
         _cleanup_stack.append(("surface zoom observer", surface.detach_navigation_listener))
