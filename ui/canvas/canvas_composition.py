@@ -96,6 +96,8 @@ class ReadOnlySLDViewport(QWidget):
         self._view.setObjectName("SLDReadOnlyComparisonView")
         self._view.setScene(scene)
         self._view.setInteractive(False)
+        self._view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self._view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         root.addWidget(self._view, 1)
         self.hide()
 
