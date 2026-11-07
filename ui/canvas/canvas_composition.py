@@ -132,6 +132,8 @@ class ReadOnlySLDViewport(QWidget):
         )
         if choices:
             self._document_selector.setCurrentIndex(selected_index)
+        selected_document_id = self._document_selector.itemData(selected_index) if choices else None
+        needs_fit = selected_document_id != selected_id or not self.isVisible()
         self._document_selector.blockSignals(False)
         if not choices:
             self.clear_document()
@@ -139,7 +141,8 @@ class ReadOnlySLDViewport(QWidget):
             return
         self._select_document(self._document_selector.currentIndex())
         self.show()
-        self.fit_content()
+        if needs_fit:
+            self.fit_content()
 
     def fit_content(self) -> None:
         """Fit the currently realized comparison document without changing its source."""
