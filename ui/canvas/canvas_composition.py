@@ -181,6 +181,10 @@ class ReadOnlySLDViewport(QWidget):
         self._document_id = None
 
     def dispose(self) -> None:
+        try:
+            self._document_selector.currentIndexChanged.disconnect(self._select_document)
+        except (RuntimeError, TypeError):
+            pass
         self._render_system.dispose()
         self._document_id = None
 
