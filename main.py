@@ -22,11 +22,12 @@ from plugins.motor_dynamics.plugin import MotorDynamicsPlugin
 from plugins.motor_dynamics.dashboard import MotorTelemetryDashboardWidget
 from core.network.network import Network
 
-from ui.canvas.canvas_composition import CanvasComposer
+from ui.canvas.canvas_composition import CanvasComposer, ReadOnlySLDViewport
 from ui.events.control_update_coordinator import ControlUpdateCoordinator
 from ui.control.control_surface_host import ControlSurfaceHost
 from ui.control.control_workspace import ControlWorkspace
 from ui.protection.protection_workspace import ProtectionWorkspace
+from ui.canvas.grid_scene import GridScene
 from ui.canvas.sld_canvas_projection import SLDCanvasProjection
 from ui.canvas.sld_canvas_render_system import SLDCanvasRenderSystem
 from ui.controllers.study_case_controller import StudyCaseController
@@ -249,6 +250,32 @@ def _build_application_impl(
         semantic_realization=presentation_bootstrap.semantic_realization,
         snap_system=canvas_preparation.snap_system,
     )
+    # The comparison surface has its own scene, projection, renderer, and
+    # viewport. It deliberately receives no ToolManager, SelectionManager,
+    # SnapSystem, or route-edit controller: it is a read-only second sheet.
+    comparison_scene = GridScene()
+    comparison_projection = SLDCanvasProjection(
+        read_model_provider=sld_projection_manager.read_model,
+    )
+    comparison_render_system = SLDCanvasRenderSystem(
+        scene=comparison_scene,
+        item_factory=presentation_bootstrap.sld_graphics_item_factory,
+        semantic_realization=presentation_bootstrap.semantic_realization,
+    )
+
+    def _resolve_comparison_document(document_id: str):
+        try:
+            document = project_workspace_lifecycle.documents.require(document_id)
+        except KeyError:
+            return None
+        return document if isinstance(document, SLDDocument) else None
+
+    comparison_viewport = ReadOnlySLDViewport(
+        scene=comparison_scene,
+        projection=comparison_projection,
+        render_system=comparison_render_system,
+        document_resolver=_resolve_comparison_document,
+    )
     canvas_composition = canvas_composer.compose(
         controller=controller,
         tool_manager=tool_manager,
@@ -257,6 +284,7 @@ def _build_application_impl(
         parent=None,
         sld_canvas_projection=sld_canvas_projection,
         sld_canvas_render_system=sld_canvas_render_system,
+        comparison_viewport=comparison_viewport,
     )
     resources["canvas_composition"] = canvas_composition
     control_workspace = ControlWorkspace(application=gridforge_application, controller=controller, selection_manager=canvas_preparation.selection_manager, parent=None)
@@ -1266,9 +1294,18 @@ def _build_application_impl(
     # Resolve the canonical canvas synchronization callable before registering
     # lifecycle callbacks that may invoke it. This removes the composition-order
     # dependency on a later local binding.
-    synchronize_canvas = getattr(canvas_plugin, "refresh_canvas", None)
-    if not callable(synchronize_canvas):
+    _refresh_active_canvas = getattr(canvas_plugin, "refresh_canvas", None)
+    if not callable(_refresh_active_canvas):
         raise RuntimeError("CanvasPlugin does not expose refresh_canvas().")
+
+    def synchronize_canvas():
+        """Refresh the active editor and every document currently shown for comparison."""
+        snapshot = _refresh_active_canvas()
+        canvas_composition.surface.set_comparison_documents(
+            project_workspace_lifecycle.documents.documents(),
+            active_document_id=project_workspace_lifecycle.documents.active_document_id,
+        )
+        return snapshot
 
     def _attempt_workspace_sync_step(step: str, operation: Callable[[], None], change: ProjectWorkspaceChanged) -> None:
         try:
