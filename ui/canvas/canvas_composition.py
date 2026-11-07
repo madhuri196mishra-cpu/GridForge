@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+from collections.abc import Callable, Iterable
 from typing import Any, Optional
 
 from ui.canvas.coordinate_system import CoordinateSystem
@@ -21,7 +22,7 @@ from ui.canvas.navigation_controller import NavigationController
 from ui.canvas.engineering_canvas_contract import CanvasInteractionContract
 from ui.canvas.preview_layer import PreviewLayer
 from ui.core.controller import Controller
-from ui.core.qt import QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from ui.core.qt import QComboBox, QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTabWidget, QVBoxLayout, QWidget
 from ui.core.selection_manager import SelectionManager
 from ui.core.snap_system import SnapSystem
 from ui.core.tool_manager import ToolManager
@@ -48,6 +49,125 @@ class CanvasCompositionPreparation:
     preview_layer: PreviewLayer
 
 
+class ReadOnlySLDViewport(QWidget):
+    """Independent, non-interactive renderer for a secondary SLD document."""
+
+    def __init__(
+        self,
+        *,
+        scene: GridScene,
+        projection: SLDCanvasProjection,
+        render_system: SLDCanvasRenderSystem,
+        document_resolver: Callable[[str], SLDDocument | None],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        if not isinstance(scene, GridScene):
+            raise TypeError("scene must be a GridScene.")
+        if not isinstance(projection, SLDCanvasProjection):
+            raise TypeError("projection must be an SLDCanvasProjection.")
+        if not isinstance(render_system, SLDCanvasRenderSystem):
+            raise TypeError("render_system must be an SLDCanvasRenderSystem.")
+        if render_system.scene is not scene:
+            raise ValueError("The read-only renderer must target its own scene.")
+        if not callable(document_resolver):
+            raise TypeError("document_resolver must be callable.")
+        self._scene = scene
+        self._projection = projection
+        self._render_system = render_system
+        self._document_resolver = document_resolver
+        self._document_id: str | None = None
+        self.setObjectName("SLDReadOnlyComparisonViewport")
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(3)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Compare with", self))
+        self._document_selector = QComboBox(self)
+        self._document_selector.setObjectName("SLDComparisonDocumentSelector")
+        self._document_selector.currentIndexChanged.connect(self._select_document)
+        header.addWidget(self._document_selector, 1)
+        root.addLayout(header)
+        self._view = QGraphicsView(self)
+        self._view.setObjectName("SLDReadOnlyComparisonView")
+        self._view.setScene(scene)
+        self._view.setInteractive(False)
+        root.addWidget(self._view, 1)
+        self.hide()
+
+    @property
+    def document_id(self) -> str | None:
+        return self._document_id
+
+    def set_available_documents(
+        self,
+        documents: Iterable[SLDDocument],
+        *,
+        active_document_id: str | None,
+    ) -> None:
+        """Offer open non-active SLD documents without taking lifecycle ownership."""
+        choices = tuple(
+            document for document in documents
+            if isinstance(document, SLDDocument)
+            and document.document_id != active_document_id
+        )
+        selected_id = self._document_id
+        self._document_selector.blockSignals(True)
+        self._document_selector.clear()
+        for document in choices:
+            self._document_selector.addItem(
+                str(getattr(document, "name", "") or "Untitled SLD"),
+                document.document_id,
+            )
+        selected_index = next(
+            (
+                index for index in range(self._document_selector.count())
+                if self._document_selector.itemData(index) == selected_id
+            ),
+            0,
+        )
+        if choices:
+            self._document_selector.setCurrentIndex(selected_index)
+        self._document_selector.blockSignals(False)
+        if not choices:
+            self.clear_document()
+            self.hide()
+            return
+        self._select_document(self._document_selector.currentIndex())
+        self.show()
+
+    def _select_document(self, index: int) -> None:
+        if index < 0:
+            self.clear_document()
+            return
+        document_id = self._document_selector.itemData(index)
+        if not isinstance(document_id, str) or not document_id:
+            self.clear_document()
+            return
+        document = self._document_resolver(document_id)
+        if not isinstance(document, SLDDocument):
+            self.clear_document()
+            return
+        self.present_document(document)
+
+    def present_document(self, document: SLDDocument) -> SLDCanvasSnapshot:
+        """Render committed presentation data without tools, selection, or snapping."""
+        if not isinstance(document, SLDDocument):
+            raise TypeError("document must be an SLDDocument.")
+        snapshot = self._projection.project(document.model, document.annotation_blocks)
+        self._render_system.synchronize(snapshot)
+        self._document_id = document.document_id
+        return snapshot
+
+    def clear_document(self) -> None:
+        self._render_system.clear()
+        self._document_id = None
+
+    def dispose(self) -> None:
+        self._render_system.dispose()
+        self._document_id = None
+
+
 @dataclass
 class SLDCanvasSurface(QWidget):
     """Presentation-only SLD editor surface around the canonical GraphicsView.
@@ -64,6 +184,7 @@ class SLDCanvasSurface(QWidget):
         *,
         sld_canvas_projection: SLDCanvasProjection,
         sld_canvas_render_system: SLDCanvasRenderSystem,
+        comparison_viewport: ReadOnlySLDViewport | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -75,6 +196,10 @@ class SLDCanvasSurface(QWidget):
             raise ValueError("sld_canvas_render_system must target the canonical GraphicsView scene.")
         self._sld_canvas_projection = sld_canvas_projection
         self._sld_canvas_render_system = sld_canvas_render_system
+        if comparison_viewport is not None and not isinstance(comparison_viewport, ReadOnlySLDViewport):
+            raise TypeError("comparison_viewport must be a ReadOnlySLDViewport or None.")
+        self._comparison_viewport = comparison_viewport
+        self._comparison_splitter: QSplitter | None = None
         self._navigation_controller = navigation_controller
         self._zoom_changed_listener = self._update_zoom_readout
         self._document_id: str | None = None
@@ -137,7 +262,18 @@ class SLDCanvasSurface(QWidget):
         page = QWidget(tabs)
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.addWidget(view)
+        if comparison_viewport is None:
+            page_layout.addWidget(view)
+        else:
+            split = QSplitter(Qt.Orientation.Horizontal, page)
+            split.setChildrenCollapsible(False)
+            split.addWidget(view)
+            split.addWidget(comparison_viewport)
+            split.setStretchFactor(0, 2)
+            split.setStretchFactor(1, 1)
+            comparison_viewport.hide()
+            self._comparison_splitter = split
+            page_layout.addWidget(split)
         tabs.addTab(page, "SLD (Main)")
         plus = QPushButton("+", tabs)
         plus.setObjectName("SLDNewDocumentButton")
@@ -246,6 +382,31 @@ class SLDCanvasSurface(QWidget):
         """Reset surface metadata after the renderer has independently cleared its scene."""
         self._document_id = None
         self._sld_canvas_snapshot = SLDCanvasSnapshot(nodes=(), connections=())
+        self.clear_comparison_document()
+
+    def set_comparison_documents(
+        self,
+        documents: Iterable[SLDDocument],
+        *,
+        active_document_id: str | None,
+    ) -> None:
+        if self._comparison_viewport is not None:
+            self._comparison_viewport.set_available_documents(
+                documents,
+                active_document_id=active_document_id,
+            )
+            if self._comparison_viewport.isVisible() and self._comparison_splitter is not None:
+                self._comparison_splitter.setSizes([700, 400])
+
+    def clear_comparison_document(self) -> None:
+        if self._comparison_viewport is not None:
+            self._comparison_viewport.clear_document()
+            self._comparison_viewport.hide()
+
+    def dispose_comparison_viewport(self) -> None:
+        if self._comparison_viewport is not None:
+            self._comparison_viewport.dispose()
+            self._comparison_viewport = None
 
     @property
     def document_id(self) -> str | None:
@@ -310,6 +471,7 @@ class CanvasComposition:
         self._run_cleanup("preview graphics", self.preview_layer.clear, failures)
         if clear_sld_graphics:
             self._run_cleanup("SLD graphics and snap registrations", self.surface.clear_document, failures)
+            self._run_cleanup("read-only comparison graphics", self.surface.clear_comparison_document, failures)
         if failures:
             _LOGGER.warning("Canvas project-state clear completed with %d cleanup failure(s): %s", len(failures), ", ".join(label for label, _ in failures))
 
@@ -334,6 +496,7 @@ class CanvasComposition:
             )
         steps = (
             ("renderer subscriptions and graphics", self.sld_canvas_render_system.dispose),
+            ("read-only comparison renderer", self.surface.dispose_comparison_viewport),
             ("selection projection subscription", self.selection_projection.dispose),
             ("interaction manager", self.interaction_manager.dispose),
             ("surface zoom observer", self.surface.detach_navigation_listener),
@@ -608,5 +771,6 @@ __all__ = [
     "CanvasCompositionPreparation",
     "CanvasComposition",
     "SLDCanvasSurface",
+    "ReadOnlySLDViewport",
     "CanvasComposer",
 ]
