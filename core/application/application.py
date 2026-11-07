@@ -4464,29 +4464,31 @@ class Application:
         )
 
     def commit_draft_network(self) -> ApplicationResult:
-        """Commit the complete Application-owned DraftNetwork through one canonical command.
+        """Commit one lock-consistent snapshot of the Application-owned DraftNetwork.
 
-        UI/controllers call this Application operation for Commit Drawing/Commit
-        Network. The method never mutates Core directly and never creates a
-        second commit/history boundary.
+        Capture the draft payload while holding the same execution lock used by
+        all Application commands. This prevents a concurrent authoring command
+        from changing the live draft between snapshot capture and commit.
         """
-        lifecycle = self.project_lifecycle
-        context = lifecycle.context
-        draft = self._draft_network
-        if context is None or not lifecycle.has_project or lifecycle.state != "ACTIVE":
-            raise RuntimeError("Cannot commit DraftNetwork without an active project.")
-        if draft is None:
-            raise RuntimeError("Application DraftNetwork is not configured.")
-        if draft.project_id != context.project_id:
-            raise ValueError("DraftNetwork project_id does not match the active project.")
-        if draft.activation_generation != lifecycle.activation_generation:
-            raise ValueError("DraftNetwork activation_generation does not match the active project.")
-        command = CommitNetworkCommand(
-            project_id=context.project_id,
-            activation_generation=lifecycle.activation_generation,
-            draft_network=draft.to_dict(),
-        )
-        return self.execute(command)
+        with self._execution_lock:
+            self._reject_during_async_commit()
+            lifecycle = self.project_lifecycle
+            context = lifecycle.context
+            draft = self._draft_network
+            if context is None or not lifecycle.has_project or lifecycle.state != "ACTIVE":
+                raise RuntimeError("Cannot commit DraftNetwork without an active project.")
+            if draft is None:
+                raise RuntimeError("Application DraftNetwork is not configured.")
+            if draft.project_id != context.project_id:
+                raise ValueError("DraftNetwork project_id does not match the active project.")
+            if draft.activation_generation != lifecycle.activation_generation:
+                raise ValueError("DraftNetwork activation_generation does not match the active project.")
+            command = CommitNetworkCommand(
+                project_id=context.project_id,
+                activation_generation=lifecycle.activation_generation,
+                draft_network=draft.to_dict(),
+            )
+            return self.execute(command)
 
     def commit_draft_network_async(self) -> Future[ApplicationResult]:
         """Execute the canonical DraftNetwork command off-thread and finalize events on the caller thread."""
@@ -4593,8 +4595,11 @@ class Application:
     def execute(self, command: Command) -> ApplicationResult:
         if not isinstance(command, Command):
             raise TypeError("Application.execute requires a Command.")
-        self._reject_during_async_commit()
         with self._execution_lock:
+            # The in-flight check must be atomic with acquiring the execution
+            # boundary; checking before this lock permits a waiter to slip
+            # through after an asynchronous commit marks itself in flight.
+            self._reject_during_async_commit()
             result = self._command_manager.execute(command)
             if result.success:
                 if self._validation_service is not None:
@@ -4705,8 +4710,8 @@ class Application:
             )
 
     def undo(self) -> ApplicationResult | None:
-        self._reject_during_async_commit()
         with self._execution_lock:
+            self._reject_during_async_commit()
             records = self._command_manager.undo_commands()
             command = records[-1].command if records else None
             result = self._command_manager.undo()
@@ -4739,8 +4744,8 @@ class Application:
 
 
     def redo(self) -> ApplicationResult | None:
-        self._reject_during_async_commit()
         with self._execution_lock:
+            self._reject_during_async_commit()
             records = self._command_manager.redo_commands()
             command = records[-1].command if records else None
             result = self._command_manager.redo()
