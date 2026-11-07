@@ -429,6 +429,7 @@ class SLDCanvasSurface(QWidget):
 
     def dispose_comparison_viewport(self) -> None:
         if self._comparison_viewport is not None:
+            self._comparison_viewport.hide()
             self._comparison_viewport.dispose()
             self._comparison_viewport = None
 
