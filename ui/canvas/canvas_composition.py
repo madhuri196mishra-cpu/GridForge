@@ -135,7 +135,7 @@ class ReadOnlySLDViewport(QWidget):
         if choices:
             self._document_selector.setCurrentIndex(selected_index)
         selected_document_id = self._document_selector.itemData(selected_index) if choices else None
-        needs_fit = selected_document_id != selected_id or not self.isVisible()
+        needs_fit = selected_document_id != selected_id
         self._document_selector.blockSignals(False)
         if not choices:
             self.clear_document()
