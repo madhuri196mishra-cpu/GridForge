@@ -1298,10 +1298,15 @@ def _build_application_impl(
                 or current_context.project_id != getattr(project, "project_id", None)
                 or change.operation == "replace_document"
             ):
-                # Run only after the document transition commits. A failed
-                # transition therefore keeps the previous document's transient
-                # interaction state available for rollback.
-                canvas_composition.clear_project_state()
+                # Run only after the document transition commits. For an
+                # in-project document change, retain the current realization
+                # until the complete next snapshot can reconcile it incrementally.
+                # Crossing project boundaries still clears all project-owned
+                # graphics before the new project's presentation is surfaced.
+                if current_context.project_id == getattr(project, "project_id", None):
+                    canvas_composition.clear_document_interaction_state()
+                else:
+                    canvas_composition.clear_project_state()
 
         def update_context() -> None:
             current_context = engineering_context.current

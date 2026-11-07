@@ -317,6 +317,16 @@ class CanvasComposition:
         """Clear project/document presentation state without disposing shared services."""
         self._clear_project_state(clear_sld_graphics=True)
 
+    def clear_document_interaction_state(self) -> None:
+        """Clear transient interaction state while retaining graphics for incremental document reconciliation.
+
+        The next complete Application-authoritative canvas snapshot removes stale
+        document items and realizes changed items. Keeping the current scene until
+        that snapshot is accepted avoids a blank-frame teardown/rebuild on every
+        in-project document activation.
+        """
+        self._clear_project_state(clear_sld_graphics=False)
+
     def dispose(self) -> None:
         """Idempotently release canvas-owned resources, never shared Application/ToolManager."""
         if self._disposed:
