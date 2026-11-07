@@ -57,13 +57,24 @@ class SLDReadSynchronizer:
         """Return deterministic Core/SLD Simple Wire reconciliation diagnostics."""
         return self._reconciliation_diagnostics
 
-    def reconcile_simple_wires(self, read_model: NetworkReadModel | None = None) -> tuple[dict[str, Any], ...]:
-        """Audit Core Simple Wires against persistent SLD companions without mutating either side."""
+    def reconcile_simple_wires(
+        self,
+        read_model: NetworkReadModel | None = None,
+        *,
+        presentation: Any | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        """Audit Core Simple Wires against the supplied SLD presentation.
+
+        When no presentation is supplied, preserve the canonical active-document
+        behavior. Callers reconciling a non-active document must pass that
+        document explicitly; this method never changes Application presentation.
+        """
         if read_model is None:
             read_model = self._require_application().read_network()
         if not isinstance(read_model, NetworkReadModel):
             raise TypeError("read_model must be a NetworkReadModel")
-        presentation = getattr(self._require_application(), "presentation", None)
+        if presentation is None:
+            presentation = getattr(self._require_application(), "presentation", None)
         model = getattr(presentation, "model", None)
         connections = tuple(getattr(model, "connections", ())) if model is not None else ()
         core_ids = {wire.connection_id for wire in read_model.simple_wires}
@@ -101,7 +112,7 @@ class SLDReadSynchronizer:
         if not isinstance(read_model, NetworkReadModel):
             raise TypeError("read_model must be a NetworkReadModel")
         adapted = self._read_adapter.network(read_model)
-        self.reconcile_simple_wires(adapted)
+        self.reconcile_simple_wires(adapted, presentation=presentation)
         projections = self._projection_manager.project_network(adapted)
         self._projection_manager.reconcile_network(frozenset(e.object_id for e in adapted.elements))
         return projections
