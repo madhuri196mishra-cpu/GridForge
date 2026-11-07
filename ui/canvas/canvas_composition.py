@@ -162,7 +162,10 @@ class ReadOnlySLDViewport(QWidget):
         if not isinstance(document, SLDDocument):
             self.clear_document()
             return
+        document_changed = document.document_id != self._document_id
         self.present_document(document)
+        if document_changed and self.isVisible():
+            self.fit_content()
 
     def present_document(self, document: SLDDocument) -> SLDCanvasSnapshot:
         """Render committed presentation data without tools, selection, or snapping."""
