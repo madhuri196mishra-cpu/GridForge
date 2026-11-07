@@ -87,6 +87,10 @@ class ReadOnlySLDViewport(QWidget):
         self._document_selector.setObjectName("SLDComparisonDocumentSelector")
         self._document_selector.currentIndexChanged.connect(self._select_document)
         header.addWidget(self._document_selector, 1)
+        fit_button = QPushButton("Fit", self)
+        fit_button.setToolTip("Fit the comparison sheet in its viewport.")
+        fit_button.clicked.connect(self.fit_content)
+        header.addWidget(fit_button)
         root.addLayout(header)
         self._view = QGraphicsView(self)
         self._view.setObjectName("SLDReadOnlyComparisonView")
@@ -135,6 +139,13 @@ class ReadOnlySLDViewport(QWidget):
             return
         self._select_document(self._document_selector.currentIndex())
         self.show()
+        self.fit_content()
+
+    def fit_content(self) -> None:
+        """Fit the currently realized comparison document without changing its source."""
+        bounds = self._scene.itemsBoundingRect()
+        if bounds.isValid() and not bounds.isNull():
+            self._view.fitInView(bounds, Qt.AspectRatioMode.KeepAspectRatio)
 
     def _select_document(self, index: int) -> None:
         if index < 0:
