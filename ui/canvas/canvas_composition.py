@@ -395,7 +395,7 @@ class SLDCanvasSurface(QWidget):
                 documents,
                 active_document_id=active_document_id,
             )
-            if self._comparison_viewport.isVisible() and self._comparison_splitter is not None:
+            if self._comparison_splitter is not None:
                 self._comparison_splitter.setSizes([700, 400])
 
     def clear_comparison_document(self) -> None:
@@ -574,6 +574,10 @@ class CanvasComposer:
     ) -> CanvasComposition:
         """Compose the canvas and unwind every acquired resource on failure."""
         cleanup_stack: list[tuple[str, Any]] = []
+        if comparison_viewport is not None:
+            if not isinstance(comparison_viewport, ReadOnlySLDViewport):
+                raise TypeError("comparison_viewport must be a ReadOnlySLDViewport or None.")
+            cleanup_stack.append(("read-only comparison viewport", comparison_viewport.dispose))
         if isinstance(preparation, CanvasCompositionPreparation):
             # Preparation is part of this composition transaction: it was
             # created specifically for this compose call and must not survive
