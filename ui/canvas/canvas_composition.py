@@ -195,9 +195,10 @@ class ReadOnlySLDViewport(QWidget):
 class SLDCanvasSurface(QWidget):
     """Presentation-only SLD editor surface around the canonical GraphicsView.
 
-    This container adds the engineering document/tab chrome visible to the
-    user while keeping GraphicsView, ToolManager, SLD projection and render
-    synchronization unchanged. It owns no electrical or document state.
+    This container adds document chrome and an optional read-only comparison
+    viewport while retaining one canonical interactive GraphicsView. The
+    comparison surface owns an independent scene and renderer but no tool,
+    selection, snapping, electrical, or document-lifecycle authority.
     """
 
     def __init__(
