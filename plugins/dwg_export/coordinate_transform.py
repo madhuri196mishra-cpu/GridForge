@@ -116,6 +116,25 @@ class SLDCoordinateTransform:
             else:
                 raise ValueError(f"Unsupported SLD export primitive for coordinate transform: {kind!r}")
             metadata = dict(entity.metadata)
+            if kind == "INSERT" and "symbol_terminal_anchor_positions" in metadata:
+                anchor_positions = metadata["symbol_terminal_anchor_positions"]
+                anchor_coordinate_system = metadata.get(
+                    "symbol_terminal_anchor_positions_coordinate_system"
+                )
+                if not isinstance(anchor_positions, dict) and not hasattr(anchor_positions, "items"):
+                    raise ValueError(
+                        f"INSERT {entity.entity_id} terminal anchor positions must be a mapping"
+                    )
+                if anchor_coordinate_system != "sld-document-local":
+                    raise ValueError(
+                        f"INSERT {entity.entity_id} terminal anchors are not in the expected "
+                        "sld-document-local coordinate system; refusing a repeated or ambiguous transform"
+                    )
+                metadata["symbol_terminal_anchor_positions"] = {
+                    name: self.transform_point(point)
+                    for name, point in sorted(anchor_positions.items())
+                }
+                metadata["symbol_terminal_anchor_positions_coordinate_system"] = "world-mm"
             metadata["coordinate_transform"] = {
                 "mapping_id": self.mapping_id,
                 "mapping_version": self.mapping_version,
