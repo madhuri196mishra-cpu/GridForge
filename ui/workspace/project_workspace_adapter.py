@@ -359,6 +359,10 @@ class ProjectWorkspaceApplicationAdapter:
                     f"Canonical SLD view {view_id!r} is bound to "
                     f"{existing.document_id!r}/{existing.view_type!r}."
                 )
+            if self._viewport_preference_store is not None:
+                saved_viewport = self._viewport_preference_store.load(view_id)
+                if saved_viewport is not None:
+                    existing.viewport = saved_viewport
 
     def _activate_workspace_presentation(
         self,
