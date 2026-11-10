@@ -107,7 +107,7 @@ The implementation currently recognizes target versions ACAD12, ACAD2000, ACAD20
 
 - No complete SLD export workflow is claimed until a reviewed coordinate/unit mapping and a real UI/application caller are supplied. The SLD capture adapter, plugin builder, plan factory and backend are separate contracts; no production user action is wired to orchestrate them yet.
 - Control entity construction and the reviewed local-to-world transform contract are implemented from the authoritative `ControlProgramReadModel`; production export still requires the host to supply a genuinely reviewed site-specific mapping and wire a production caller. Control logic/interlocks are never inferred from SLD wiring.
-- Protection drawing plans are unsupported until authoritative Protection read models and persisted CT/PT, relay, zone and trip-target relationships are available. None are inferred from drawing proximity.
+- Protection drawing plans remain deferred. The root currently exposes relay state and relay input-channel read models, plus persisted protection-function, measurement-binding and differential-scheme configuration. The DWG snapshot does not yet capture those authorities together with CT/PT terminal-source associations, scheme membership and action-target identities in one consistent immutable Protection drawing contract. No relationship is inferred from drawing proximity.
 - No physical wiring, logical control relationship, protection relationship, junction or terminal is invented.
 - No complete standards catalogue, DWG round-trip compatibility or production readiness is claimed.
 
