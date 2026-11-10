@@ -224,6 +224,7 @@ class SLDCanvasSurface(QWidget):
             raise TypeError("comparison_viewport must be a ReadOnlySLDViewport or None.")
         self._comparison_viewport = comparison_viewport
         self._comparison_splitter: QSplitter | None = None
+        self._comparison_splitter_initialized = False
         self._navigation_controller = navigation_controller
         self._zoom_changed_listener = self._update_zoom_readout
         self._document_id: str | None = None
@@ -419,8 +420,12 @@ class SLDCanvasSurface(QWidget):
                 documents,
                 active_document_id=active_document_id,
             )
-            if self._comparison_splitter is not None:
+            if self._comparison_splitter is not None and not self._comparison_splitter_initialized:
+                # Establish the initial 2:1 layout once. Reapplying fixed sizes
+                # on every canvas refresh would overwrite the engineer's manual
+                # splitter adjustment and make the comparison pane feel unstable.
                 self._comparison_splitter.setSizes([700, 400])
+                self._comparison_splitter_initialized = True
 
     def clear_comparison_document(self) -> None:
         if self._comparison_viewport is not None:
