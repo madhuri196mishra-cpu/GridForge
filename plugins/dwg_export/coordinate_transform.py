@@ -105,6 +105,7 @@ class SLDCoordinateTransform:
                 raise TypeError("entities must contain DrawingEntity values")
             geometry = dict(entity.geometry)
             kind = entity.kind.upper()
+            resolved_route_anchor_positions: dict[str, tuple[float, float]] = {}
             if kind == "LINE":
                 geometry["start"] = self.transform_point(geometry["start"])
                 geometry["end"] = self.transform_point(geometry["end"])
@@ -119,7 +120,29 @@ class SLDCoordinateTransform:
                     geometry["start_angle"] = (float(geometry["start_angle"]) + angle) % 360.0
                     geometry["end_angle"] = (float(geometry["end_angle"]) + angle) % 360.0
             elif kind == "LWPOLYLINE":
-                geometry["points"] = tuple(self.transform_point(point) for point in geometry["points"])
+                source_points = tuple(geometry["points"])
+                transformed_points = [
+                    self.transform_point(point) for point in source_points
+                ]
+                for endpoint_name, endpoint_index in (("source", 0), ("target", -1)):
+                    offset_field = f"{endpoint_name}_terminal_anchor_offset_mm"
+                    coordinate_field = f"{offset_field}_coordinate_system"
+                    if offset_field not in entity.metadata:
+                        continue
+                    if entity.metadata.get(coordinate_field) != "sld-symbol-instance-mm-vector":
+                        raise ValueError(
+                            f"LWPOLYLINE {entity.entity_id} {endpoint_name} terminal anchor "
+                            "offset has an unsupported coordinate system"
+                        )
+                    world_offset = self.transform_vector(entity.metadata[offset_field])
+                    node_position = transformed_points[endpoint_index]
+                    anchor_position = (
+                        node_position[0] + world_offset[0],
+                        node_position[1] + world_offset[1],
+                    )
+                    transformed_points[endpoint_index] = anchor_position
+                    resolved_route_anchor_positions[endpoint_name] = anchor_position
+                geometry["points"] = tuple(transformed_points)
             elif kind in {"INSERT", "TEXT"}:
                 world_insert = self.transform_point(geometry["insert"])
                 geometry["insert"] = world_insert
@@ -144,6 +167,10 @@ class SLDCoordinateTransform:
             else:
                 raise ValueError(f"Unsupported SLD export primitive for coordinate transform: {kind!r}")
             metadata = dict(entity.metadata)
+            if resolved_route_anchor_positions:
+                for endpoint_name, position in resolved_route_anchor_positions.items():
+                    metadata[f"{endpoint_name}_terminal_anchor_position_world_mm"] = position
+                metadata["terminal_anchor_positions_coordinate_system"] = "world-mm"
             if kind == "INSERT" and "symbol_terminal_anchor_offsets_mm" in metadata:
                 anchor_offsets = metadata["symbol_terminal_anchor_offsets_mm"]
                 if not isinstance(anchor_offsets, Mapping):
