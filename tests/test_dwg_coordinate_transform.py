@@ -110,3 +110,35 @@ def test_insert_transform_maps_only_instance_position_and_rotation() -> None:
     assert transformed.metadata["symbol_terminal_anchor_positions_coordinate_system"] == "world-mm"
     assert transformed.metadata["symbol_base_point_offset_world_mm"] == world_base_offset
     assert transformed.metadata["coordinate_transform"]["target_units"] == "mm"
+
+
+def test_polyline_terminal_anchor_offsets_are_rotated_but_not_document_scaled() -> None:
+    polyline = DrawingEntity(
+        "wire-anchors", "LWPOLYLINE", "WIRE",
+        {"points": ((10.0, 20.0), (40.0, 20.0), (100.0, 50.0))},
+        {
+            "source_terminal_anchor_offset_mm": (3.0, 4.0),
+            "source_terminal_anchor_offset_coordinate_system": "sld-symbol-instance-mm-vector",
+            "target_terminal_anchor_offset_mm": (-1.0, 2.0),
+            "target_terminal_anchor_offset_coordinate_system": "sld-symbol-instance-mm-vector",
+        },
+    )
+
+    transformed = _transform().transform_entities((polyline,))[0]
+    source_node = _transform().transform_point((10.0, 20.0))
+    source_offset = _transform().transform_vector((3.0, 4.0))
+    target_node = _transform().transform_point((100.0, 50.0))
+    target_offset = _transform().transform_vector((-1.0, 2.0))
+
+    assert transformed.geometry["points"][0] == (
+        source_node[0] + source_offset[0],
+        source_node[1] + source_offset[1],
+    )
+    assert transformed.geometry["points"][1] == _transform().transform_point((40.0, 20.0))
+    assert transformed.geometry["points"][-1] == (
+        target_node[0] + target_offset[0],
+        target_node[1] + target_offset[1],
+    )
+    assert transformed.metadata["source_terminal_anchor_position_world_mm"] == transformed.geometry["points"][0]
+    assert transformed.metadata["target_terminal_anchor_position_world_mm"] == transformed.geometry["points"][-1]
+    assert transformed.metadata["terminal_anchor_positions_coordinate_system"] == "world-mm"
