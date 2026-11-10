@@ -81,6 +81,20 @@ class SLDCoordinateTransform:
             self.world_origin_y_mm + scale * (x * sine + y * cosine),
         )
 
+    def transform_vector(self, vector: object) -> tuple[float, float]:
+        """Rotate a symbol-local millimetre vector without document scaling or translation."""
+        if not isinstance(vector, (tuple, list)) or len(vector) != 2:
+            raise ValueError("SLD symbol offset vectors must be 2D")
+        x, y = vector
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in vector):
+            raise TypeError("SLD symbol offset coordinates must be numeric")
+        x, y = float(x), float(y)
+        if not (math.isfinite(x) and math.isfinite(y)):
+            raise ValueError("SLD symbol offset coordinates must be finite")
+        angle = math.radians(self.rotation_degrees)
+        cosine, sine = math.cos(angle), math.sin(angle)
+        return (x * cosine - y * sine, x * sine + y * cosine)
+
     def transform_entities(self, entities: Iterable[DrawingEntity]) -> tuple[DrawingEntity, ...]:
         """Transform every supported world-space primitive; retain local symbol definitions."""
         transformed: list[DrawingEntity] = []
@@ -107,39 +121,55 @@ class SLDCoordinateTransform:
             elif kind == "LWPOLYLINE":
                 geometry["points"] = tuple(self.transform_point(point) for point in geometry["points"])
             elif kind in {"INSERT", "TEXT"}:
-                geometry["insert"] = self.transform_point(geometry["insert"])
+                world_insert = self.transform_point(geometry["insert"])
+                geometry["insert"] = world_insert
                 if kind == "TEXT":
                     geometry["height"] = float(geometry.get("height", 2.5)) * scale_factor
-                # INSERT scale is dimensionless: the block definition is local
-                # geometry and the instance scale must not absorb the document
-                # unit conversion. Only the insertion point is in SLD units.
+                else:
+                    base_point_offset = entity.metadata.get("symbol_base_point_offset_mm")
+                    if base_point_offset is not None:
+                        if entity.metadata.get("symbol_base_point_offset_coordinate_system") != "sld-symbol-instance-mm-vector":
+                            raise ValueError(
+                                f"INSERT {entity.entity_id} base-point offset has an unsupported coordinate system"
+                            )
+                        world_base_point_offset = self.transform_vector(base_point_offset)
+                        geometry["insert"] = (
+                            world_insert[0] + world_base_point_offset[0],
+                            world_insert[1] + world_base_point_offset[1],
+                        )
+                    # INSERT scale is dimensionless: symbol geometry is local
+                    # millimetres and must not absorb document-unit conversion.
+                    # Only the SLD node origin is mapped as a document point.
                 geometry["rotation"] = float(geometry.get("rotation", 0.0)) + angle
             else:
                 raise ValueError(f"Unsupported SLD export primitive for coordinate transform: {kind!r}")
             metadata = dict(entity.metadata)
-            if kind == "INSERT" and "symbol_terminal_anchor_positions" in metadata:
-                anchor_positions = metadata["symbol_terminal_anchor_positions"]
-                anchor_coordinate_system = metadata.get(
-                    "symbol_terminal_anchor_positions_coordinate_system"
-                )
-                if not isinstance(anchor_positions, Mapping):
+            if kind == "INSERT" and "symbol_terminal_anchor_offsets_mm" in metadata:
+                anchor_offsets = metadata["symbol_terminal_anchor_offsets_mm"]
+                if not isinstance(anchor_offsets, Mapping):
                     raise ValueError(
-                        f"INSERT {entity.entity_id} terminal anchor positions must be a mapping"
+                        f"INSERT {entity.entity_id} terminal anchor offsets must be a mapping"
                     )
-                if anchor_coordinate_system != "sld-document-local":
+                if metadata.get("symbol_terminal_anchor_offsets_coordinate_system") != "sld-symbol-instance-mm-vector":
                     raise ValueError(
-                        f"INSERT {entity.entity_id} terminal anchors are not in the expected "
-                        "sld-document-local coordinate system; refusing a repeated or ambiguous transform"
+                        f"INSERT {entity.entity_id} terminal anchor offsets have an unsupported coordinate system"
                     )
-                if any(not isinstance(name, str) or not name.strip() for name in anchor_positions):
+                if any(not isinstance(name, str) or not name.strip() for name in anchor_offsets):
                     raise ValueError(
                         f"INSERT {entity.entity_id} terminal anchor names must be non-empty strings"
                     )
                 metadata["symbol_terminal_anchor_positions"] = {
-                    name: self.transform_point(anchor_positions[name])
-                    for name in sorted(anchor_positions)
+                    name: (
+                        world_insert[0] + self.transform_vector(anchor_offsets[name])[0],
+                        world_insert[1] + self.transform_vector(anchor_offsets[name])[1],
+                    )
+                    for name in sorted(anchor_offsets)
                 }
                 metadata["symbol_terminal_anchor_positions_coordinate_system"] = "world-mm"
+                if "symbol_base_point_offset_mm" in metadata:
+                    metadata["symbol_base_point_offset_world_mm"] = self.transform_vector(
+                        metadata["symbol_base_point_offset_mm"]
+                    )
             metadata["coordinate_transform"] = {
                 "mapping_id": self.mapping_id,
                 "mapping_version": self.mapping_version,
