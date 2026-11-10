@@ -121,12 +121,21 @@ All CAD-specific implementation lives under `plugins.dwg_export`. `core.applicat
 
 ### SLD symbol placement and terminal anchors
 
-SLD INSERT placement follows the same instance transform as the canonical
-EquipmentItem: local reflection, uniform scale, then rotation around the
-persisted node origin. The DXF INSERT position compensates for a non-origin
-symbol block base point. Export metadata retains the reviewed local terminal
-anchors and also carries their resolved positions in SLD document coordinates;
-the reviewed document-to-world mapping transforms those positions into
-world millimetres alongside the INSERT. The resolved anchor coordinates are
-provenance/display geometry only and do not create or infer electrical
-connectivity.
+SLD INSERT placement follows the canonical EquipmentItem transform: local
+reflection, uniform scale, then rotation. The DXF block reference preserves
+the reviewed block base point; the document-to-world transform applies its
+rotated millimetre offset after mapping the node origin, so symbol dimensions
+are not accidentally multiplied by the SLD document-unit conversion.
+
+For equipment-to-equipment connections, the builder resolves each explicit
+SLD endpoint's terminal role against the reviewed symbol definition. The
+connection polyline endpoint is moved from the node origin to that terminal's
+instance-transformed local-millimetre anchor. The document mapping rotates
+these offsets without applying document-unit scale and records the resolved
+world-millimetre anchor positions. Missing or ambiguous terminal roles fail
+closed; bus endpoints retain their separate attachment identity and are not
+treated as equipment terminals.
+
+The reviewed local anchor map, instance offsets, and resolved world positions
+remain export provenance/display geometry only. They do not create or infer
+electrical connectivity.
