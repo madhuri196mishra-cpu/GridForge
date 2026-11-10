@@ -46,7 +46,12 @@ class ViewportPreferenceStore:
             raise TypeError("state must be a ViewportState.")
         if not self._is_finite(state):
             raise ValueError("viewport state must contain finite coordinates and a positive finite zoom.")
+        # QSettings batches writes; do not force a disk/registry sync for every
+        # scrollbar event during continuous canvas navigation.
         self._settings.setValue(self._key(view_id), state.to_dict())
+
+    def sync(self) -> None:
+        """Flush pending preference writes at an explicit lifecycle boundary."""
         self._settings.sync()
 
     @staticmethod
