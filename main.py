@@ -461,6 +461,22 @@ def _build_application_impl(
         viewport_preference_store=viewport_preference_store,
     )
     resources["project_workspace_adapter"] = project_workspace_adapter
+
+    def _open_comparison_document_for_editing(document_id: str) -> None:
+        """Promote the comparison document through canonical workspace activation."""
+        try:
+            project_workspace_adapter.activate_document(document_id)
+        except Exception as exc:
+            QMessageBox.critical(
+                window,
+                "Open SLD for Editing",
+                str(exc),
+            )
+
+    comparison_viewport.set_document_activator(
+        _open_comparison_document_for_editing
+    )
+
     def _capture_active_viewport() -> None:
         document_id = canvas_composition.surface.document_id
         if not isinstance(document_id, str) or not document_id:
