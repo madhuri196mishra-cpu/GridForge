@@ -83,6 +83,7 @@ class ReadOnlySLDViewport(QWidget):
         self._projection = projection
         self._render_system = render_system
         self._document_resolver = document_resolver
+        self._document_activator: Callable[[str], object] | None = None
         self._viewport_state_loader = viewport_state_loader
         self._viewport_state_saver = viewport_state_saver
         self._document_id: str | None = None
@@ -101,6 +102,13 @@ class ReadOnlySLDViewport(QWidget):
         fit_button.setToolTip("Fit the comparison sheet in its viewport.")
         fit_button.clicked.connect(self.fit_content)
         header.addWidget(fit_button)
+        self._open_for_editing_button = QPushButton("Open for editing", self)
+        self._open_for_editing_button.setToolTip(
+            "Activate this comparison sheet in the primary interactive SLD editor."
+        )
+        self._open_for_editing_button.setEnabled(False)
+        self._open_for_editing_button.clicked.connect(self.open_for_editing)
+        header.addWidget(self._open_for_editing_button)
         root.addLayout(header)
         self._view = QGraphicsView(self)
         self._view.setObjectName("SLDReadOnlyComparisonView")
@@ -116,6 +124,25 @@ class ReadOnlySLDViewport(QWidget):
     @property
     def document_id(self) -> str | None:
         return self._document_id
+
+    def set_document_activator(
+        self,
+        activator: Callable[[str], object] | None,
+    ) -> None:
+        """Bind promotion to the canonical workspace document activation path."""
+        if activator is not None and not callable(activator):
+            raise TypeError("activator must be callable or None.")
+        self._document_activator = activator
+        self._open_for_editing_button.setEnabled(
+            bool(self._document_id and callable(activator))
+        )
+
+    def open_for_editing(self) -> None:
+        """Promote the selected comparison document through workspace lifecycle."""
+        document_id = self._document_id
+        activator = self._document_activator
+        if document_id and callable(activator):
+            activator(document_id)
 
     def set_available_documents(
         self,
@@ -236,12 +263,16 @@ class ReadOnlySLDViewport(QWidget):
         snapshot = self._projection.project(document.model, document.annotation_blocks)
         self._render_system.synchronize(snapshot)
         self._document_id = document.document_id
+        self._open_for_editing_button.setEnabled(
+            callable(self._document_activator)
+        )
         return snapshot
 
     def clear_document(self) -> None:
         self._save_viewport_state()
         self._render_system.clear()
         self._document_id = None
+        self._open_for_editing_button.setEnabled(False)
 
     def dispose(self) -> None:
         self._save_viewport_state()
