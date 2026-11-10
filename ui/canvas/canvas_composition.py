@@ -221,7 +221,11 @@ class ReadOnlySLDViewport(QWidget):
         state = loader(f"{document_id}:sld")
         if not isinstance(state, ViewportState):
             return False
-        self._view.setTransform(QTransform().scale(state.zoom, state.zoom))
+        zoom = max(
+            NavigationController.DEFAULT_MIN_ZOOM,
+            min(NavigationController.DEFAULT_MAX_ZOOM, state.zoom),
+        )
+        self._view.setTransform(QTransform().scale(zoom, zoom))
         self._view.centerOn(state.center_x, state.center_y)
         return True
 
