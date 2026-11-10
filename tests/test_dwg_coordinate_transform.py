@@ -75,27 +75,38 @@ def test_insert_transform_maps_only_instance_position_and_rotation() -> None:
             "symbol_definition_base_point": (2.0, 3.0),
             "symbol_terminal_anchors": anchors,
             "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
-            "symbol_terminal_anchor_positions": {
-                "from": (10.0, 20.0), "to": (12.0, 24.0),
+            "symbol_base_point_offset_mm": (2.0, 3.0),
+            "symbol_base_point_offset_coordinate_system": "sld-symbol-instance-mm-vector",
+            "symbol_terminal_anchor_offsets_mm": {
+                "from": (-3.0, -4.0), "to": (5.0, 6.0),
             },
-            "symbol_terminal_anchor_positions_coordinate_system": "sld-document-local",
+            "symbol_terminal_anchor_offsets_coordinate_system": "sld-symbol-instance-mm-vector",
         },
     )
 
     transformed = _transform().transform_entities((insert,))[0]
 
+    world_node = _transform().transform_point((10.0, 20.0))
+    world_base_offset = _transform().transform_vector((2.0, 3.0))
     assert transformed.geometry["insert"] == (
-        100.0 + 2.0 * (10.0 * 0.8660254037844387 - 20.0 * 0.5),
-        200.0 + 2.0 * (10.0 * 0.5 + 20.0 * 0.8660254037844387),
+        world_node[0] + world_base_offset[0],
+        world_node[1] + world_base_offset[1],
     )
     assert transformed.geometry["scale"] == (1.5, 0.75, 1.0)
     assert transformed.geometry["rotation"] == 45.0
     assert transformed.metadata["symbol_definition_base_point"] == (2.0, 3.0)
     assert transformed.metadata["symbol_terminal_anchors"] == anchors
     assert transformed.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
+    assert transformed.metadata["symbol_terminal_anchor_offsets_mm"] == {
+        "from": (-3.0, -4.0), "to": (5.0, 6.0),
+    }
     assert transformed.metadata["symbol_terminal_anchor_positions"] == {
-        "from": _transform().transform_point((10.0, 20.0)),
-        "to": _transform().transform_point((12.0, 24.0)),
+        name: (
+            world_node[0] + _transform().transform_vector(offset)[0],
+            world_node[1] + _transform().transform_vector(offset)[1],
+        )
+        for name, offset in {"from": (-3.0, -4.0), "to": (5.0, 6.0)}.items()
     }
     assert transformed.metadata["symbol_terminal_anchor_positions_coordinate_system"] == "world-mm"
+    assert transformed.metadata["symbol_base_point_offset_world_mm"] == world_base_offset
     assert transformed.metadata["coordinate_transform"]["target_units"] == "mm"
