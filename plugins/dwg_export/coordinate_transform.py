@@ -121,6 +121,8 @@ class SLDCoordinateTransform:
                     geometry["end_angle"] = (float(geometry["end_angle"]) + angle) % 360.0
             elif kind == "LWPOLYLINE":
                 source_points = tuple(geometry["points"])
+                if not source_points:
+                    raise ValueError(f"LWPOLYLINE {entity.entity_id} has no route points")
                 transformed_points = [
                     self.transform_point(point) for point in source_points
                 ]
@@ -149,6 +151,13 @@ class SLDCoordinateTransform:
                 if kind == "TEXT":
                     geometry["height"] = float(geometry.get("height", 2.5)) * scale_factor
                 else:
+                    if (
+                        "symbol_terminal_anchor_offsets_mm" in entity.metadata
+                        and "symbol_base_point_offset_mm" not in entity.metadata
+                    ):
+                        raise ValueError(
+                            f"INSERT {entity.entity_id} has terminal anchors but no base-point compensation"
+                        )
                     base_point_offset = entity.metadata.get("symbol_base_point_offset_mm")
                     if base_point_offset is not None:
                         if entity.metadata.get("symbol_base_point_offset_coordinate_system") != "sld-symbol-instance-mm-vector":
