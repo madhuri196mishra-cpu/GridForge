@@ -10,13 +10,13 @@ from plugins.dwg_export import (
 )
 
 
-def _registry() -> SymbolRegistry:
+def _registry(*, base_point: tuple[float, float] = (0.0, 0.0)) -> SymbolRegistry:
     primitive = DrawingEntity("primitive-1", "LINE", "SYMBOL", {
         "start": (-1, 0), "end": (1, 0),
     }, {})
     return SymbolRegistry((SymbolDefinition(
         symbol_id="breaker", profile=SymbolProfile.ANSI_IEEE,
-        primitives=(primitive,), definition_version="1.0.0",
+        primitives=(primitive,), base_point=base_point, definition_version="1.0.0",
         review_status="reviewed", reviewer="gridforge-review",
         reviewed_on="2026-11-03",
         review_reference="review-record:GF-SYMBOL-SLD-001",
@@ -51,7 +51,7 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.entity_id == "sld-node:node-7"
     assert entity.geometry["symbol_id"] == "breaker"
     assert entity.geometry["insert"] == (120.0, 240.0)
-    assert entity.geometry["scale"] == 1.5
+    assert entity.geometry["scale"] == (1.5, 1.5, 1.0)
     assert entity.geometry["rotation"] == 90.0
     assert entity.metadata["equipment_id"] == "equipment-7"
     assert entity.metadata["engineering_units"]["rated_voltage_kv"] == "kV"
@@ -61,6 +61,10 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.metadata["symbol_review_status"] == "reviewed"
     assert entity.metadata["symbol_terminal_anchors"] == {"from": (-28.0, 0.0), "to": (28.0, 0.0)}
     assert entity.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
+    assert entity.metadata["symbol_terminal_anchor_positions"] == {
+        "from": (78.0, 240.0), "to": (162.0, 240.0),
+    }
+    assert entity.metadata["symbol_terminal_anchor_positions_coordinate_system"] == "sld-document-local"
     assert entity.metadata["symbol_registry_schema_version"] == 1
     assert entity.metadata["symbol_catalogue_version"] == "1.0.0"
     assert entity.metadata["symbol_registry_fingerprint"] == _registry().fingerprint
@@ -85,3 +89,42 @@ def test_sld_node_builder_rejects_missing_persisted_symbol() -> None:
     )
     with pytest.raises(ValueError, match="no persisted symbol definition"):
         SLDNodeEntityBuilder(_registry()).build(snapshot, profile=SymbolProfile.ANSI_IEEE)
+
+
+def test_sld_node_builder_aligns_terminal_anchors_with_base_point_rotation_and_reflection() -> None:
+    registry = _registry(base_point=(2.0, 3.0))
+    source_node = _node()
+    node = SLDNodeExportSnapshot(
+        node_id=source_node.node_id,
+        equipment_id=source_node.equipment_id,
+        x=source_node.x,
+        y=source_node.y,
+        properties=source_node.properties,
+        symbol=SLDSymbolPlacementSnapshot(
+            symbol_instance_id="instance-mirrored",
+            symbol_definition_id="breaker",
+            representation_id="symbol",
+            visible=True,
+            scale=1.5,
+            rotation_degrees=90.0,
+            properties={"mirror_x": True},
+        ),
+    )
+    snapshot = SLDExportSnapshot(
+        project_id="project-1", document_id="document-1",
+        source_revision="revision-42", nodes=(node,), connections=(),
+    )
+
+    entity = SLDNodeEntityBuilder(registry).build(
+        snapshot, profile=SymbolProfile.ANSI_IEEE,
+    )[0]
+
+    # The CAD block reference's base point is moved to the transformed SLD
+    # symbol origin, while signed INSERT scales reproduce EquipmentItem's
+    # mirror -> scale -> rotation transform.
+    assert entity.geometry["insert"] == (115.5, 237.0)
+    assert entity.geometry["scale"] == (-1.5, 1.5, 1.0)
+    assert entity.geometry["rotation"] == 90.0
+    assert entity.metadata["symbol_terminal_anchor_positions"] == {
+        "from": (120.0, 282.0), "to": (120.0, 198.0),
+    }
