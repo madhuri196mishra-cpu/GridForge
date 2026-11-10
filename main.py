@@ -488,6 +488,7 @@ def _build_application_impl(
     def _activate_sld_presentation(document: object | None) -> None:
         # Capture the outgoing view before the editor host replaces its document.
         _capture_active_viewport()
+        viewport_preference_store.sync()
         workspace_surface_host.set_sld_document(document)
         _restore_document_viewport(document)
 
