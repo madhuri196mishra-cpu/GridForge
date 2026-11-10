@@ -22,7 +22,7 @@ from ui.canvas.navigation_controller import NavigationController
 from ui.canvas.engineering_canvas_contract import CanvasInteractionContract
 from ui.canvas.preview_layer import PreviewLayer
 from ui.core.controller import Controller
-from ui.core.qt import QComboBox, QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTabWidget, QVBoxLayout, QWidget, Qt
+from ui.core.qt import QComboBox, QGraphicsView, QHBoxLayout, QLabel, QPushButton, QSplitter, QTabWidget, QVBoxLayout, QWidget, Qt, QTransform
 from ui.core.selection_manager import SelectionManager
 from ui.core.snap_system import SnapSystem
 from ui.core.tool_manager import ToolManager
@@ -33,6 +33,7 @@ from ui.canvas.sld_canvas_render_system import SLDCanvasRenderSystem
 from ui.sld.sld_controller import SLDController
 from ui.sld.sld_document import SLDDocument
 from ui.sld.sld_route_edit_controller import SLDRouteEditController
+from ui.workspace.viewport_state import ViewportState
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +60,8 @@ class ReadOnlySLDViewport(QWidget):
         projection: SLDCanvasProjection,
         render_system: SLDCanvasRenderSystem,
         document_resolver: Callable[[str], SLDDocument | None],
+        viewport_state_loader: Callable[[str], ViewportState | None] | None = None,
+        viewport_state_saver: Callable[[str, ViewportState], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -72,10 +75,16 @@ class ReadOnlySLDViewport(QWidget):
             raise ValueError("The read-only renderer must target its own scene.")
         if not callable(document_resolver):
             raise TypeError("document_resolver must be callable.")
+        if viewport_state_loader is not None and not callable(viewport_state_loader):
+            raise TypeError("viewport_state_loader must be callable or None.")
+        if viewport_state_saver is not None and not callable(viewport_state_saver):
+            raise TypeError("viewport_state_saver must be callable or None.")
         self._scene = scene
         self._projection = projection
         self._render_system = render_system
         self._document_resolver = document_resolver
+        self._viewport_state_loader = viewport_state_loader
+        self._viewport_state_saver = viewport_state_saver
         self._document_id: str | None = None
         self.setObjectName("SLDReadOnlyComparisonViewport")
         root = QVBoxLayout(self)
@@ -98,6 +107,8 @@ class ReadOnlySLDViewport(QWidget):
         self._view.setInteractive(False)
         self._view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self._view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._view.horizontalScrollBar().valueChanged.connect(self._save_viewport_state)
+        self._view.verticalScrollBar().valueChanged.connect(self._save_viewport_state)
         root.addWidget(self._view, 1)
         self.hide()
 
@@ -134,8 +145,6 @@ class ReadOnlySLDViewport(QWidget):
         )
         if choices:
             self._document_selector.setCurrentIndex(selected_index)
-        selected_document_id = self._document_selector.itemData(selected_index) if choices else None
-        needs_fit = selected_document_id != selected_id
         self._document_selector.blockSignals(False)
         if not choices:
             self.clear_document()
@@ -143,14 +152,13 @@ class ReadOnlySLDViewport(QWidget):
             return
         self._select_document(self._document_selector.currentIndex())
         self.show()
-        if needs_fit:
-            self.fit_content()
 
     def fit_content(self) -> None:
         """Fit the currently realized comparison document without changing its source."""
         bounds = self._scene.itemsBoundingRect()
         if bounds.isValid() and not bounds.isNull():
             self._view.fitInView(bounds, Qt.AspectRatioMode.KeepAspectRatio)
+            self._save_viewport_state()
 
     def _select_document(self, index: int) -> None:
         if index < 0:
@@ -165,9 +173,42 @@ class ReadOnlySLDViewport(QWidget):
             self.clear_document()
             return
         document_changed = document.document_id != self._document_id
+        if document_changed:
+            self._save_viewport_state()
         self.present_document(document)
-        if document_changed and self.isVisible():
-            self.fit_content()
+        if document_changed:
+            restored = self._restore_viewport_state(document.document_id)
+            if not restored and self.isVisible():
+                self.fit_content()
+
+    def _save_viewport_state(self, *_args: object) -> None:
+        document_id = self._document_id
+        saver = self._viewport_state_saver
+        if not document_id or not callable(saver):
+            return
+        center = self._view.mapToScene(self._view.viewport().rect().center())
+        zoom = float(self._view.transform().m11())
+        if zoom <= 0.0:
+            return
+        saver(
+            f"{document_id}:sld",
+            ViewportState(
+                center_x=float(center.x()),
+                center_y=float(center.y()),
+                zoom=zoom,
+            ),
+        )
+
+    def _restore_viewport_state(self, document_id: str) -> bool:
+        loader = self._viewport_state_loader
+        if not callable(loader):
+            return False
+        state = loader(f"{document_id}:sld")
+        if not isinstance(state, ViewportState):
+            return False
+        self._view.setTransform(QTransform().scale(state.zoom, state.zoom))
+        self._view.centerOn(state.center_x, state.center_y)
+        return True
 
     def present_document(self, document: SLDDocument) -> SLDCanvasSnapshot:
         """Render committed presentation data without tools, selection, or snapping."""
@@ -179,10 +220,12 @@ class ReadOnlySLDViewport(QWidget):
         return snapshot
 
     def clear_document(self) -> None:
+        self._save_viewport_state()
         self._render_system.clear()
         self._document_id = None
 
     def dispose(self) -> None:
+        self._save_viewport_state()
         try:
             self._document_selector.currentIndexChanged.disconnect(self._select_document)
         except (RuntimeError, TypeError):
