@@ -164,6 +164,14 @@ def _build_application_impl(
     viewport_preference_store = ViewportPreferenceStore()
     resources["viewport_preference_store"] = viewport_preference_store
 
+    def _save_viewport_preference(view_id: str, state: ViewportState) -> None:
+        viewport_preference_store.save(view_id, state)
+        lifecycle = resources.get("project_workspace_lifecycle")
+        view_manager = getattr(lifecycle, "views", None)
+        view = view_manager.get(view_id) if callable(getattr(view_manager, "get", None)) else None
+        if view is not None:
+            view.viewport = state
+
     startup_splash = StartupSplash(app, branding)
     resources["startup_splash"] = startup_splash
     if show_window:
@@ -280,7 +288,7 @@ def _build_application_impl(
         render_system=comparison_render_system,
         document_resolver=_resolve_comparison_document,
         viewport_state_loader=viewport_preference_store.load,
-        viewport_state_saver=viewport_preference_store.save,
+        viewport_state_saver=_save_viewport_preference,
     )
     canvas_composition = canvas_composer.compose(
         controller=controller,
@@ -465,7 +473,7 @@ def _build_application_impl(
             center_y=float(center.y()),
             zoom=canvas_composition.navigation_controller.get_zoom_level(),
         )
-        viewport_preference_store.save(f"{document_id}:sld", state)
+        _save_viewport_preference(f"{document_id}:sld", state)
 
     def _restore_document_viewport(document: object | None) -> None:
         document_id = getattr(document, "document_id", None)
