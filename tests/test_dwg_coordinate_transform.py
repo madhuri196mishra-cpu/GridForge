@@ -75,6 +75,10 @@ def test_insert_transform_maps_only_instance_position_and_rotation() -> None:
             "symbol_definition_base_point": (2.0, 3.0),
             "symbol_terminal_anchors": anchors,
             "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
+            "symbol_terminal_anchor_positions": {
+                "from": (10.0, 20.0), "to": (12.0, 24.0),
+            },
+            "symbol_terminal_anchor_positions_coordinate_system": "sld-document-local",
         },
     )
 
@@ -89,4 +93,9 @@ def test_insert_transform_maps_only_instance_position_and_rotation() -> None:
     assert transformed.metadata["symbol_definition_base_point"] == (2.0, 3.0)
     assert transformed.metadata["symbol_terminal_anchors"] == anchors
     assert transformed.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
+    assert transformed.metadata["symbol_terminal_anchor_positions"] == {
+        "from": _transform().transform_point((10.0, 20.0)),
+        "to": _transform().transform_point((12.0, 24.0)),
+    }
+    assert transformed.metadata["symbol_terminal_anchor_positions_coordinate_system"] == "world-mm"
     assert transformed.metadata["coordinate_transform"]["target_units"] == "mm"
