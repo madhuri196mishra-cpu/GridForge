@@ -117,3 +117,16 @@ DXF is only the intermediate representation used by the ODA backend. A DXF file 
 ## Plugin boundary
 
 All CAD-specific implementation lives under `plugins.dwg_export`. `core.application.sld_export_snapshot` remains the renderer-independent Application DTO contract, and `ui.canvas.sld_export_snapshot_adapter` remains the lifecycle-side capture adapter. Core does not import the DWG plugin. The plugin does not import Qt or infer electrical meaning from graphics.
+
+
+### SLD symbol placement and terminal anchors
+
+SLD INSERT placement follows the same instance transform as the canonical
+EquipmentItem: local reflection, uniform scale, then rotation around the
+persisted node origin. The DXF INSERT position compensates for a non-origin
+symbol block base point. Export metadata retains the reviewed local terminal
+anchors and also carries their resolved positions in SLD document coordinates;
+the reviewed document-to-world mapping transforms those positions into
+world millimetres alongside the INSERT. The resolved anchor coordinates are
+provenance/display geometry only and do not create or infer electrical
+connectivity.
