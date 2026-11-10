@@ -19,6 +19,7 @@ from .document import Document
 from .project import Project
 from .project_workspace import ProjectWorkspaceLifecycle, ProjectWorkspaceState
 from .view_manager import ViewRecord
+from .viewport_preference_store import ViewportPreferenceStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,7 @@ class ProjectWorkspaceApplicationAdapter:
         lifecycle: ProjectWorkspaceLifecycle,
         *,
         default_symbol_presentation_factory: Callable[[str], Mapping[str, object]] | None = None,
+        viewport_preference_store: ViewportPreferenceStore | None = None,
     ) -> None:
         if not isinstance(application, Application): raise TypeError("application must be an Application.")
         if not isinstance(lifecycle, ProjectWorkspaceLifecycle): raise TypeError("lifecycle must be a ProjectWorkspaceLifecycle.")
@@ -52,6 +54,9 @@ class ProjectWorkspaceApplicationAdapter:
         self._application = application
         self._lifecycle = lifecycle
         self._default_symbol_presentation_factory = default_symbol_presentation_factory
+        if viewport_preference_store is not None and not isinstance(viewport_preference_store, ViewportPreferenceStore):
+            raise TypeError("viewport_preference_store must be a ViewportPreferenceStore or None.")
+        self._viewport_preference_store = viewport_preference_store
         self._handlers: list[WorkspaceUpdateHandler] = []
         self._presentation_activation_bridge: PresentationActivationBridge | None = None
         self._document_transition_guard: Callable[[], None] | None = None
@@ -341,6 +346,11 @@ class ProjectWorkspaceApplicationAdapter:
                         view_id=view_id,
                         document_id=document.document_id,
                         view_type="sld",
+                        viewport=(
+                            self._viewport_preference_store.load(view_id)
+                            if self._viewport_preference_store is not None
+                            else None
+                        ),
                     )
                 )
                 continue
