@@ -1,7 +1,9 @@
 """Build CAD-neutral SLD entities from detached persisted SLD snapshots."""
 from __future__ import annotations
 
+import math
 import re
+from collections.abc import Mapping
 
 from core.application.sld_export_snapshot import SLDExportSnapshot
 
