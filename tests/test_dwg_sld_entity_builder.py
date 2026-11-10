@@ -61,10 +61,10 @@ def test_sld_node_builder_uses_detached_symbol_identity_and_transform() -> None:
     assert entity.metadata["symbol_review_status"] == "reviewed"
     assert entity.metadata["symbol_terminal_anchors"] == {"from": (-28.0, 0.0), "to": (28.0, 0.0)}
     assert entity.metadata["symbol_terminal_anchor_coordinate_system"] == "symbol_local_mm"
-    assert entity.metadata["symbol_terminal_anchor_positions"] == {
-        "from": (78.0, 240.0), "to": (162.0, 240.0),
+    assert entity.metadata["symbol_terminal_anchor_offsets_mm"] == {
+        "from": (0.0, -42.0), "to": (0.0, 42.0),
     }
-    assert entity.metadata["symbol_terminal_anchor_positions_coordinate_system"] == "sld-document-local"
+    assert entity.metadata["symbol_terminal_anchor_offsets_coordinate_system"] == "sld-symbol-instance-mm-vector"
     assert entity.metadata["symbol_registry_schema_version"] == 1
     assert entity.metadata["symbol_catalogue_version"] == "1.0.0"
     assert entity.metadata["symbol_registry_fingerprint"] == _registry().fingerprint
@@ -119,12 +119,14 @@ def test_sld_node_builder_aligns_terminal_anchors_with_base_point_rotation_and_r
         snapshot, profile=SymbolProfile.ANSI_IEEE,
     )[0]
 
-    # The CAD block reference's base point is moved to the transformed SLD
-    # symbol origin, while signed INSERT scales reproduce EquipmentItem's
-    # mirror -> scale -> rotation transform.
-    assert entity.geometry["insert"] == (115.5, 237.0)
+    # Signed INSERT scales reproduce EquipmentItem's mirror -> scale ->
+    # rotation transform. Base-point compensation is applied after the
+    # document-to-world mapping so local symbol mm are never document-scaled.
+    assert entity.geometry["insert"] == (120.0, 240.0)
     assert entity.geometry["scale"] == (-1.5, 1.5, 1.0)
     assert entity.geometry["rotation"] == 90.0
-    assert entity.metadata["symbol_terminal_anchor_positions"] == {
-        "from": (120.0, 282.0), "to": (120.0, 198.0),
+    assert entity.metadata["symbol_base_point_offset_mm"] == (-4.5, -3.0)
+    assert entity.metadata["symbol_base_point_offset_coordinate_system"] == "sld-symbol-instance-mm-vector"
+    assert entity.metadata["symbol_terminal_anchor_offsets_mm"] == {
+        "from": (0.0, 42.0), "to": (0.0, -42.0),
     }
