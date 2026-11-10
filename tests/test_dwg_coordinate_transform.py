@@ -142,3 +142,56 @@ def test_polyline_terminal_anchor_offsets_are_rotated_but_not_document_scaled() 
     assert transformed.metadata["source_terminal_anchor_position_world_mm"] == transformed.geometry["points"][0]
     assert transformed.metadata["target_terminal_anchor_position_world_mm"] == transformed.geometry["points"][-1]
     assert transformed.metadata["terminal_anchor_positions_coordinate_system"] == "world-mm"
+
+
+def test_equipment_route_endpoints_follow_transformed_terminal_anchors() -> None:
+    route = DrawingEntity(
+        "wire-anchors",
+        "LWPOLYLINE",
+        "SLD_CONNECTIONS",
+        {"points": ((10.0, 20.0), (15.0, 25.0), (30.0, 40.0)), "closed": False},
+        {
+            "source_terminal_anchor_offset_mm": (0.0, -15.0),
+            "source_terminal_anchor_offset_mm_coordinate_system": "sld-symbol-instance-mm-vector",
+            "target_terminal_anchor_offset_mm": (20.0, 0.0),
+            "target_terminal_anchor_offset_mm_coordinate_system": "sld-symbol-instance-mm-vector",
+        },
+    )
+
+    transformed = _transform().transform_entities((route,))[0]
+    points = transformed.geometry["points"]
+    world_source = _transform().transform_point((10.0, 20.0))
+    world_target = _transform().transform_point((30.0, 40.0))
+    source_offset = _transform().transform_vector((0.0, -15.0))
+    target_offset = _transform().transform_vector((20.0, 0.0))
+
+    assert points[0] == (
+        world_source[0] + source_offset[0],
+        world_source[1] + source_offset[1],
+    )
+    assert points[1] == _transform().transform_point((15.0, 25.0))
+    assert points[-1] == (
+        world_target[0] + target_offset[0],
+        world_target[1] + target_offset[1],
+    )
+    assert transformed.metadata["source_terminal_anchor_position_world_mm"] == points[0]
+    assert transformed.metadata["target_terminal_anchor_position_world_mm"] == points[-1]
+    assert transformed.metadata["terminal_anchor_positions_coordinate_system"] == "world-mm"
+
+
+def test_equipment_route_rejects_ambiguous_terminal_anchor_offset_coordinates() -> None:
+    route = DrawingEntity(
+        "wire-ambiguous-anchor",
+        "LWPOLYLINE",
+        "SLD_CONNECTIONS",
+        {"points": ((0.0, 0.0), (10.0, 10.0)), "closed": False},
+        {
+            "source_terminal_anchor_offset_mm": (0.0, 5.0),
+            "source_terminal_anchor_offset_mm_coordinate_system": "sld-document-local",
+        },
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported coordinate system"):
+        _transform().transform_entities((route,))
