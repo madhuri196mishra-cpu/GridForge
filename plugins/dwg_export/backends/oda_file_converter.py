@@ -157,8 +157,9 @@ class ODAFileConverterBackend:
                 )
         if definition.block_name not in defined_blocks:
             # DXF BLOCK base_point is the local origin used by INSERT. Keep
-            # primitive coordinates in symbol-local mm; do not subtract the
-            # base point from primitives or add it to the world insertion.
+            # primitives in symbol-local mm. SLDNodeEntityBuilder has already
+            # compensated geometry.insert for the transformed base point so
+            # the CAD instance origin matches EquipmentItem's SLD origin.
             block = doc.blocks.new(name=definition.block_name, base_point=definition.base_point)
             for primitive in definition.primitives:
                 if primitive.layer not in doc.layers:
