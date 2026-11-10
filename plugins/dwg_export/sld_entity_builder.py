@@ -9,6 +9,22 @@ from .drawing_plan import DrawingEntity, SymbolProfile
 from .symbol_registry import SymbolRegistry
 
 
+def _symbol_local_to_sld(
+    point: tuple[float, float],
+    *,
+    scale: float,
+    rotation_degrees: float,
+    mirror_x: bool,
+    mirror_y: bool,
+) -> tuple[float, float]:
+    """Apply the same local reflection, scale and rotation as EquipmentItem."""
+    x = float(point[0]) * scale * (-1.0 if mirror_x else 1.0)
+    y = float(point[1]) * scale * (-1.0 if mirror_y else 1.0)
+    angle = math.radians(rotation_degrees)
+    cosine, sine = math.cos(angle), math.sin(angle)
+    return (x * cosine - y * sine, x * sine + y * cosine)
+
+
 class SLDNodeEntityBuilder:
     """Translate stable SLD identities and authored presentation into CAD entities."""
 
@@ -42,14 +58,50 @@ class SLDNodeEntityBuilder:
             if not include_hidden and not symbol.visible:
                 continue
             definition = self._registry.resolve(symbol.symbol_definition_id, profile)
+            mirror_x = bool(symbol.properties.get("mirror_x", False))
+            mirror_y = bool(symbol.properties.get("mirror_y", False))
+            signed_x_scale = symbol.scale * (-1.0 if mirror_x else 1.0)
+            signed_y_scale = symbol.scale * (-1.0 if mirror_y else 1.0)
+
+            # DXF INSERT positions its block base point at geometry.insert.
+            # EquipmentItem instead positions the symbol's local origin at
+            # (node.x, node.y). Offset the INSERT by the transformed base point
+            # so the rendered symbol origin and every terminal anchor coincide.
+            base_offset = _symbol_local_to_sld(
+                definition.base_point,
+                scale=symbol.scale,
+                rotation_degrees=symbol.rotation_degrees,
+                mirror_x=mirror_x,
+                mirror_y=mirror_y,
+            )
+            insert_position = (
+                float(node.x) + base_offset[0],
+                float(node.y) + base_offset[1],
+            )
+            terminal_anchor_positions = {
+                name: (
+                    float(node.x) + offset[0],
+                    float(node.y) + offset[1],
+                )
+                for name, anchor in sorted(definition.terminal_anchors.items())
+                for offset in (
+                    _symbol_local_to_sld(
+                        anchor,
+                        scale=symbol.scale,
+                        rotation_degrees=symbol.rotation_degrees,
+                        mirror_x=mirror_x,
+                        mirror_y=mirror_y,
+                    ),
+                )
+            }
             entities.append(DrawingEntity(
                 entity_id=f"sld-node:{node.node_id}",
                 kind="INSERT",
                 layer="SLD_SYMBOLS",
                 geometry={
                     "symbol_id": definition.symbol_id,
-                    "insert": (node.x, node.y),
-                    "scale": symbol.scale,
+                    "insert": insert_position,
+                    "scale": (signed_x_scale, signed_y_scale, 1.0),
                     "rotation": symbol.rotation_degrees,
                 },
                 metadata={
@@ -78,6 +130,8 @@ class SLDNodeEntityBuilder:
                         for name in sorted(definition.terminal_anchors)
                     },
                     "symbol_terminal_anchor_coordinate_system": "symbol_local_mm",
+                    "symbol_terminal_anchor_positions": terminal_anchor_positions,
+                    "symbol_terminal_anchor_positions_coordinate_system": "sld-document-local",
                     "symbol_instance_properties": dict(symbol.properties),
                     "presentation_properties": dict(node.properties),
                     "engineering_attributes": dict(node.engineering_attributes),
