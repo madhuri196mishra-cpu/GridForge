@@ -191,8 +191,9 @@ class SLDNodeEntityBuilder:
                     f"SLD connection {connection.connection_id!r} references a missing node"
                 )
             # Persisted route points are interior bends, not endpoints. The
-            # connection's stable source/target node identities define the
-            # endpoints; include both positions around the authored bends.
+            # stable endpoint records identify the source/target node origins;
+            # explicit equipment terminal roles are resolved below and replace
+            # those origins with the reviewed symbol-anchor offsets.
             # When no bends were authored, the node-to-node chord is an
             # explicitly identified display fallback for this persisted edge.
             has_authored_route = bool(connection.route_points)
