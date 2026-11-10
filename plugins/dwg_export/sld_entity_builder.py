@@ -25,6 +25,52 @@ def _symbol_local_to_sld(
     return (x * cosine - y * sine, x * sine + y * cosine)
 
 
+def _terminal_anchor_offset(
+    node: object,
+    endpoint: Mapping[str, object] | None,
+    *,
+    registry: SymbolRegistry,
+    profile: SymbolProfile,
+) -> tuple[float, float] | None:
+    """Resolve an explicit equipment endpoint to its transformed local-mm anchor."""
+    if endpoint is None or endpoint.get("kind") != "equipment":
+        return None
+    node_id = getattr(node, "node_id", None)
+    if endpoint.get("node_id") != node_id:
+        raise ValueError("SLD equipment endpoint node identity does not match its connection node")
+    equipment_id = endpoint.get("equipment_id")
+    if getattr(node, "equipment_id", None) != equipment_id:
+        raise ValueError("SLD equipment endpoint identity does not match its persisted node")
+    symbol = getattr(node, "symbol", None)
+    if symbol is None:
+        raise ValueError(
+            f"SLD equipment endpoint {equipment_id!r} has no persisted symbol placement"
+        )
+    definition = registry.resolve(symbol.symbol_definition_id, profile)
+    terminal_role = endpoint.get("terminal_role")
+    if not isinstance(terminal_role, str) or not terminal_role.strip():
+        raise ValueError("SLD equipment endpoint requires an explicit terminal role")
+    anchor_name = terminal_role.strip()
+    if anchor_name not in definition.terminal_anchors:
+        matches = [
+            name for name in definition.terminal_anchors
+            if name.casefold() == anchor_name.casefold()
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Reviewed symbol {definition.symbol_id!r} has no unique terminal anchor "
+                f"for endpoint role {anchor_name!r}"
+            )
+        anchor_name = matches[0]
+    return _symbol_local_to_sld(
+        definition.terminal_anchors[anchor_name],
+        scale=symbol.scale,
+        rotation_degrees=symbol.rotation_degrees,
+        mirror_x=bool(symbol.properties.get("mirror_x", False)),
+        mirror_y=bool(symbol.properties.get("mirror_y", False)),
+    )
+
+
 class SLDNodeEntityBuilder:
     """Translate stable SLD identities and authored presentation into CAD entities."""
 
@@ -165,12 +211,46 @@ class SLDNodeEntityBuilder:
             kind = connection.connection_kind or "unspecified"
             normalized_kind = re.sub(r'[<>/\\":;?*|=,\s]+', "_", kind.upper()).strip("._")
             layer = "SLD_CONNECTIONS" if not normalized_kind or normalized_kind == "UNSPECIFIED" else f"SLD_{normalized_kind}"[:255]
+            source_anchor_offset = _terminal_anchor_offset(
+                source, connection.source_endpoint,
+                registry=self._registry, profile=profile,
+            )
+            target_anchor_offset = _terminal_anchor_offset(
+                target, connection.target_endpoint,
+                registry=self._registry, profile=profile,
+            )
+            connection_metadata = {
+                    "gridforge_connection_id": connection.connection_id,
+                    "source_node_id": connection.source_node_id,
+                    "target_node_id": connection.target_node_id,
+                    "source_endpoint": None if connection.source_endpoint is None else dict(connection.source_endpoint),
+                    "target_endpoint": None if connection.target_endpoint is None else dict(connection.target_endpoint),
+                    "connection_kind": connection.connection_kind,
+                    "route_routing_mode": connection.route_routing_mode,
+                    "route_ownership": connection.route_ownership,
+                    "route_geometry_source": "persisted_route" if has_authored_route else "node_position_display_fallback",
+                    "presentation_owner": connection.presentation_owner,
+                    "projection_source": connection.projection_source,
+                    "persisted_connection_properties": dict(connection.properties),
+                    "core_connection_id": connection.properties.get("core_connection_id"),
+                    "source_project_id": snapshot.project_id,
+                    "source_document_id": snapshot.document_id,
+                    "source_revision": snapshot.source_revision,
+                    "source_kind": "persisted_sld_connection",
+            }
+            if source_anchor_offset is not None:
+                connection_metadata["source_terminal_anchor_offset_mm"] = source_anchor_offset
+                connection_metadata["source_terminal_anchor_offset_coordinate_system"] = "sld-symbol-instance-mm-vector"
+            if target_anchor_offset is not None:
+                connection_metadata["target_terminal_anchor_offset_mm"] = target_anchor_offset
+                connection_metadata["target_terminal_anchor_offset_coordinate_system"] = "sld-symbol-instance-mm-vector"
             entities.append(DrawingEntity(
                 entity_id=f"sld-connection:{connection.connection_id}",
                 kind="LWPOLYLINE",
                 layer=layer,
                 geometry={"points": tuple(points), "closed": False},
-                metadata={
+                metadata=connection_metadata,
+            ))
                     "gridforge_connection_id": connection.connection_id,
                     "source_node_id": connection.source_node_id,
                     "target_node_id": connection.target_node_id,
