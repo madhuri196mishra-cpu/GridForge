@@ -86,6 +86,7 @@ class ReadOnlySLDViewport(QWidget):
         self._viewport_state_loader = viewport_state_loader
         self._viewport_state_saver = viewport_state_saver
         self._document_id: str | None = None
+        self._last_viewport_restored = False
         self.setObjectName("SLDReadOnlyComparisonViewport")
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -145,13 +146,20 @@ class ReadOnlySLDViewport(QWidget):
         )
         if choices:
             self._document_selector.setCurrentIndex(selected_index)
+        selected_document_id = self._document_selector.itemData(selected_index) if choices else None
+        needs_fit = selected_document_id != selected_id
         self._document_selector.blockSignals(False)
         if not choices:
             self.clear_document()
             self.hide()
             return
-        self._select_document(self._document_selector.currentIndex())
+        self._select_document(
+            self._document_selector.currentIndex(),
+            fit_if_needed=False,
+        )
         self.show()
+        if needs_fit and not self._last_viewport_restored:
+            self.fit_content()
 
     def fit_content(self) -> None:
         """Fit the currently realized comparison document without changing its source."""
@@ -160,7 +168,12 @@ class ReadOnlySLDViewport(QWidget):
             self._view.fitInView(bounds, Qt.AspectRatioMode.KeepAspectRatio)
             self._save_viewport_state()
 
-    def _select_document(self, index: int) -> None:
+    def _select_document(
+        self,
+        index: int,
+        *,
+        fit_if_needed: bool = True,
+    ) -> None:
         if index < 0:
             self.clear_document()
             return
@@ -177,8 +190,10 @@ class ReadOnlySLDViewport(QWidget):
             self._save_viewport_state()
         self.present_document(document)
         if document_changed:
-            restored = self._restore_viewport_state(document.document_id)
-            if not restored and self.isVisible():
+            self._last_viewport_restored = self._restore_viewport_state(
+                document.document_id
+            )
+            if not self._last_viewport_restored and fit_if_needed and self.isVisible():
                 self.fit_content()
 
     def _save_viewport_state(self, *_args: object) -> None:
