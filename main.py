@@ -279,6 +279,8 @@ def _build_application_impl(
         projection=comparison_projection,
         render_system=comparison_render_system,
         document_resolver=_resolve_comparison_document,
+        viewport_state_loader=viewport_preference_store.load,
+        viewport_state_saver=viewport_preference_store.save,
     )
     canvas_composition = canvas_composer.compose(
         controller=controller,
