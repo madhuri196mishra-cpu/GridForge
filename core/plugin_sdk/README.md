@@ -90,3 +90,20 @@ or hardware validation were run.
 ## Packaging and startup verification
 
 The installed distribution includes the `plugins*` package namespace in addition to `core*` and `ui*`. The startup verification inventory includes engineering plugin source files and passes the composition root's host/dashboard lifecycle handles into teardown. The current PR's last observed workflow run failed during `import main` because the installed package omitted the `plugins` namespace; the packaging correction is committed, but its outcome remains pending the next automatic workflow run.
+
+
+## DWG Export plugin consumer
+
+`plugins.dwg_export` is an optional, headless consumer of the canonical
+`GridForgePlugin`, `PluginDescriptor`, and `EngineeringPluginHost` lifecycle.
+It owns CAD drawing-plan validation, reviewed symbol definitions, SLD and
+control drawing projections, and an explicitly configured ODA File Converter
+backend. It does not add a second plugin manager, discovery registry, event
+bus, or Application lifecycle owner. Activation remains opt-in and fails
+closed when the reviewed symbol registry or ODA executable is unavailable.
+
+The renderer-independent SLD export DTO is owned by Application; capture of
+the active persisted document is performed at the UI lifecycle boundary; CAD
+entity generation and DWG publication remain inside the plugin. Source review
+is not a substitute for lifecycle, test, CI, or actual ODA conversion
+verification.
