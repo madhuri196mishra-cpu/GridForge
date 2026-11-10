@@ -325,3 +325,22 @@ The automatically triggered startup-verification workflow found that importing `
 The same workflow's DraftNetwork regression job failed on a missing `canonical_contract` argument and invalid current-transformer measurement-terminal definitions. Direct SHA comparison confirms `core/application/creation_schema.py`, `core/application/bootstrap.py`, and `tests/core/application/test_draft_core_commit_boundary.py` are byte-for-byte the same on `main` and this branch. Those failures predate this PR branch's changes and are not changed here; they require a separate focused correction rather than an unrelated mutation inside the SDK PR.
 
 Verification boundary: workflow logs establish the observed failures. The package/source correction has been committed but must be checked by the next automatic workflow run. Do not claim the workflow passes until a new run confirms it.
+
+
+## DWG Export plugin consumer
+
+The optional DWG exporter is a second, non-UI consumer of the shared
+engineering-plugin lifecycle. Its ownership boundary is:
+
+- Application: immutable renderer-independent SLD export snapshot DTOs.
+- UI lifecycle adapter: detached capture of the active persisted SLD document.
+- `plugins.dwg_export`: reviewed symbol catalogue, SLD/control drawing
+  projection, coordinate mapping, plan validation, provenance, and optional
+  ODA backend.
+
+The plugin remains explicitly activated with supplied configuration. No
+second plugin loader, Core CAD dependency, automatic startup activation, or
+parallel Application service owner is introduced. Terminal anchor geometry
+is derived from reviewed symbol-local millimetre anchors and the persisted
+symbol instance transform; it is presentation geometry and does not infer
+or create electrical connectivity.
