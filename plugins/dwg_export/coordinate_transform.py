@@ -6,6 +6,7 @@ reflection, non-uniform scaling, and unknown source units are deliberately absen
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 import math
@@ -121,7 +122,7 @@ class SLDCoordinateTransform:
                 anchor_coordinate_system = metadata.get(
                     "symbol_terminal_anchor_positions_coordinate_system"
                 )
-                if not isinstance(anchor_positions, dict) and not hasattr(anchor_positions, "items"):
+                if not isinstance(anchor_positions, Mapping):
                     raise ValueError(
                         f"INSERT {entity.entity_id} terminal anchor positions must be a mapping"
                     )
@@ -130,9 +131,13 @@ class SLDCoordinateTransform:
                         f"INSERT {entity.entity_id} terminal anchors are not in the expected "
                         "sld-document-local coordinate system; refusing a repeated or ambiguous transform"
                     )
+                if any(not isinstance(name, str) or not name.strip() for name in anchor_positions):
+                    raise ValueError(
+                        f"INSERT {entity.entity_id} terminal anchor names must be non-empty strings"
+                    )
                 metadata["symbol_terminal_anchor_positions"] = {
-                    name: self.transform_point(point)
-                    for name, point in sorted(anchor_positions.items())
+                    name: self.transform_point(anchor_positions[name])
+                    for name in sorted(anchor_positions)
                 }
                 metadata["symbol_terminal_anchor_positions_coordinate_system"] = "world-mm"
             metadata["coordinate_transform"] = {
