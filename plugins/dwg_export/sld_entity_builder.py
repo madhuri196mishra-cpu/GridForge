@@ -254,26 +254,6 @@ class SLDNodeEntityBuilder:
                 geometry={"points": tuple(points), "closed": False},
                 metadata=connection_metadata,
             ))
-                    "gridforge_connection_id": connection.connection_id,
-                    "source_node_id": connection.source_node_id,
-                    "target_node_id": connection.target_node_id,
-                    "source_endpoint": None if connection.source_endpoint is None else dict(connection.source_endpoint),
-                    "target_endpoint": None if connection.target_endpoint is None else dict(connection.target_endpoint),
-                    "connection_kind": connection.connection_kind,
-                    "route_routing_mode": connection.route_routing_mode,
-                    "route_ownership": connection.route_ownership,
-                    "route_geometry_source": "persisted_route" if has_authored_route else "node_position_display_fallback",
-                    "presentation_owner": connection.presentation_owner,
-                    "projection_source": connection.projection_source,
-                    "persisted_connection_properties": dict(connection.properties),
-                    "core_connection_id": connection.properties.get("core_connection_id"),
-                    "source_project_id": snapshot.project_id,
-                    "source_document_id": snapshot.document_id,
-                    "source_revision": snapshot.source_revision,
-                    "source_kind": "persisted_sld_connection",
-                },
-            ))
-
         for annotation in sorted(snapshot.annotations, key=lambda item: item.annotation_id):
             if not annotation.visible or not annotation.text:
                 continue
