@@ -29,6 +29,7 @@ from .engineering_configuration import EngineeringUpdatePreparer
 from .command_manager import CommandManager
 from .commands.sld_commands import AddSLDNodeCommand, AddSLDConnectionCommand, RemoveSLDNodeCommand, RemoveSLDConnectionCommand
 from .commands.draft_commands import CommitNetworkCommand, UpdateDraftEquipmentCommand
+from .commands.selection_commands import EngineeringUpdateBatchCommand
 from .draft.network import DraftNetwork
 from .draft.collection import DraftNetworkCollection
 from .commands.insertion_commands import INSERT_EQUIPMENT_INTO_CONNECTION
@@ -4632,6 +4633,48 @@ class Application:
         """Translate typed engineering intent into the authoritative update command."""
         return EngineeringUpdatePreparer.prepare(intent)
 
+    def prepare_engineering_update_batch(self, intents: Any) -> Command:
+        """Prepare every canonical child update before creating one aggregate command."""
+        values = tuple(intents)
+        if len(values) < 2:
+            raise ValueError("Engineering update batch requires at least two typed intents.")
+        element_types = {
+            str(getattr(intent, "element_type", "")).strip().lower()
+            for intent in values
+        }
+        element_ids = tuple(
+            str(getattr(intent, "element_id", "")).strip()
+            for intent in values
+        )
+        if len(element_types) != 1 or not next(iter(element_types), ""):
+            raise ValueError("Engineering update batch requires one compatible equipment type.")
+        if any(not identity for identity in element_ids) or len(set(element_ids)) != len(element_ids):
+            raise ValueError("Engineering update batch requires distinct non-empty equipment identities.")
+        if any(str(getattr(intent, "identity_kind", "element")).strip().lower() != "element" for intent in values):
+            raise ValueError("Engineering update batch supports committed equipment only.")
+        for intent in values:
+            element_type = str(getattr(intent, "element_type", "")).strip().lower()
+            element_id = str(getattr(intent, "element_id", "")).strip()
+            read_model = self.read_element(element_type, element_id)
+            parameters = {
+                item.parameter_id: item
+                for item in getattr(read_model, "engineering_parameters", ())
+            }
+            for parameter_id in dict(getattr(intent, "values", {}) or {}):
+                parameter = parameters.get(parameter_id)
+                if parameter is None or not parameter.editable or parameter.derived:
+                    raise ValueError(
+                        f"Engineering batch parameter {parameter_id!r} is not editable "
+                        f"for {element_type} {element_id}."
+                    )
+                if parameter.topology_impact:
+                    raise ValueError(
+                        f"Engineering batch does not permit topology-impacting parameter "
+                        f"{parameter_id!r} on {element_type} {element_id}."
+                    )
+        commands = EngineeringUpdatePreparer.prepare_batch(values)
+        return EngineeringUpdateBatchCommand(commands=commands)
+
     def prepare_draft_engineering_update(self, intent: Any) -> Command:
         """Prepare an immutable DraftNetwork engineering-data update command."""
         if str(getattr(intent, "identity_kind", "")).strip().lower() != "draft":
@@ -5441,6 +5484,29 @@ class Application:
                 correlation_id=command.correlation_id,
                 causation_id=command.causation_id,
             ))
+        elif command.command_type == "model.update_batch":
+            children = tuple(command.payload.get("commands", ()))
+            batch_metadata = {
+                **metadata,
+                "command_type": command.command_type,
+                "child_command_ids": tuple(str(child.command_id) for child in children),
+                "equipment_count": len(children),
+                "atomic": True,
+            }
+            for child in children:
+                child_metadata = {
+                    **batch_metadata,
+                    "batch_command_id": str(command.command_id),
+                    "child_command_id": str(child.command_id),
+                }
+                self._publish_model_event(child, child_metadata, operation=operation)
+            self._event_bus.publish(NetworkChanged(
+                operation=operation,
+                metadata=batch_metadata,
+                correlation_id=command.correlation_id,
+                causation_id=command.causation_id,
+            ))
+            return
         elif command.command_type.startswith("model."):
             self._publish_model_event(command, metadata, operation=operation); self._publish_network_changed(command, metadata)
         elif command.command_type.startswith("control."): self._publish_control_event(command, result, metadata, operation=operation)

@@ -527,6 +527,7 @@ def create_application(
             if len(children) < 2:
                 raise ValueError("Engineering update batch requires at least two equipment updates.")
             identities: set[tuple[str, str]] = set()
+            validated_children: list[tuple[Command, str]] = []
             excluded = {
                 "model.update_current_transformer",
                 "model.update_potential_transformer",
@@ -551,12 +552,18 @@ def create_application(
                 if not identity or key in identities:
                     raise ValueError("Engineering update batch contains an empty or duplicate equipment identity.")
                 identities.add(key)
+                validated_children.append((child, identity))
 
             # All child commands have already been prepared and canonically
             # validated by EngineeringUpdatePreparer before this handler runs.
             # The child handlers now share one transaction and one history entry.
-            for child in children:
-                command_manager.execute_in_transaction(child, transaction)
+            for child, identity in validated_children:
+                try:
+                    command_manager.execute_in_transaction(child, transaction)
+                except Exception as exc:
+                    raise ValueError(
+                        f"Engineering batch update failed for equipment {identity}: {exc}"
+                    ) from exc
             return ApplicationResult.success_result(
                 message=f"Atomically updated {len(children)} selected equipment items.",
                 metadata={

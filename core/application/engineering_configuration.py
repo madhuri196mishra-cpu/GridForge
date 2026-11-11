@@ -254,6 +254,24 @@ class EngineeringUpdatePreparer:
     """Prepare one immutable update command from typed engineering intent."""
 
     @classmethod
+    def prepare_batch(cls, intents: Any) -> tuple[Command, ...]:
+        """Prepare homogeneous batch children with target-specific canonical validation."""
+        values = tuple(intents)
+        if len(values) < 2:
+            raise ValueError("Engineering update batch requires at least two typed intents.")
+        commands: list[Command] = []
+        for intent in values:
+            element_type = str(getattr(intent, "element_type", "")).strip().lower()
+            element_id = str(getattr(intent, "element_id", "")).strip()
+            try:
+                commands.append(cls.prepare(intent))
+            except Exception as exc:
+                raise ValueError(
+                    f"Engineering batch validation failed for {element_type} {element_id}: {exc}"
+                ) from exc
+        return tuple(commands)
+
+    @classmethod
     def prepare(cls, intent: Any) -> Command:
         element_type = str(getattr(intent, "element_type", "")).strip().lower()
         element_id = str(getattr(intent, "element_id", "")).strip()

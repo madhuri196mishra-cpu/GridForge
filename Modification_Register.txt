@@ -3175,3 +3175,607 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+======================================================================
+GridForge V2 — Batch 3: Tool Shelf, Equipment Library and Placement Audit
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Source audit:
+- Equipment Library is composed from the canonical EquipmentRegistry catalogue.
+  It exposes category filtering and search across display name, category,
+  equipment type and tool ID. Palette icons are rendered from canonical
+  SymbolDefinitions through PaletteSymbolAdapter; item tooltips expose the
+  catalogue identity and symbol metadata.
+- Palette drag payload carries only the stable equipment type. GraphicsView
+  resolves that type through EquipmentRegistry/ToolManager, adapts the canvas
+  drag event, displays the transient placement preview, and dispatches the
+  canonical interaction path. No independent palette-side tool lifecycle or
+  Core mutation was found.
+- ToolShelf is a separate compact contextual interaction rail. It consumes
+  ToolDefinitions and UIActionRouter, groups by canonical category ordering,
+  reflects the active ToolManager identity, and disables controls without an
+  authorized route. Missing icon artwork falls back to a tool-derived glyph
+  and warning rather than a blank or unrelated symbol.
+- ModelPlacementTool keeps placement and symbol preview transient, routes draft
+  creation through Application commands, supports R rotation in 90-degree
+  increments while a placement draft is active, and clears transient state on
+  cancellation/deactivation. Equipment engineering parameters remain in the
+  Properties/Creation workflow.
+- GraphicsView palette drop supports a 15-viewport-pixel wire corridor,
+  nearest routed-polyline target resolution, ambiguity rejection, explicit
+  Shift insertion, automatic insertion when a valid nearby target is found,
+  and release-time target revalidation. No separate duplicate insertion path
+  or alternate mutation authority was introduced.
+
+Correction integrated:
+- PR #1192 merged by squash as bb7e13bc8c392aaa56a01f7af5b715828c20680b.
+- The insertion-only equipment silhouette now uses a solid translucent fill
+  and strokes at 55% opacity; split route halves use dedicated translucent
+  solid pens; rotated input/output terminal-anchor markers are drawn above
+  the silhouette. Preview ownership and cleanup remain in ElectricalInsertionTool.
+- ui/core/qt.py exports all added Qt classes used by the correction.
+- Authoritative issue #827 closed as completed after merge. This supersedes the
+  earlier PR register note that said to keep #827 open pending integration.
+
+New finding:
+- ToolSettingsPanel.set_context() renders ToolSettings.values only as QLabel
+  pairs. It has no typed editable controls, validation, update signal or route
+  to publish immutable ToolSettings.with_updates() values back to the active
+  tool context. SLD editor correctly hides the region when no values exist.
+- Created issue #1195 for typed editable contextual interaction settings.
+  Scope explicitly excludes equipment engineering parameters, which remain
+  in the Properties/Creation workflow.
+
+Disposition:
+- No new defect found in canonical palette icons, category ordering, equipment
+  search/filter, activation routing, or standard placement lifecycle.
+- No duplicate menu/shelf lifecycle authority identified.
+- No Core/Application/SLD architecture changes made.
+- Static source/diff review only. No GUI interaction, drag/drop runtime,
+  preview rendering runtime, or import/syntax execution performed.
+======================================================================
+
+
+======================================================================
+GridForge V2 — Batch 4: Properties Inspector / Engineering Parameter Audit
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Source audit:
+- Reconciled the older root issue #992 against current main and prior audit
+  comments. The original report's missing projection metadata claims are
+  stale: EngineeringParameterState now carries display_name, unit, datatype,
+  choices, editable/derived, validation, required/default metadata, min/max
+  and inspectable. Draft and committed projection paths populate the
+  canonical metadata; unavailable committed parameters are explicitly
+  marked non-inspectable.
+- PR #1097 hardened EngineeringParameterDefinition construction with
+  supported datatype, finite/ordered/type-compatible bounds, integral
+  integer bounds, enum choice uniqueness and default-value validation.
+- PR #1098 moved ordinary committed engineering-update validation to the
+  Application preparation boundary using the trusted CreationDefinition.
+  Partial updates remain partial and Core remains final domain authority.
+- Properties inspector uses human-readable display names, unit labels,
+  required/read-only indicators, metadata tooltips, min/max numeric validators,
+  enum choices, and typed boolean controls.
+- Apply / Commit reports parse/command rejection and restores the current
+  projected selection after failure. Draft placement remains separate from
+  final Commit Network validation; network commit has a non-blocking
+  completion/error presentation path.
+
+Residual gaps confirmed:
+- Committed numeric QDoubleValidator sets range but no explicit decimals,
+  notation or locale. QDoubleSpinBox creation controls hard-code six decimal
+  places. EngineeringParameterDefinition currently has no precision/scale
+  metadata; precision must be defined canonically rather than guessed in UI.
+- Creation integer parameters fall through to QLineEdit without QIntValidator,
+  although CreationDefinition rejects non-integral/out-of-range values at
+  validation/commit. This is input-quality, not a Core authority bypass.
+- ConditionalParameterRequirement is enforced as group-level completeness
+  text; fields are not marked as conditionally required when a rule activates.
+  Schema does not declare conditional visibility, so fields must not be hidden
+  by inference.
+- Inspected UI projection tests assert presence of engineering parameters but
+  do not provide catalogue-wide parameter-to-projection/control compatibility
+  coverage.
+
+Disposition:
+- Added current-main re-audit comment to authoritative issue #992; it remains
+  open for numeric precision/locale policy, integer creation validation,
+  conditional requirement presentation and catalogue-wide compatibility
+  coverage. Existing implementation mirror #33 remains outside write scope.
+- Existing #1191 separately tracks scrollable inspector content and persistent
+  action footer. No duplicate issue created.
+- Existing #1195 separately tracks editable contextual Tool Settings.
+- Equipment engineering parameters remain in Properties/Creation workflow;
+  Tool Settings remain separate. No duplicate parameter editor introduced.
+- No new PR merged or issue closed in this batch. No Core/Application/SLD
+  architecture changes made.
+- Static source and test-inventory review only. No GUI interaction or test
+  execution performed.
+======================================================================
+
+
+======================================================================
+GRIDFORGE V2 — ISSUE #821 MULTI-EQUIPMENT INSPECTOR IMPLEMENTATION
+Date: 2026-11-11
+Authoritative repository: SubhenduMishra29/GridForge (main)
+Issue: #821 — Menu and Input Navigation Barriers
+
+Implementation:
+- Added EngineeringUpdateBatchCommand using the canonical immutable
+  Application Command envelope. Its command type is model.update_batch so
+  the existing project revision/dirty-state pipeline records one model
+  revision transition for the aggregate operation.
+- Registered an Application composition-root handler that accepts only
+  supported canonical model update commands, checks target identities before
+  mutation, and executes all child commands through
+  CommandManager.execute_in_transaction(). The aggregate therefore owns one
+  transaction, one undo journal and one redo command.
+- Added Application.prepare_engineering_update_batch(); all typed intents are
+  checked for one equipment type, distinct committed equipment identities,
+  and individually prepared through EngineeringUpdatePreparer before the
+  aggregate command is created.
+- Extended EngineeringParameterEditor with per-target batch preparation.
+  Every selected row is converted and validated against its own canonical
+  parameter contract before Application execution. A one-row edit falls back
+  to the ordinary canonical update command.
+- Added domain-preserving SelectionManager snapshot/restore so the projection
+  coordinator can resolve each selected object without changing the user's
+  final selection.
+- SelectionProjectionCoordinator now gathers the complete selection and
+  exposes a batch target only when every selected identity resolves to a
+  committed equipment ProjectionState of the same equipment type.
+- PropertiesPanelWidget now provides a spreadsheet-style QTableWidget for
+  compatible multi-selection. Rows represent individual equipment; columns
+  represent common editable, inspectable, non-derived and non-topology
+  parameters. Per-row values remain distinct. A status line explicitly names
+  parameters whose values differ across the selection. Tab navigation is
+  enabled and focus begins at the first editable cell.
+- Apply Batch submits all changed rows as one Application aggregate. Invalid
+  conversion or canonical validation rejects the batch before execution.
+- Instrumentation CT/PT/CVT updates and topology-impacting parameters are
+  intentionally excluded from this first batch path; their specialised
+  runtime/topology lifecycle must not be bypassed.
+
+Files changed:
+- core/application/commands/selection_commands.py
+- core/application/bootstrap.py
+- core/application/application.py
+- ui/panels/engineering_parameter_editor.py
+- ui/core/selection_manager.py
+- ui/projection/selection_projection_coordinator.py
+- ui/panels/default_panels.py
+
+Verification:
+- Fetched back all changed files from authoritative main and confirmed the
+  aggregate command, handler registration, Application preparation API,
+  selection snapshot/restore, multi-selection projection, table editor and
+  per-target submission paths are present.
+- Source-level inspection only. No Python import/compile execution, automated
+  tests, CI, or live Qt GUI interaction was performed.
+- Issue #821 remains OPEN pending the final source reconciliation and live GUI
+  acceptance of multi-selection, Tab/Shift+Tab traversal, atomic rejection,
+  undo and redo. Do not represent these runtime behaviours as GUI-verified.
+======================================================================
+
+
+Issue #821 implementation follow-up:
+- Added Application.prepare_engineering_update_batch() so aggregate command
+  construction and canonical child preparation remain Application-owned; the
+  UI adapter no longer constructs the aggregate command directly.
+- Changed the aggregate command identity to model.update_batch so the existing
+  RevisionService mutation contract records one model revision transition.
+  Topology-impacting parameter rows are excluded by the Inspector/editor.
+- Added Application semantic-event handling for model.update_batch. Execute,
+  undo and redo now publish an ElementUpdated event for each child equipment
+  identity plus one aggregate NetworkChanged event. Without this dispatch the
+  aggregate's outer command identity would not map to a single equipment ID,
+  leaving the multi-selection projection stale after commit/history operations.
+- Added early selection reconciliation for removed targets and unrelated
+  ElementUpdated events before attempting multi-selection projection.
+- Batch cell parsing now skips unchanged empty values and accepts typed complex
+  values without coercing empty or mixed states into numeric zero or false.
+- Latest follow-up commits:
+  Application batch preparation: 53ed04bd43f29dd4f4152176874e63c3fddadbc9
+  Batch semantic events: 31d3b76b2f0f949e3d69ef9726ab7efb84c66c7d
+  Selection event reconciliation: 326a354e666a400f83fa8642f4ddff3d9aa95ba9
+  Batch grid parsing/focus: 118a047cc2ab7fdf18f63381c38c5357e94ad1fa
+- Source-level review only; runtime Qt, undo/redo, rollback and GUI behaviour
+  remain unverified.
+
+======================================================================
+GridForge V2 — Batch 5: Dedicated Engineering Configuration Editors
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Source audit:
+- TransformerConfigurationEditor is present on authoritative main and is
+  mounted in PropertiesPanelWidget. It stages HV/LV winding connection,
+  ordered phase/neutral roles, terminal roles, neutral grounding and
+  earth-return impedances, core construction, impedance reference, zero-
+  sequence test data, vector-group contract, terminal admittance matrix,
+  manufacturer/test evidence and delta-loop state.
+- Matrix import requires explicit SIEMENS units and exact ordered terminal
+  inventory. Local validation checks dimensions, finite real/imaginary values,
+  reciprocity and passivity before Application submission. No matrix is
+  synthesized from scalar r/x or vector-group labels.
+- Blocking projection defect: TransformerConfigurationEditor._summary()
+  reads ProjectionState.attributes["transformer_configuration_summary"],
+  but SelectionProjectionCoordinator constructs committed-element
+  ProjectionState without passing element.attributes or a transformer
+  configuration summary. _load_projection() therefore receives an empty
+  summary and cannot restore the committed winding/multiport configuration.
+- Apply submits an immutable EngineeringConfigurationIntent through the
+  generic EngineeringParameterEditor/Application boundary. The editor only
+  updates its local success status; it does not explicitly reload the
+  authoritative selected projection. Verify that the Application event
+  bridge refreshes this target and that Discard restores the latest committed
+  snapshot after execute/undo/redo and project reopen.
+- Transformer fields are explicitly classified as later_configuration in
+  the canonical creation-schema command dispositions, so they are not
+  duplicated as ordinary generic creation parameters. Keep the dedicated
+  configurator as the single editing surface for those fields.
+- CTSecondaryChannelEditor is not present in authoritative main. It exists
+  on the draft PR #1189 fork branch and is integrated there into
+  PropertiesPanelWidget. It authors only committed CT S1/S2 secondary
+  MeasurementChannels through detached Application read models and immutable
+  commands; signal type CURRENT and unit A are fixed. PT/CVT authoring is not
+  included. PR #1189 remains DRAFT and includes unrelated UI/action changes.
+- PR #1189's stated related issue #156 / authoritative #774 is mismatched:
+  both issue records are titled Inline Branch Equipment Replacement
+  Mechanics, not CT secondary channel authoring. A PR comment requests correct
+  tracking. The PR remains unmerged and its fork-side code is not counted as
+  delivered on authoritative main.
+- Unit declarations in the inspected editors are SI-oriented (Transformer
+  impedance ohm, matrix S, phase shift rad; CT nominal current A and stale
+  duration seconds). Transformer scalar text fields have no explicit local
+  numeric/finite validators; Application/Core validation remains the
+  authority. Do not add implicit unit conversion or invent precision rules.
+
+Disposition:
+- Added a source re-audit comment to issue #939: configurator presence is no
+  longer the gap; committed configuration projection, Apply refresh/Discard
+  restoration and persistence/evidence acceptance remain open.
+- Added a PR #1189 audit comment correcting its unrelated issue association
+  and retaining its draft/unmerged status pending diff reconciliation.
+- Keep #939 OPEN. Do not close it until read-model projection, transaction,
+  stale-evidence, persistence and save/reopen acceptance are source-verified.
+- CT secondary editor is PR-only at present; no authoritative-main issue
+  closure or implementation claim is made. PT/CVT dedicated editors remain
+  out of scope for PR #1189.
+- No source code, Core/Application architecture, or domain model changed in
+  this batch. No issue closed and no PR merged.
+- Static source and GitHub diff inspection only. No Qt GUI, runtime, tests or
+  CI execution performed.
+======================================================================
+
+
+Issue #821 implementation follow-up — final source reconciliation:
+- Exported ENGINEERING_UPDATE_BATCH and EngineeringUpdateBatchCommand through
+  core/application/commands/__init__.py.
+- Replaced temporary visible selection mutation with
+  SelectionManager.temporary_single_selection(). The coordinator now reads
+  each selected ProjectionState without emitting selection_changed or changing
+  the scene's visible multi-selection; the original domain selection remains
+  intact throughout projection.
+- Stale identities encountered during temporary projection no longer clear
+  the user's original selection snapshot.
+- Application.prepare_engineering_update_batch() now reads each target through
+  Application.read_element(), verifies that every requested parameter is
+  currently editable and non-derived, and rejects topology-impacting fields
+  using the authoritative EngineeringParameterReadModel metadata.
+- EngineeringUpdatePreparer.prepare_batch() performs target-specific canonical
+  command preparation and annotates validation failures with the equipment
+  type and identity. CreationParameterDefinition does not carry topology_impact;
+  topology eligibility is therefore correctly checked against the Application
+  read model rather than an unsupported creation-schema attribute.
+- Transactional child execution failures are annotated with the equipment
+  identity. The Inspector catches Application ExecutionError and presents the
+  rejection without reporting a successful commit.
+- Final follow-up commits:
+  command package export: 274d4b3624d6697923e5e9970c9ba5df19b4f03b
+  temporary selection projection: 24c43a294e593a29ec1340f8263daed69d4b0a96
+  stale identity preservation: 377b5b3f34d23f2147fdb83e3b106e35dd12076d
+  Application read-model validation: 57eb5a6bac0ff02ccd1f4e24c319143188a5b19e
+  target-specific transaction errors: 2577d8963ed39b334455dc090ff23d277dabf80f
+  preparer schema correction: 329ca71bf8cd48079a3124c9993a0bb87bcacb52
+- Fetched-back source inspection remains the verification boundary. No Python
+  compile/import execution, automated tests, CI, or live Qt GUI acceptance
+  has been performed. Issue #821 remains OPEN until runtime acceptance.
+
+
+Issue #821 final source-audit refinement:
+- Confirmed CreationParameterDefinition does not own topology_impact metadata.
+  Removed the invalid creation-schema assumption and moved the authoritative
+  batch eligibility check to Application.prepare_engineering_update_batch(),
+  which reads each committed target through Application.read_element() and
+  checks EngineeringParameterReadModel.editable, derived and topology_impact.
+- Batch preparation now validates all target read models before constructing
+  the aggregate command; target-specific canonical command preparation follows
+  before any mutation.
+- The batch UI displays equipment labels with stable IDs, sizes columns to
+  content, and reports the underlying target-specific failure cause from
+  Application ExecutionError after transaction rollback.
+- Final refinement commits:
+  Application read-model eligibility: 57eb5a6
+  engineering preparer correction: 329ca71bf8cd48079a3124c9993a0bb87bcacb52
+  Application batch preparation after schema correction: 97fdcda1e852b92c60886ebb887c51ca950254f6
+  equipment labels/column sizing: 21967a4a6d5cc07b0e8a10c65e3b02071e887664
+  target-specific error presentation: 0b8de253388036df9523ce86a72f8ff2ded453f1
+- Issue #821 remains OPEN. All changes have been fetched back from main and
+  source markers reconciled. Runtime GUI acceptance and undo/redo/rollback
+  interaction remain unverified.
+
+======================================================================
+GridForge V2 — Batch 6: Protection and Control Configuration Editors
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Protection editor audit:
+- Protection workspace includes a dedicated ProtectionInspector. It reads
+  Protection and physical relay configuration through Application read APIs;
+  it edits typed function settings through
+  Application.update_protection_function_settings() and physical relay
+  identity/lifecycle fields through
+  Application.update_physical_relay_configuration().
+- Function setting presentation metadata is canonical in
+  core/protection/function_catalog.py::ProtectionSettingDefinition: datatype
+  number/string, unit, required, choices and dependent choices.
+- The physical Relay editor deliberately keeps plugin-specific settings
+  read-only when no typed plugin schema exists. Runtime pickup/trip state is
+  read-only and separate from configuration. Preserve this boundary.
+- Successful Apply reloads the selected Application read model; rejected
+  commands retain staged controls and report an error.
+- Gap: ProtectionInspector._build_settings_editor() uses QLineEdit for every
+  non-choice setting, including datatype=number. No numeric validator or
+  finite-value input contract is applied locally. Canonical settings metadata
+  has no min/max/precision, so UI must not invent these values.
+- Gap: no explicit Discard action exists. A fresh refresh rebuilds from the
+  latest Application read model, but the engineer cannot deliberately discard
+  staged edits without changing selection or forcing refresh.
+- Created issue #1196 for typed numeric setting controls, canonical bounds/
+  precision where declared, explicit Apply/Discard and catalogue-wide UI
+  mapping coverage. Dense form scrolling remains with #1191.
+
+Control editor audit:
+- ControlInspector exposes timer editing only through fixed +/-0.5 buttons
+  and a TON/TOF/TP cycle button; there is no direct typed preset entry or
+  explicit unit/bounds/precision presentation.
+- _apply_configuration() executes UpdateControlComponent but discards the
+  ApplicationResult and does not refresh the authoritative component snapshot
+  or report success/rejection.
+- _create_action_binding() and _create_interlock() likewise discard command
+  results and provide no actionable success/rejection feedback.
+- Signal mapping uses Application.read_measurement_channels() and persists
+  detached source-to-destination configuration via SetControlSignalMapping.
+  The UI already separates Core attributes from MeasurementChannel sources;
+  cross-domain Protection/dynamic-controller catalogue and freshness are
+  distinct open scopes #1035 and #1031.
+- ControlUpdateCoordinator refreshes the canvas and workspace callback, but
+  _presentation_refresh() does not re-project the still-selected component
+  into ControlInspector. External Control changes can therefore leave the
+  inspector stale.
+- Created issue #1197 for typed timer input, Apply/Discard, command result
+  feedback, and selection-preserving inspector refresh after relevant events.
+
+Disposition:
+- Issue #1003 remains closed: the dedicated Protection workflow exists and
+  exposes supported configuration through Application; the new #1196 issue
+  tracks residual editor interaction/input-quality gaps, not the old missing
+  relay projection finding.
+- Existing #1031 and #1035 retain MeasurementChannel freshness and cross-domain
+  signal catalogue ownership. Existing #1037 retains signal semantic/unit
+  compatibility. No duplicate issue created for those scopes.
+- No source code, Core/Application architecture or domain model changed.
+  No issues closed and no PRs merged in this batch.
+- Static source inspection only. No GUI, runtime, tests or CI execution.
+======================================================================
+
+======================================================================
+GridForge V2 — Batch 7: CT/PT/CVT Instrument Configuration and Channels
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Source audit:
+- Core CT/PT/CVT models expose validated physical nameplate fields and
+  explicit primary/secondary terminals and polarity conventions.
+- Application MeasurementModelService and PTModelService provide transactional
+  update methods; immutable UpdateCurrentTransformerCommand,
+  UpdatePTCommand and UpdateCapacitiveVoltageTransformerCommand exist.
+  Service updates snapshot old values, validate the candidate, restore on
+  rejection, and register transaction undo.
+- NetworkReadService projects CT/PT/CVT physical attributes and marks
+  nameplate parameters editable for the generic Properties inspector.
+  Derived ratio/voltage_ratio are explicitly read-only. Thus the claim that
+  committed instruments cannot be edited at all would be incorrect; the gap
+  is a cohesive dedicated engineering workflow and channel authoring.
+- Canonical units: CT current ratings A; PT/CVT primary kV and secondary V;
+  burden VA; frequency Hz; phase displacement degrees. Polarity is enum.
+  No implicit unit conversion or rounding is required.
+- MeasurementProvisioning validates secondary terminal roles for all three
+  instrument families: CT S1/S2, PT secondary_a/secondary_b, CVT X1/X2.
+  CTMeasurementAssociationResolver separately resolves P1/P2 topology and
+  S1/S2 references without inferring protection-zone or relay-input ownership.
+- Draft PR #1189 contains CT S1/S2 secondary channel authoring but remains
+  unmerged; it does not provide PT/CVT secondary channel authoring. Its
+  related issue #156 / authoritative #774 remains mismatched (Inline Branch
+  Equipment Replacement Mechanics).
+- Created issue #1198 for dedicated CT/PT/CVT configuration UX and complete
+  PT/CVT channel authoring. Scope explicitly separates physical instrument
+  ratio/polarity/burden/accuracy from logical MeasurementChannel scaling,
+  phase, unit, quality, freshness and producer identity. Derived ratio stays
+  read-only; no unsupported saturation/accuracy/precision fields are invented.
+- Reconcile #1198 with #992 generic parameter metadata and #1191 scrolling;
+  do not duplicate their generic editor and form-layout scopes.
+
+Disposition:
+- #1198 OPEN. No issues closed and no PRs merged in Batch 7.
+- No source code, Core/Application architecture or domain model changed.
+- Static source and GitHub diff inspection only. No GUI/runtime/tests/CI run.
+======================================================================
+
+======================================================================
+GridForge V2 — Batch 8: MeasurementChannel Authoring and Subscription UI
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Source audit:
+- Core MeasurementChannel contract separates physical source equipment from
+  logical signal state. It carries signal type, phase/sequence, engineering
+  unit, nominal value, scale, polarity, quality, availability, raw sample,
+  timestamp/domain, sample sequence and stale_after.
+- Engineering value = raw_value * scale * polarity. Physical CT/PT/CVT ratio,
+  burden, saturation, filtering and instrument error belong to measurement
+  generation, not a second MeasurementChannel transform.
+- MeasurementChannelService activates project-persisted definitions,
+  provisions source terminal references through MeasurementProvisioning,
+  binds immutable producer identity, and serializes configuration without
+  live samples. Project-managed channel configuration is immutable after
+  activation; live sample updates are authorized only through the service.
+- Trusted sample ingress fails closed unless source verifier, trusted clock
+  and clock domain are configured. Attestations bind producer, project,
+  activation generation, channel, timestamp, quality, availability and
+  monotonic sample sequence.
+- Application.read_measurement_channels() returns detached live telemetry
+  read models (value/unit/type/phase/quality/availability/timestamp/domain/
+  sequence/stale_after/producer/validity).
+- Gaps: no project-scoped Application command/API was found to create,
+  update or delete channel definitions after activation; no detached
+  configuration read model exposing name/source/terminal/nominal/scale/
+  polarity/configuration provenance; no dedicated channel authoring UI.
+- ControlInspector can select MeasurementChannel sources and displays
+  sample metadata, but does not author channel definitions. Consumer binding
+  lists are separate from channel authoring.
+- No canonical universal consumer-subscription registry/read model was found
+  for Metering/SCADA/Synchronism/Monitoring. Preserve distinct Protection
+  RelayInput and Control signal mapping ownership; do not invent subscription
+  records or imply consumers are bound without canonical source data.
+- Quality/availability/value/timestamp/sequence are live read-only telemetry.
+  stale_after is configuration; timestamp_domain must align with trusted
+  Application clock. Producer identity is read-only provenance, not an
+  editable free-text field.
+- Channel scale must be finite; polarity exactly +/-1; nominal value finite
+  and non-negative; stale_after finite and non-negative. Units represent
+  post-scale engineering values. Never apply physical CT/PT/CVT ratio twice.
+- Created issue #1199 for project-scoped channel CRUD, immutable configuration
+  read model, dedicated editor with Apply/Discard and authoritative refresh,
+  and consumer views only where canonical consumer registrations exist.
+  Coordinate with #1198, #1196, #1197 and #1031.
+
+Disposition:
+- #1199 OPEN. No issues closed and no PRs merged in Batch 8.
+- No source code, Core/Application architecture or domain model changed.
+- Static source inspection only; no GUI/runtime/tests/CI execution.
+======================================================================
+
+======================================================================
+GridForge V2 — Batch 9: Measurement Generation and Heterogeneous Simulation
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Source audit:
+- MeasurementGeneration is the explicit conversion boundary from numerical
+  solver values to physical primary quantities and then CT/PT/CVT secondary
+  channels. It validates physical source identity, primary terminal role,
+  secondary channel terminal role and CT polarity. CT branch/conductor/
+  terminal current conversion additionally requires explicit resolved CT
+  association, matching topology revision and complete short-circuit
+  contribution provenance.
+- MeasurementChannel remains a logical signal contract. Its engineering
+  conversion is raw_value * scale * polarity. Physical CT/PT/CVT ratios and
+  instrument effects are not applied again by the channel.
+- No RTD, thermocouple, BTD, OTD, WTD, vibration, generic analog/digital
+  acquisition, communication adapter, calibration or signal-conditioning
+  implementation was found under core/measurement. Thermal overload relay
+  modelling is not physical temperature instrumentation.
+- Created issue #1200 for sensor families, industrial acquisition adapters,
+  calibration/linearization/filtering, typed units and quality propagation.
+  BTD/OTD/WTD sensing element must be explicitly configured; they are not
+  assumed to be RTDs. Trusted MeasurementChannelService ingress remains
+  mandatory.
+- Motor Dynamics plugin provides a CPU/NumPy reference RK4 solver and optional
+  Numba-CUDA batch execution. CUDA path is capability/workload-aware, requires
+  at least eight independent motors and constant scalar dq voltages; failures
+  can fall back to CPU with dispatch diagnostics. This is not a universal
+  GPU execution promise.
+- Motor model outputs include stator/rotor currents, torque, rotor speed,
+  slip and one lumped winding-temperature state. Model documentation
+  explicitly excludes saturation, skin effect, unbalance, converter switching
+  and separate stator/rotor thermal nodes.
+- Motor simulation publishes into its own MotorSimulationReadModelStore.
+  The inspected path does not publish virtual CT/PT/RTD channels through
+  MeasurementGeneration/MeasurementChannelService or connect simulated
+  actuation/auxiliary feedback into the canonical device lifecycle.
+- ONNX Runtime adapter recognizes supported NPU/GPU/CPU providers and has
+  CPU fallback, but is an AI inference path, not a deterministic physics
+  backend. Provider presence does not prove every graph node executes on an
+  accelerator. NPU must not replace deterministic protection calculations.
+- Created issue #1201 for virtual instrument publication, producer provenance,
+  simulated actuator/feedback integration and closed-loop signal lifecycle.
+- Existing architecture amendment
+  docs/architecture/SIGNAL_INFRASTRUCTURE_AND_HETEROGENEOUS_SIMULATION_AMENDMENT_2026-11-03.md
+  already establishes the shared signal infrastructure and CPU/GPU/NPU
+  direction; this batch records implementation gaps rather than reopening
+  architecture.
+
+Disposition:
+- #1200 and #1201 OPEN. No issues closed and no PRs merged in Batch 9.
+- No source code or architecture documents changed.
+- Static source/tree inspection only. No hardware, runtime, GPU/NPU, HIL,
+  numerical equivalence, tests or CI executed.
+======================================================================
+
+======================================================================
+GridForge V2 — Cross-Canvas Instrument Wiring and Identification Requirement
+Date: 2026-11-11
+Repository: SubhenduMishra29/GridForge
+Branch: main
+
+Research outcome:
+- Established that instrument wiring requires distinct identities for equipment,
+  terminals, cable assemblies, cable cores, individual wires/jumpers, signal
+  designations and connection relationships. These must not be collapsed into
+  a single wire label or conflated with MeasurementChannel identity.
+- Standards basis reviewed: IEC 81346-1/-2 (system structuring and reference
+  designations), IEC 62491 (cable/core labelling), IEC 61666 (terminal
+  identification), IEC 61175-1 (signal designation, separate from physical
+  wiring), IEC 61082-1 (electrotechnical document presentation), and
+  IEC 61850-7-4 where IED logical-node/data-object modelling applies.
+- Proposed canonical records for Cable, CableCore, Wire, Terminal,
+  TerminalConnection, CableRoute, SignalDefinition, SignalConnection,
+  SignalSourceBinding and ConsumerBinding. Human-readable tags remain
+  configurable project attributes; stable internal IDs own references.
+- One physical wiring model must drive SLD physical wiring, Control signal
+  paths, Protection input paths, cable/core schedules, terminal plans,
+  instrument loop/interconnection lists and point-to-point reports.
+- Control and Protection canvases must show logical signal/function views
+  with provenance back to physical instrument, cable, core, terminal and
+  MeasurementChannel records; they must not create duplicate cable records.
+- CT-specific validation must preserve phase, S1/S2 polarity, return path and
+  explicit shorting/test-terminal arrangement. PT/CVT, RTD/thermocouple and
+  communication wiring require their own typed constraints. Unknown engineering
+  data must not be fabricated.
+- Architecture boundary: Core owns physical wiring/connectivity truth;
+  Application owns controlled mutation/tag allocation/read services/events;
+  canvases remain projections and interaction only.
+
+Disposition:
+- Created issue #1203 for canonical cross-canvas cable/core/terminal/signal
+  identity, wiring lifecycle, navigation, validation and generated schedules.
+- Coordinate with #1198, #1199, #1200 and #1201; reconcile overlapping scope.
+- No source code changed. This records a requirement and implementation plan,
+  not a claim that wiring functionality has been implemented.
+- Research reviewed official IEC publication summaries and IEC TC3 guidance;
+  project-specific adoption of editions and tag conventions remains a design
+  decision to be documented before implementation.
+======================================================================

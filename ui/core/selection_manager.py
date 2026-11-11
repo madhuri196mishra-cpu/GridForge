@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from contextlib import contextmanager
+from typing import Any, Iterable, Iterator, Optional
 
 from ui.core.qt import QGraphicsScene, QObject, Signal
 
@@ -47,6 +48,42 @@ class SelectionManager(QObject):
     @property
     def selected_ids(self) -> tuple[Any, ...]:
         return self.get_selected_ids()
+
+    def snapshot_selection(self) -> dict[str, tuple[Any, ...]]:
+        """Return a detached snapshot of every transient selection domain."""
+        return {domain: tuple(ids) for domain, ids in self._selected_ids_by_domain.items()}
+
+    def restore_selection(self, snapshot: dict[str, tuple[Any, ...]]) -> None:
+        """Restore a previously captured selection without losing domain ownership."""
+        if not isinstance(snapshot, dict):
+            raise TypeError("selection snapshot must be a dict.")
+        restored: dict[str, list[Any]] = {}
+        for domain, ids in snapshot.items():
+            self._require_domain(domain)
+            values = tuple(ids)
+            if any(value is None for value in values) or len(set(values)) != len(values):
+                raise ValueError("selection snapshot contains invalid or duplicate identities.")
+            restored[domain] = list(values)
+        previous = self.get_selected_ids()
+        self._selected_ids_by_domain = restored or {"default": []}
+        self._emit_if_changed(previous)
+
+    @contextmanager
+    def temporary_single_selection(self, object_id: Any, *, domain: str = "default") -> Iterator[None]:
+        """Temporarily expose one identity to a projection without changing graphics selection."""
+        if object_id is None:
+            raise ValueError("object_id must not be None.")
+        domain = self._require_domain(domain)
+        snapshot = self.snapshot_selection()
+        try:
+            for ids in self._selected_ids_by_domain.values():
+                ids.clear()
+            self._selected_ids_by_domain[domain] = [object_id]
+            yield
+        finally:
+            self._selected_ids_by_domain = {
+                key: list(values) for key, values in snapshot.items()
+            } or {"default": []}
 
     def has_selection(self, domain: Optional[str] = None) -> bool:
         return bool(self.get_selected_ids(domain=domain))
