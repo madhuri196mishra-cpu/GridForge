@@ -1225,7 +1225,8 @@ def _build_application_impl(
         "edit.box_select": _activate_select_for_editing,
         "edit.move": _activate_select_for_editing,
         "edit.drag_move": _activate_select_for_editing,
-        "edit.rotate": lambda: canvas_composition.view._apply_contextual_symbol_action("rotate_cw"),
+        "edit.rotate": lambda: canvas_composition.view.apply_selection_rotation(90.0),
+        "edit.rotate_ccw": lambda: canvas_composition.view.apply_selection_rotation(-90.0),
         "edit.mirror_horizontal": lambda: _transform_selected_symbols(mirror="horizontal"),
         "edit.mirror_vertical": lambda: _transform_selected_symbols(mirror="vertical"),
         "network.commit_draft": _commit_network,
@@ -1373,7 +1374,7 @@ def _build_application_impl(
             "select", "move", "pan", "zoom_in", "zoom_out", "fit_view",
             "copy", "paste", "delete", "sld_select", "sld_move", "sld_wire",
             "edit.select_all", "edit.cut", "edit.box_select", "edit.move",
-            "edit.drag_move", "edit.rotate", "edit.mirror_horizontal",
+            "edit.drag_move", "edit.rotate", "edit.rotate_ccw", "edit.mirror_horizontal",
             "edit.mirror_vertical",
         }
         if action_id in sld_only_actions and (not project_active or discipline != "sld"):
@@ -1442,7 +1443,12 @@ def _build_application_impl(
                 project_active and discipline == "sld" and selected
                 and _selection_supports("copy") and _selection_supports("delete")
             )
-        if action_id in {"edit.rotate", "edit.mirror_horizontal", "edit.mirror_vertical"}:
+        if action_id in {"edit.rotate", "edit.rotate_ccw"}:
+            return (
+                project_active and discipline == "sld"
+                and canvas_composition.view.can_rotate_selection()
+            )
+        if action_id in {"edit.mirror_horizontal", "edit.mirror_vertical"}:
             return project_active and discipline == "sld" and bool(_selected_sld_nodes())
         if action_id in {"paste", "edit.paste"}:
             return project_active and bool(sld_clipboard) and discipline == "sld"

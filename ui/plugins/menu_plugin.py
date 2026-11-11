@@ -289,7 +289,8 @@ def default_menus() -> tuple[MenuSpec, ...]:
             a("edit.copy", "Copy", "Ctrl+C"),
             a("edit.paste", "Paste", "Ctrl+V"),
             a("edit.cut", "Cut", "Ctrl+X"),
-            a("edit.rotate", "Rotate 90° Clockwise", separator_before=True),
+            a("edit.rotate", "Rotate 90° Clockwise", "R", True),
+            a("edit.rotate_ccw", "Rotate 90° Counter-clockwise", "Shift+R"),
         )),
         MenuSpec("view", "View", (
             sub("view.panels", "Panels",

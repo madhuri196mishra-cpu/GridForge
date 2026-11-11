@@ -268,10 +268,6 @@ class SelectTool(ToolBase):
         if key in (80, "P", "p"):  # Pick a transient shared pivot with the next canvas click.
             self._pivot_pick_pending = True
             return True
-        if key in (82, "R", "r"):
-            angle = -90.0 if self._event_modifiers(event) & self.SHIFT_MODIFIER else 90.0
-            self._commit_group_transform(rotation_degrees=angle)
-            return True
         if key in (83, "S", "s"):
             factor = (1.0 / 1.1) if self._event_modifiers(event) & self.SHIFT_MODIFIER else 1.1
             self._commit_group_transform(scale_factor=factor)

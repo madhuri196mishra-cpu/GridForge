@@ -2966,3 +2966,33 @@ Batch 2 follow-up — issue #1193:
   WorkspaceSurfaceHost.toggle_region().
 - Defect is limited to missing menu QAction checked-state projection; do not
   introduce a second visibility state store or duplicate toggle authority.
+
+======================================================================
+GRIDFORGE V2 — UI ROTATION COMMAND UNIFICATION (#1190)
+Date: 11 November 2026
+Implementation: madhuri196mishra-cpu/GridForge
+Upstream tracking: SubhenduMishra29/GridForge#1190
+
+- Added one GraphicsView.apply_selection_rotation() contract for active SLD
+  selection rotation. It resolves exactly one selected symbol to the existing
+  SLDController presentation command, or a fully preflighted multi-selection
+  to SelectTool.apply_group_transform() and one SetSLDNodeTransformsCommand.
+- The group resolver compares the complete typed NODE selection with the
+  SelectTool preflight result; unresolved/partially resolvable selections are
+  disabled and fail closed rather than transforming a subset.
+- Edit → Rotate 90° Clockwise is now canonical action `edit.rotate` with R;
+  Edit → Rotate 90° Counter-clockwise is `edit.rotate_ccw` with Shift+R.
+  Both are bound through UIActionRouter and share the selection-aware view
+  contract. The competing R/Shift+R handling was removed from SelectTool.
+- Q/E remain single-symbol-only WidgetWithChildren QActions and the contextual
+  single/group rotation buttons call the same selection rotation contract.
+  Duplicate Q/E keyPressEvent handling was removed.
+- Group mutation remains presentation-only: SLDService preflights the full
+  transform payload, captures one inverse journal entry, and changes only
+  SLD node position/presentation plus ownership metadata. Equipment identity,
+  terminals, Core topology and connection route data are not mutated.
+- SLDCanvasProjection re-projects the unchanged connection records after node
+  transforms; renderer endpoints are resolved from the transformed terminal
+  anchors while authored route data remains unchanged.
+- Verification: static source inspection and GitHub fetch-back only. No tests,
+  CI, GUI, startup or runtime experiments were run.

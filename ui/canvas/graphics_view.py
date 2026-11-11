@@ -132,9 +132,16 @@ class GraphicsView(QGraphicsView):
             button.setText(label)
             button.setToolTip(tooltip)
             button.setAccessibleName(tooltip)
-            button.clicked.connect(
-                lambda _checked=False, op=operation: self._apply_contextual_symbol_action(op)
-            )
+            if operation in {"rotate_ccw", "rotate_cw"}:
+                degrees = -90.0 if operation == "rotate_ccw" else 90.0
+                button.clicked.connect(
+                    lambda _checked=False, value=degrees:
+                        self.apply_selection_rotation(value, single_symbol_only=True)
+                )
+            else:
+                button.clicked.connect(
+                    lambda _checked=False, op=operation: self._apply_contextual_symbol_action(op)
+                )
             strip_layout.addWidget(button)
             self._single_symbol_buttons.append(button)
 
@@ -149,12 +156,16 @@ class GraphicsView(QGraphicsView):
             button.setText(label)
             button.setToolTip(tooltip)
             button.setAccessibleName(tooltip)
-            button.clicked.connect(
-                lambda _checked=False, r=rotation, mx=mirror_x, my=mirror_y:
-                    self._apply_contextual_group_action(
-                        rotation_degrees=r, mirror_x=mx, mirror_y=my
-                    )
-            )
+            if rotation:
+                button.clicked.connect(
+                    lambda _checked=False, degrees=rotation:
+                        self.apply_selection_rotation(degrees)
+                )
+            else:
+                button.clicked.connect(
+                    lambda _checked=False, mx=mirror_x, my=mirror_y:
+                        self._apply_contextual_group_action(mirror_x=mx, mirror_y=my)
+                )
             strip_layout.addWidget(button)
             button.hide()
             self._group_transform_buttons.append(button)
@@ -176,8 +187,10 @@ class GraphicsView(QGraphicsView):
             action = QAction(description, self)
             action.setShortcut(shortcut)
             action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            degrees = -90.0 if operation == "rotate_ccw" else 90.0
             action.triggered.connect(
-                lambda _checked=False, op=operation: self._apply_contextual_symbol_action(op)
+                lambda _checked=False, value=degrees:
+                    self.apply_selection_rotation(value, single_symbol_only=True)
             )
             self.addAction(action)
             self._symbol_rotation_actions.append(action)
@@ -298,6 +311,8 @@ class GraphicsView(QGraphicsView):
         """Anchor single- or multi-selection controls to visible SLD content."""
         document = getattr(self.sld_controller, "active_document", None)
         if document is None:
+            for action in self._symbol_rotation_actions:
+                action.setEnabled(False)
             self._contextual_strip.hide()
             return
         select_tool = (
@@ -312,6 +327,8 @@ class GraphicsView(QGraphicsView):
             else 0
         )
         group_mode = selected_count > 1
+        for action in self._symbol_rotation_actions:
+            action.setEnabled(selected_count == 1)
         for button in self._single_symbol_buttons:
             button.setVisible(not group_mode)
         for button in self._group_transform_buttons:
@@ -388,13 +405,77 @@ class GraphicsView(QGraphicsView):
         self._contextual_strip.show()
         self._contextual_strip.raise_()
 
+    def _rotation_selection_mode(self) -> str | None:
+        """Return single/group only for a complete, active-document symbol selection."""
+        if self.sld_controller is None or self.tool_manager is None:
+            return None
+        document = getattr(self.sld_controller, "active_document", None)
+        application = getattr(self.controller, "application", None)
+        presentation = getattr(application, "presentation", None)
+        if document is None or getattr(document, "model", None) is not getattr(presentation, "model", None):
+            return None
+        selection_manager = getattr(self.tool_manager, "selection_manager", None)
+        if selection_manager is None:
+            return None
+        node_domain = getattr(selection_manager, "NODE", "node")
+        selected_ids = tuple(selection_manager.get_selected_ids(domain=node_domain))
+        if len(selected_ids) == 1:
+            node, item = self._selected_presentation_node()
+            return "single" if node is not None and item is not None else None
+        if len(selected_ids) < 2:
+            return None
+        select_tool = (
+            self.tool_manager.get_tool("select")
+            if callable(getattr(self.tool_manager, "get_tool", None))
+            else None
+        )
+        resolver = getattr(select_tool, "selected_transform_nodes", None)
+        if not callable(resolver):
+            return None
+        resolved = tuple(resolver())
+        return "group" if len(resolved) == len(selected_ids) else None
+
+    def can_rotate_selection(self) -> bool:
+        return self._rotation_selection_mode() is not None
+
+    def can_rotate_single_selection(self) -> bool:
+        return self._rotation_selection_mode() == "single"
+
+    def apply_selection_rotation(
+        self,
+        rotation_degrees: float,
+        *,
+        single_symbol_only: bool = False,
+    ) -> bool:
+        """Rotate one symbol or a fully resolved group through existing Application commands."""
+        if (
+            isinstance(rotation_degrees, bool)
+            or not isinstance(rotation_degrees, (int, float))
+            or not math.isfinite(float(rotation_degrees))
+            or not math.isclose(abs(float(rotation_degrees)), 90.0)
+        ):
+            raise ValueError("Selection rotation must be exactly +90 or -90 degrees.")
+        mode = self._rotation_selection_mode()
+        if mode == "single":
+            operation = "rotate_cw" if rotation_degrees > 0 else "rotate_ccw"
+            return self._apply_contextual_symbol_action(operation)
+        if mode == "group" and not single_symbol_only:
+            return self._apply_contextual_group_action(
+                rotation_degrees=float(rotation_degrees)
+            )
+        if not single_symbol_only:
+            self.controller.show_status_message(
+                "Rotation rejected: select one symbol or a fully resolvable SLD symbol group."
+            )
+        return False
+
     def _apply_contextual_group_action(
         self,
         *,
         rotation_degrees: float = 0.0,
         mirror_x: bool = False,
         mirror_y: bool = False,
-    ) -> None:
+    ) -> bool:
         """Route contextual group operations through the canonical SelectTool."""
         select_tool = (
             self.tool_manager.get_tool("select")
@@ -407,13 +488,14 @@ class GraphicsView(QGraphicsView):
             self.controller.show_status_message(
                 "Group transformation is unavailable in the active SLD workspace."
             )
-            return
-        apply_transform(
+            return False
+        committed = bool(apply_transform(
             rotation_degrees=rotation_degrees,
             mirror_x=mirror_x,
             mirror_y=mirror_y,
-        )
+        ))
         self._refresh_contextual_tool_strip()
+        return committed
 
     def _cycle_contextual_annotation_quadrant(self) -> None:
         """Persist annotation placement through the existing Application command path."""
@@ -445,16 +527,16 @@ class GraphicsView(QGraphicsView):
             return
         self._refresh_contextual_tool_strip()
 
-    def _apply_contextual_symbol_action(self, operation: str) -> None:
-        """Persist a symbol-only transform through the SLD Application command."""
+    def _apply_contextual_symbol_action(self, operation: str) -> bool:
+        """Persist a single-symbol presentation change through SLDController."""
         from ui.equipment.symbol.symbol_base import SymbolBase
 
         if self.sld_controller is None:
             self.controller.show_status_message("Contextual SLD editing is not bound to the active document.")
-            return
+            return False
         node, item = self._selected_presentation_node()
-        if node is None:
-            return
+        if node is None or item is None:
+            return False
         source = node.presentation or item.symbol_instance
         presentation = SymbolBase.from_dict(source.to_dict())
         if operation == "rotate_ccw":
@@ -462,10 +544,6 @@ class GraphicsView(QGraphicsView):
         elif operation == "rotate_cw":
             presentation.rotation = (presentation.rotation + 90.0) % 360.0
         elif operation == "flip_h":
-            # Reflect across the canvas vertical axis, not the symbol's
-            # already-rotated local axis. The item applies local reflection
-            # before rotation, so negate the angle to compose the world-space
-            # reflection correctly.
             presentation.rotation = (-float(presentation.rotation)) % 360.0
             presentation.set_property("mirror_x", not bool(presentation.get_property("mirror_x", False)))
         elif operation == "flip_v":
@@ -474,16 +552,14 @@ class GraphicsView(QGraphicsView):
         else:
             raise ValueError(f"Unsupported contextual symbol action: {operation}")
         try:
-            self.sld_controller.set_node_presentation(
-                str(node.node_id),
-                presentation,
-            )
+            self.sld_controller.set_node_presentation(str(node.node_id), presentation)
         except (KeyError, RuntimeError, TypeError, ValueError) as exc:
             self.controller.show_status_message(
                 f"SLD symbol presentation update rejected: {exc}"
             )
-            return
+            return False
         self._refresh_contextual_tool_strip()
+        return True
 
     def _palette_type_from_event(self, event: Any) -> str | None:
         mime = event.mimeData()
@@ -902,14 +978,6 @@ class GraphicsView(QGraphicsView):
                 event.accept()
                 self._refresh_contextual_tool_strip()
                 return
-        if no_modifiers and key == Qt.Key.Key_E:
-            self._apply_contextual_symbol_action("rotate_cw")
-            event.accept()
-            return
-        if no_modifiers and key == Qt.Key.Key_Q:
-            self._apply_contextual_symbol_action("rotate_ccw")
-            event.accept()
-            return
         if self.interaction_manager is not None and self.interaction_manager.key_press(event):
             return
         super().keyPressEvent(event)
