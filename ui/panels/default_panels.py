@@ -955,6 +955,7 @@ class PropertiesPanelWidget(QWidget):
         self._batch_targets = values
         self._batch_parameters = self._common_batch_parameters(values)
         self.logical_panel.clear_target()
+        self._ct_secondary_channel_editor.set_target(None)
         if self._single_target_container is not None:
             self._single_target_container.hide()
         if self._batch_status_label is not None:
