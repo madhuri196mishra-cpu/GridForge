@@ -3779,3 +3779,39 @@ Disposition:
   project-specific adoption of editions and tag conventions remains a design
   decision to be documented before implementation.
 ======================================================================
+
+
+======================================================================
+GridForge V2 — Tandem Repository Reconciliation (11 November 2026)
+Implementation repository: madhuri196mishra-cpu/GridForge
+Authoritative integration repository: SubhenduMishra29/GridForge
+
+Reconciliation:
+- Re-fetched both main branches and retained the complete Madhuri implementation
+  history while including the latest authoritative root history as a merge parent.
+- Merged non-overlapping Application batch-update changes with the implementation
+  MeasurementChannel lifecycle changes in application.py, bootstrap.py and the
+  public command exports.
+- Combined the root batch engineering inspector with the Madhuri scrollable
+  Properties inspector and CT secondary channel editor; neither UI capability
+  replaces the other.
+- Carried root engineering configuration, selection projection and selection
+  manager updates into the implementation tree.
+- Preserved Madhuri-only CT channel authoring, inspector reachability, rotation
+  dispatch, menu visibility and other implementation source paths.
+
+Rejected from this synchronization:
+- Did not copy tests/core/persistence/test_instrument_wiring_persistence.py
+  from root main. It imports InstrumentationWiringService and related model and
+  persistence modules that are not present on root main; that test belongs with
+  the separate draft instrumentation-wiring feature PR #1204 until its source
+  implementation is integrated. The file remains in root history and was not
+  deleted from either repository main branch by this reconciliation.
+- Did not import the unmerged PR #1204 feature branch into main synchronization.
+  Its work remains separately reviewable under issue #1203.
+
+Verification boundary:
+- Static source fetch-back only. No tests, CI, startup, GUI or runtime experiments.
+- The synchronization branch is a review contribution; main is unchanged until
+  the PR is reviewed and merged.
+======================================================================
