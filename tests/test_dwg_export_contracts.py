@@ -9,6 +9,7 @@ from plugins.dwg_export import (
     DWGExportService,
     ExportResult,
     SymbolProfile,
+    SLDCoordinateTransform,
     validate_drawing_plan,
 )
 
@@ -60,7 +61,7 @@ def test_validator_rejects_empty_sld_plan_without_entity_bound_mapping_provenanc
 
 
 def _sld_mapping_provenance(**overrides):
-    return {
+    provenance = {
         "mapping_id": "site-grid-01",
         "mapping_version": "1.0.0",
         "source_coordinate_system": "sld-document-local",
@@ -75,6 +76,8 @@ def _sld_mapping_provenance(**overrides):
         "review_reference": "review:DWG-COORD-001",
         **overrides,
     }
+    provenance["mapping_fingerprint"] = SLDCoordinateTransform.fingerprint_from_provenance(provenance)
+    return provenance
 
 
 def _sld_entity(entity_id="sld-entity-1", provenance=None):
