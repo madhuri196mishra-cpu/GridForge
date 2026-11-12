@@ -100,13 +100,16 @@ class GeneratorAugmentedStepResult:
                     "iteration_count": stage.coupled_network.iteration_count,
                     "injection_residual_norm": stage.coupled_network.injection_residual_norm,
                     "scaled_injection_residual": stage.coupled_network.scaled_injection_residual,
-                    "terminal_currents_pu": {
-                        f"{terminal_id}|{phase_id}": {
-                            "real": current.real, "imag": current.imag
+                    "terminal_currents_pu": [
+                        {
+                            "terminal_id": terminal_id,
+                            "phase_id": phase_id,
+                            "real": current.real,
+                            "imag": current.imag,
                         }
                         for (terminal_id, phase_id), current
-                        in stage.coupled_network.aggregated_terminal_currents_pu.items()
-                    },
+                        in sorted(stage.coupled_network.aggregated_terminal_currents_pu.items())
+                    ],
                     "algebraic_quality": {
                         "status": stage.coupled_network.solution.status,
                         "accepted": stage.coupled_network.solution.accepted,
