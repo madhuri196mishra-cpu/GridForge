@@ -49,6 +49,10 @@ class LoadPhaseTerminal:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be a non-empty stable identity")
             object.__setattr__(self, name, value.strip())
+        if isinstance(self.terminal_voltage_v, bool) or not isinstance(
+            self.terminal_voltage_v, (int, float, complex)
+        ):
+            raise ValueError("terminal_voltage_v must be numeric complex data")
         try:
             voltage = complex(self.terminal_voltage_v)
         except (TypeError, ValueError, OverflowError) as exc:
