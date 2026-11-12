@@ -7,6 +7,10 @@ from core.solver.dynamics.component_assembly import (
     DynamicComponentAssemblyError, DynamicComponentBinding,
     DynamicComponentBatchEvaluation, evaluate_dynamic_components,
 )
+from core.solver.dynamics.derivative_assembly import (
+    DynamicDerivativeAssemblyError, DynamicSystemDerivativeAssembly,
+    MachineDerivativeEvaluator, evaluate_composed_dynamic_derivatives,
+)
 from core.solver.dynamics.component_contract import (
     DynamicComponentInputs, DynamicComponentEvaluation, DynamicStateComponent,
     validate_dynamic_state_component,
@@ -28,6 +32,8 @@ __all__ = [
     "ElectricalDynamicsComposition", "require_electrical_dynamics_composition",
     "DynamicComponentInputs", "DynamicComponentEvaluation", "DynamicStateComponent",
     "validate_dynamic_state_component",
+    "DynamicDerivativeAssemblyError", "DynamicSystemDerivativeAssembly",
+    "MachineDerivativeEvaluator", "evaluate_composed_dynamic_derivatives",
     "DynamicComponentAssemblyError", "DynamicComponentBinding",
     "DynamicComponentBatchEvaluation", "evaluate_dynamic_components",
     "DynamicSystemLayoutError", "DynamicStateBlockSlice", "DynamicSystemStateLayout",
