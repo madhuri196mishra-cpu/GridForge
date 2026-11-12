@@ -103,7 +103,7 @@ MOTOR_FAMILY_PROFILES: Mapping[MotorFamily, MotorFamilyProfile] = MappingProxyTy
     MotorFamily.LINEAR_SYNCHRONOUS: _profile(MotorFamily.LINEAR_SYNCHRONOUS, "AC / DC link", 3, "linear synchronous / PM", "linear servo inverter", regenerative=True),
     MotorFamily.TRACTION_INDUCTION: _profile(MotorFamily.TRACTION_INDUCTION, "AC / DC link", 3, "traction induction", "traction inverter / FOC", regenerative=True),
     MotorFamily.TRACTION_PERMANENT_MAGNET: _profile(MotorFamily.TRACTION_PERMANENT_MAGNET, "AC / DC link", 3, "traction PMSM / IPM", "traction inverter / FOC", dynamic_model="pmsm_dq", regenerative=True, notes="Uses the experimental sinusoidal PMSM dq model; traction thermal, field-weakening and inverter limits remain unmodeled."),
-    MotorFamily.HYSTERESIS: _profile(MotorFamily.HYSTERESIS, "AC", 1, "hysteresis synchronous", "AC supply / inverter"),
+    MotorFamily.HYSTERESIS: _profile(MotorFamily.HYSTERESIS, "AC", 1, "hysteresis synchronous", "AC supply / inverter", dynamic_model="hysteresis_torque_angle", regenerative=True, notes="Experimental CPU averaged torque-angle model; not a material hysteresis, asynchronous pull-in or validated synchronisation model."),
     MotorFamily.TORQUE: _profile(MotorFamily.TORQUE, "AC / DC link", 3, "direct-drive torque motor", "servo inverter / FOC", regenerative=True),
 })
 
