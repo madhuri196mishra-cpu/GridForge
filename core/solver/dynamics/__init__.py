@@ -26,6 +26,7 @@ from .component_assembly import (
     DynamicComponentBinding,
     DynamicComponentBatchEvaluation,
     evaluate_dynamic_components,
+    aggregate_dynamic_terminal_injections,
 )
 from .dynamic_state_layout import (
     DynamicSystemLayoutError,
@@ -80,6 +81,7 @@ __all__ = [
     "DynamicComponentBinding",
     "DynamicComponentBatchEvaluation",
     "evaluate_dynamic_components",
+    "aggregate_dynamic_terminal_injections",
     "DynamicDerivativeAssemblyError",
     "DynamicSystemDerivativeAssembly",
     "MachineDerivativeEvaluator",
