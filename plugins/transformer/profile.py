@@ -44,6 +44,14 @@ class TransformerProfile:
     converter_interface: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.family, TransformerFamily):
+            raise TypeError("family must be a TransformerFamily.")
+        if not isinstance(self.insulation, InsulationSystem):
+            raise TypeError("insulation must be an InsulationSystem.")
+        if not isinstance(self.cooling, CoolingMethod):
+            raise TypeError("cooling must be a CoolingMethod.")
+        if isinstance(self.rated_frequency_hz, bool) or not isinstance(self.rated_frequency_hz, (int, float)):
+            raise TypeError("rated_frequency_hz must be numeric.")
         if not self.transformer_id.strip():
             raise ValueError("Transformer profile requires a Core transformer id.")
         windings = tuple(str(item).strip() for item in self.winding_ids)
