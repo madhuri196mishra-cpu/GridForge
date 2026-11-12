@@ -129,16 +129,13 @@ def validate_instrumentation_targets(collection: ProjectInstrumentationCollectio
             raise ValueError("Winding-bound transformer installation must declare monitored_equipment_type='transformer'.")
         if installation.monitored_point_id != winding_id:
             raise ValueError(f"Installation {installation.installation_id!r} monitoring point does not match its source interface winding_id.")
-        side = winding_id.upper()
-        if side == "HV":
-            connection, phases = monitored.hv_winding_connection, monitored.hv_phase_roles
-        elif side == "LV":
-            connection, phases = monitored.lv_winding_connection, monitored.lv_phase_roles
-        else:
-            raise ValueError(f"Transformer winding {winding_id!r} is not a canonical Core monitoring point; only explicit HV/LV sides are currently supported.")
-        if connection is None:
-            raise ValueError(f"Transformer {monitored.id!r} has no explicit {side} winding connection; winding monitoring cannot be commissioned.")
-        if interface.phase is not None and phases is not None and interface.phase.upper() not in phases:
-            raise ValueError(f"Measurement interface phase {interface.phase!r} is not declared on transformer {side} winding.")
+        try:
+            winding = monitored.winding(winding_id)
+        except KeyError as exc:
+            raise ValueError(f"Transformer {monitored.id!r} does not declare canonical winding {winding_id!r}.") from exc
+        if winding.connection is None:
+            raise ValueError(f"Transformer {monitored.id!r} winding {winding_id!r} has no explicit connection; winding monitoring cannot be commissioned.")
+        if interface.phase is not None and winding.phase_roles is not None and interface.phase.upper() not in winding.phase_roles:
+            raise ValueError(f"Measurement interface phase {interface.phase!r} is not declared on transformer winding {winding_id!r}.")
 
 __all__ = ["ProjectInstrumentationCollection", "INSTRUMENTATION_COLLECTION_SCHEMA", "validate_instrumentation_targets"]
