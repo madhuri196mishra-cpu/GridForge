@@ -213,7 +213,6 @@ class Application:
         return self.TERMINAL_ROLES_BY_TYPE
 
     @property
-    @property
     def instrumentation_collection(self) -> ProjectInstrumentationCollection | None:
         """Return the active project-owned physical instrumentation collection."""
         return self._instrumentation_collection
@@ -224,6 +223,8 @@ class Application:
         if collection is not None and not isinstance(collection, ProjectInstrumentationCollection):
             raise TypeError("instrumentation_collection must be ProjectInstrumentationCollection or None.")
         self._instrumentation_collection = collection
+
+    @property
     def integrity_state(self) -> str:
         """Expose the command/Core consistency state for a read-only degraded workspace."""
         return self._command_manager.integrity_state
