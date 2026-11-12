@@ -40,7 +40,7 @@ class DeleteSelectionBatchCommand(Command):
 
 
 
-ENGINEERING_UPDATE_BATCH = "engineering.update_batch"
+ENGINEERING_UPDATE_BATCH = "model.update_batch"
 
 
 class EngineeringUpdateBatchCommand(Command):
