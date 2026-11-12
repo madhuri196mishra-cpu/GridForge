@@ -81,6 +81,16 @@ def motor_measurement_points(family: MotorFamily) -> tuple[MotorMeasurementPoint
                 _p("electrical.frequency", "Supply frequency", F, N, "Hz", ("control","protection","scada"), True),
                 _p("electrical.phase_sequence", "Phase sequence", D, N, "state", ("protection","commissioning"))]
 
+    if family == MotorFamily.WOUND_FIELD_SYNCHRONOUS:
+        pts += [_p("machine.stator_d_current", "Stator d-axis current", C, N, "A", ("metering","control","protection"), True),
+                _p("machine.stator_q_current", "Stator q-axis current", C, N, "A", ("metering","control","protection"), True),
+                _p("machine.field_current", "Rotor field current", X, N, "A", ("metering","control","protection"), True),
+                _p("machine.field_voltage", "Rotor field voltage", X, N, "V", ("monitoring","control"), True),
+                _p("machine.damper_d_current", "D-axis damper current", X, N, "A", ("monitoring","analysis")),
+                _p("machine.damper_q_current", "Q-axis damper current", X, N, "A", ("monitoring","analysis")),
+                _p("machine.synchronous_speed_error", "Synchronous speed error", X, N, "rad/s", ("control","protection","alarm")),
+                _p("machine.rotor_angle", "Rotor electrical angle", X, N, "rad", ("control","analysis")),
+                _p("machine.field_winding_temperature", "Field winding temperature", X, N, "degC", ("monitoring","alarm","maintenance"))]
     if family == MotorFamily.UNIVERSAL:
         pts += [_p("machine.armature_current", "Armature current", C, N, "A", ("metering","protection","control"), True),
                 _p("machine.series_field_current", "Series field current", C, N, "A", ("monitoring","protection")),
