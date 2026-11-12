@@ -252,6 +252,10 @@ class MeasurementQuality(Enum):
     SUSPECT = "SUSPECT"
     INVALID = "INVALID"
     UNKNOWN = "UNKNOWN"
+    STALE = "STALE"
+    NOT_CONNECTED = "NOT_CONNECTED"
+    OUT_OF_RANGE = "OUT_OF_RANGE"
+    SUBSTITUTED = "SUBSTITUTED"
 
 
 # =====================================================================
@@ -474,6 +478,7 @@ class MeasurementChannel:
         )
 
         self.quality = quality
+        self.diagnostic_codes = self._validate_diagnostic_codes(())
 
         self.raw_value = self._validate_value(
             raw_value
@@ -496,7 +501,7 @@ class MeasurementChannel:
 
     _SAMPLE_STATE_FIELDS = frozenset({
         "raw_value", "timestamp", "timestamp_domain",
-        "sample_sequence", "quality", "available",
+        "sample_sequence", "quality", "available", "diagnostic_codes",
     })
     # A project-managed channel's physical source and engineering contract
     # must not be mutable through the channel object exposed to consumers.
@@ -529,6 +534,23 @@ class MeasurementChannel:
     # =================================================================
     # VALIDATION
     # =================================================================
+
+    @staticmethod
+    def _validate_diagnostic_codes(values: Any) -> tuple[str, ...]:
+        if isinstance(values, (str, bytes)):
+            raise TypeError("diagnostic_codes must be an iterable of canonical strings.")
+        try:
+            items = tuple(values)
+        except TypeError as exc:
+            raise TypeError("diagnostic_codes must be an iterable of canonical strings.") from exc
+        normalized: list[str] = []
+        for item in items:
+            if not isinstance(item, str) or not item.strip() or item != item.strip():
+                raise ValueError("Diagnostic codes must be canonical non-empty strings.")
+            if item in normalized:
+                raise ValueError(f"Duplicate measurement diagnostic code: {item!r}.")
+            normalized.append(item)
+        return tuple(normalized)
 
     @staticmethod
     def _validate_source_bound(value: Optional[float], field: str) -> Optional[float]:
@@ -920,6 +942,7 @@ class MeasurementChannel:
         quality: Optional[MeasurementQuality] = None,
         available: Optional[bool] = None,
         sample_sequence: Optional[int] = None,
+        diagnostic_codes: tuple[str, ...] | list[str] = (),
     ) -> None:
         """Update one sample; project-managed channels require their service capability."""
         authority = self._sample_update_authority
@@ -939,6 +962,7 @@ class MeasurementChannel:
         if quality is not None and not isinstance(quality, MeasurementQuality):
             raise TypeError("quality must be a MeasurementQuality.")
         validated_sequence = self._validate_sample_sequence(sample_sequence) if sample_sequence is not None else None
+        validated_diagnostics = self._validate_diagnostic_codes(diagnostic_codes)
         self._sample_write_authority = authority
         try:
             self.raw_value = validated_value
@@ -951,6 +975,7 @@ class MeasurementChannel:
                 self.available = bool(available)
             if sample_sequence is not None:
                 self.sample_sequence = validated_sequence
+            self.diagnostic_codes = validated_diagnostics
         finally:
             self._sample_write_authority = None
 
@@ -973,16 +998,16 @@ class MeasurementChannel:
         if not self.available:
             return MeasurementValidity.UNAVAILABLE
 
-        if (
-            self.quality
-            == MeasurementQuality.INVALID
-        ):
+        if self.quality in {MeasurementQuality.INVALID, MeasurementQuality.OUT_OF_RANGE}:
             return MeasurementValidity.INVALID_QUALITY
 
-        if (
-            self.quality
-            == MeasurementQuality.SUSPECT
-        ):
+        if self.quality is MeasurementQuality.NOT_CONNECTED:
+            return MeasurementValidity.UNAVAILABLE
+
+        if self.quality is MeasurementQuality.STALE:
+            return MeasurementValidity.STALE
+
+        if self.quality in {MeasurementQuality.SUSPECT, MeasurementQuality.SUBSTITUTED}:
             return MeasurementValidity.SUSPECT_QUALITY
 
         if (
