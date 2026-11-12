@@ -3,7 +3,7 @@
 Author: Subhendu Mishra
 
 Host command registration and topology mutations are delegated to the explicit
-electrical_dynamics_composition host object supplied through PluginContext.
+motor_dynamics_composition service supplied through PluginContext.
 """
 from __future__ import annotations
 
@@ -43,7 +43,8 @@ PLUGIN_DESCRIPTOR = PluginDescriptor(
         "bldc_trapezoidal_cpu_transient", "synrm_dq_cpu_transient",
         "srm_phase_inductance_cpu_transient", "dc_excitation_cpu_transient",
         "single_phase_rms_envelope_cpu_transient", "universal_series_commutator_cpu_transient",
-        "wound_field_synchronous_damper_cpu_transient", "hysteresis_torque_angle_cpu_transient",
+        "wound_field_synchronous_damper_cpu_transient",
+        "hysteresis_torque_angle_cpu_transient", "pmsm_servo_cascade_cpu_transient", "induction_servo_foc_cpu_transient", "dc_servo_cascade_cpu_transient",
     }),
 )
 
@@ -142,7 +143,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
         motor_service = getattr(composition, "motor_service", None)
         if motor_service is None:
             raise RuntimeError(
-                "electrical_dynamics_composition must expose a separate 'motor_service'; "
+                "motor_dynamics_composition must expose a separate 'motor_service'; "
                 "the registration adapter itself is not a domain service."
             )
 
@@ -351,8 +352,8 @@ class MotorDynamicsPlugin(GridForgePlugin):
             self._ready = False
             raise _aggregate_base_exceptions("Motor Dynamics plugin shutdown encountered failures", errors) from None
 
-        # The Application owns the shared read-model lifetime; plugin shutdown
-        # only releases its subscribers and presentation references.
+        # Application owns the shared read-model lifetime; plugin shutdown
+        # only releases subscribers and presentation references.
         self._initialized = False
         self._ready = False
         self.persistence = None
