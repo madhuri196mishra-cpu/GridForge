@@ -935,3 +935,18 @@ No speculative composition object or false solver implementation was added
 during this reconciliation. The integration is now precisely localized to
 Application composition plus the caller that constructs per-plugin
 `PluginContext.services`.
+
+
+#### Concrete startup call-site confirmation
+
+The production startup path in `main.py` confirms the mismatch at both
+injection sites. The EngineeringPluginHost activation passes only
+`services["motor_dynamics_composition"]`, while
+`MotorDynamicsPlugin.initialize` now resolves only
+`services["electrical_dynamics_composition"]`. Later, the UI
+`PluginContext` is constructed with the same legacy key. The shared
+composition key is therefore not merely absent from the Application root; the
+current startup caller still supplies the old key at both plugin-context
+boundaries. Renaming that key alone is insufficient because the attached
+`MotorDynamicsComposition` also lacks the required Application-owned
+`motor_read_models` and all generator/load solver capabilities.
