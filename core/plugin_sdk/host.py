@@ -22,6 +22,8 @@ class EngineeringPluginContext:
     """Immutable, UI-independent context built by the engineering host."""
 
     application: Any
+    project_context: Any
+    activation_generation: int
     services: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -30,6 +32,10 @@ class EngineeringPluginContext:
             raise ValueError("application is required")
         if not isinstance(self.services, Mapping):
             raise TypeError("services must be a mapping")
+        if self.project_context is None:
+            raise ValueError("project_context is required for engineering plugin activation")
+        if isinstance(self.activation_generation, bool) or not isinstance(self.activation_generation, int) or self.activation_generation < 1:
+            raise ValueError("activation_generation must be a positive integer")
         if not isinstance(self.metadata, Mapping):
             raise TypeError("metadata must be a mapping")
         object.__setattr__(self, "services", MappingProxyType(dict(self.services)))
@@ -116,8 +122,21 @@ class EngineeringPluginHost:
                     "metadata host_supported_plugin_api_versions is host-owned and cannot be overridden"
                 )
         context_metadata["host_supported_plugin_api_versions"] = self._supported_api_versions
+        lifecycle = getattr(self._application, "project_lifecycle", None)
+        project_context = getattr(lifecycle, "context", None)
+        activation_generation = getattr(lifecycle, "activation_generation", None)
+        if project_context is None:
+            raise RuntimeError(
+                "Engineering plugin activation requires an active Application project context."
+            )
+        if isinstance(activation_generation, bool) or not isinstance(activation_generation, int) or activation_generation < 1:
+            raise RuntimeError(
+                "Engineering plugin activation requires a valid Application project activation generation."
+            )
         context = EngineeringPluginContext(
             application=self._application,
+            project_context=project_context,
+            activation_generation=activation_generation,
             services=services,
             metadata=context_metadata,
         )
