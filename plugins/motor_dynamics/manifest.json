@@ -4,7 +4,7 @@
   "name": "Multi-Physics Dynamic Motor Extension",
   "version": "2.0.0",
   "api_version": "V2.0",
-  "description": "Family-aware motor catalogue and instrumentation with experimental induction dq, PMSM dq, BLDC phase-domain, SynRM dq, SRM phase-inductance and brushed DC excitation and reduced-order single-phase induction CPU transient models.",
+  "description": "Family-aware motor catalogue and instrumentation with experimental induction dq, PMSM dq, BLDC phase-domain, SynRM dq, SRM phase-inductance and brushed DC excitation and reduced-order single-phase induction CPU transient models. Includes an experimental synchronous-PM AC servo cascaded position/speed/current-control CPU model; a distinct experimental rotor-flux-oriented induction-servo FOC CPU model. Includes an experimental brushed-DC servo position/speed/current cascade CPU model.",
   "author": "Subhendu Mishra",
   "entry_point": "plugin.MotorDynamicsPlugin",
   "capabilities": [
@@ -27,7 +27,10 @@
     "single_phase_rms_envelope_cpu_transient",
     "universal_series_commutator_cpu_transient",
     "wound_field_synchronous_damper_cpu_transient",
-    "hysteresis_torque_angle_cpu_transient"
+    "hysteresis_torque_angle_cpu_transient",
+    "pmsm_servo_cascade_cpu_transient",
+    "induction_servo_foc_cpu_transient",
+    "dc_servo_cascade_cpu_transient"
   ],
   "runtime": {
     "python": ">=3.10",
