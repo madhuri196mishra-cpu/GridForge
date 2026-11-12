@@ -21,6 +21,46 @@ class GeneratorNetworkStageError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class GeneratorNetworkConvergenceEvidence:
+    """Solver-reported convergence evidence for one algebraic network stage."""
+
+    converged: bool
+    iteration_count: int
+    residual_norm: float
+    tolerance: float
+    solver_id: str
+
+    def __post_init__(self) -> None:
+        if type(self.converged) is not bool:
+            raise GeneratorNetworkStageError("converged must be an explicit bool")
+        if isinstance(self.iteration_count, bool) or not isinstance(self.iteration_count, int) or self.iteration_count < 0:
+            raise GeneratorNetworkStageError("iteration_count must be a non-negative integer")
+        for name, value in (("residual_norm", self.residual_norm), ("tolerance", self.tolerance)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or value < 0:
+                raise GeneratorNetworkStageError(f"{name} must be finite and non-negative")
+        if self.tolerance <= 0:
+            raise GeneratorNetworkStageError("tolerance must be greater than zero")
+        if not isinstance(self.solver_id, str) or not self.solver_id.strip():
+            raise GeneratorNetworkStageError("solver_id must be a non-empty identifier")
+        if self.converged and self.residual_norm > self.tolerance:
+            raise GeneratorNetworkStageError("converged network result exceeds its declared residual tolerance")
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratorNetworkSolveResult:
+    """Detached algebraic solution plus evidence reported by the host solver."""
+
+    bus_voltages: Mapping[str, complex]
+    convergence: GeneratorNetworkConvergenceEvidence
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.bus_voltages, Mapping):
+            raise GeneratorNetworkStageError("bus_voltages must be a mapping")
+        if not isinstance(self.convergence, GeneratorNetworkConvergenceEvidence):
+            raise TypeError("convergence must be GeneratorNetworkConvergenceEvidence")
+
+
+@dataclass(frozen=True, slots=True)
 class GeneratorNetworkStageRequest:
     """Detached machine state and excitation values for one network stage."""
 
@@ -48,9 +88,12 @@ class GeneratorNetworkStageSolution:
     bus_voltages: Mapping[str, complex]
     field_voltages_pu: Mapping[str, float]
     component_ids_by_machine: Mapping[str, str]
+    convergence: GeneratorNetworkConvergenceEvidence | None = None
 
     def __post_init__(self) -> None:
         time = self.simulation_time_s
+        if self.convergence is not None and not isinstance(self.convergence, GeneratorNetworkConvergenceEvidence):
+            raise TypeError("convergence must be GeneratorNetworkConvergenceEvidence when supplied")
         if isinstance(time, bool) or not isinstance(time, (int, float)) or not math.isfinite(float(time)) or time < 0:
             raise GeneratorNetworkStageError("simulation_time_s must be finite and non-negative")
         buses: dict[str, complex] = {}
@@ -87,7 +130,7 @@ class GeneratorNetworkStageSolution:
 
 GeneratorNetworkSolver = Callable[
     [np.ndarray, float, Mapping[str, float]],
-    Mapping[str, complex],
+    Mapping[str, complex] | GeneratorNetworkSolveResult,
 ]
 
 
@@ -117,11 +160,23 @@ def solve_generator_network_stage(
         raise GeneratorNetworkStageError(
             f"generator network solve failed at t={snapshot.simulation_time_s:.12g} s"
         ) from exc
-    if not isinstance(raw, Mapping):
-        raise GeneratorNetworkStageError("network_solver must return a bus-voltage mapping")
+    if isinstance(raw, GeneratorNetworkSolveResult):
+        bus_voltages = raw.bus_voltages
+        convergence = raw.convergence
+    elif isinstance(raw, Mapping):
+        bus_voltages = raw
+        convergence = None
+    else:
+        raise GeneratorNetworkStageError("network_solver must return a bus-voltage mapping or GeneratorNetworkSolveResult")
+    if convergence is not None and not convergence.converged:
+        raise GeneratorNetworkStageError(
+            f"network solver {convergence.solver_id!r} reported non-convergence "
+            f"after {convergence.iteration_count} iterations (residual={convergence.residual_norm:.6g})"
+        )
     return GeneratorNetworkStageSolution(
         simulation_time_s=snapshot.simulation_time_s,
-        bus_voltages=raw,
+        bus_voltages=bus_voltages,
+        convergence=convergence,
         field_voltages_pu=snapshot.field_voltages_pu,
         component_ids_by_machine=snapshot.component_ids_by_machine,
     )
