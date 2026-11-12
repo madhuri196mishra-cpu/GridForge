@@ -109,17 +109,18 @@ physical instrument family, canonical source-terminal identity, non-empty
 unit equality, and phase. It never creates a Core channel, changes its source,
 publishes a sample, or bypasses the Application's signed producer/clock checks.
 
-Only direct scalar voltage from a PT/CVT and current from a CT are currently
-bindable. Frequency, phase angle, derived power/energy, power factor, thermal,
-oil, DGA, insulation, bushing, mechanical, OLTC diagnostic, and
-protection-indication points require dedicated physical source models and/or
-Application producer adapters. They are intentionally rejected by this
-direct-binding resolver. A Core signal enum by itself is not proof that the
-physical source can produce that quantity.
-An Application integration must additionally prove that the selected
-instrument channel is actually associated with the stated transformer in
-the active project topology; this plugin resolver does not claim to prove
-that relationship.
+Direct electrical binding supports scalar voltage from a PT/CVT and
+current from a CT through canonical terminal-backed channels. A separate
+winding-temperature path supports an installed analog physical source
+interface (for example, a winding RTD or fiber-optic temperature output).
+That path requires the active project instrumentation collection and checks
+the source/interface identity, exact installation, transformer identity,
+winding identity, quantity, unit and phase. It does not treat a thermal
+estimate as a physical sensor. Frequency, phase angle, derived power/energy,
+power factor, oil, DGA, insulation, bushing, mechanical, OLTC diagnostic,
+and protection-indication points still require dedicated producer models or
+Application adapters. A Core signal enum alone is not proof that a physical
+source can produce a quantity.
 
 
 ## Snapshot validation
@@ -182,12 +183,15 @@ then resolved only from that candidate collection.
 Physical-source channel definitions require an explicit `producer_id`,
 trusted `timestamp_domain`, and positive `stale_after` duration. The
 interface's declared quantity, unit, phase and signal kind govern the Core
-channel classification and unit. A declared `signal_type`, if present, must
-agree. One installation may provision at most one logical MeasurementChannel
-in an activation. Existing producer attestation, project activation
-generation, trusted clock, monotonic sequence and Application sample ingress
-remain mandatory; source provisioning does not grant a producer permission
-to publish.
+channel classification and unit. Temperature interfaces must be analog;
+digital outputs cannot claim continuous analog quantities, while counter
+and diagnostic outputs remain `CUSTOM` until dedicated Core signal
+classifications exist. A declared `signal_type`, if present, must agree.
+One installation may provision at most one logical MeasurementChannel in an
+activation. Existing producer attestation, project activation generation,
+trusted clock, monotonic sequence and Application sample ingress remain
+mandatory; source provisioning does not grant a producer permission to
+publish.
 
 Electrical CT/PT/CVT channels continue to use their canonical terminal-backed
 provisioning path. Physical sensor channels use the source-interface reference
