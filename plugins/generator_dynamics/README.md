@@ -889,3 +889,49 @@ Application composition root and callers, augmented DAE remains an opt-in
 extension contract rather than a production-ready generator transient mode.
 No new Application service or speculative composition root is introduced by
 this documentation correction.
+
+
+### Canonical Application composition reconciliation
+
+The actual Application root is `core/application/bootstrap.py:create_application`.
+It constructs the canonical `StudyService`, configures the durable
+`StudyResultArchive`, attaches project lifecycle/revision services, and
+registers the existing `transient_stability` study handler. Its dynamic-study
+path is currently the legacy `PreparedTransientStability →
+MultiMachineSystem → TransientNetworkRuntime → DAESolver →
+TransientStabilitySolver → TransientStabilityAnalysis` path.
+
+The root currently attaches only
+`application.motor_dynamics_composition = MotorDynamicsComposition(application)`.
+That object provides the motor draft domain service and transactional command
+handler registration. It does not implement the shared
+`ElectricalDynamicsComposition` contract, does not expose
+`motor_read_models`, and does not provide generator or load transient solvers
+or their per-request adapter factories. It is therefore not a valid substitute
+for the `electrical_dynamics_composition` required by the three plugins.
+
+The plugin dependency chain is also explicit: `PluginContext.services` is an
+immutable injected mapping; `PluginManager.set_context(s)` stores contexts
+supplied by its caller and does not build Application services. The inspected
+canonical plugin context/manager code contains no automatic bridge from
+`application.motor_dynamics_composition` to
+`services["electrical_dynamics_composition"]`. Thus generator, motor and load
+plugin initialization fails closed unless an external caller manually injects
+a complete shared composition object. The previous augmented DAE handoff
+finding is a subset of this larger composition gap.
+
+Required correction is one Application-owned electrical dynamics composition
+created at the canonical Application root and passed through the existing
+PluginContext service injection point. It must reuse the existing
+`StudyService`, extension-handler registry, project snapshots and result
+archive; it must not create a second scheduler, command registry, equipment
+authority, result store or persistence path. Its required capabilities must
+be added only when their concrete host implementations exist. In particular,
+the motor simulation projection needs an Application-owned read-model boundary
+rather than an implicitly plugin-owned store, and generator/load solver
+capabilities must not be advertised as available before implemented.
+
+No speculative composition object or false solver implementation was added
+during this reconciliation. The integration is now precisely localized to
+Application composition plus the caller that constructs per-plugin
+`PluginContext.services`.
