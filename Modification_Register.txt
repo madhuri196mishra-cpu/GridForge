@@ -3381,3 +3381,20 @@ Canonical Core equipment discriminator refinement — 12 November 2026:
 - This keeps the solver binding aligned with the same Core EquipmentType
   used by DynamicsEquipmentBinding and Core terminal endpoint references.
 - Verification: source fetch-back and static constructor/call-site review only.
+
+
+
+Per-terminal current base contract — 12 November 2026:
+- DynamicTerminalInjection now carries current_base_a alongside complex
+  current_injection_pu. Consumers can convert to a network terminal's declared
+  current base without assuming that source and return terminals share a
+  voltage base.
+- LoadPhaseTerminal derives the source current base from the matching
+  per-branch apparent-power and voltage bases, and requires an explicit
+  return_current_base_a whenever a paired return terminal is provided.
+  Equal-and-opposite physical ampere current is converted independently at
+  the two nodal terminals.
+- This prevents line-line, delta and DC branch return currents from silently
+  reusing a source-terminal per-unit base at a differently based node.
+- Verification: source fetch-back and dimensional/formula inspection only;
+  no tests or numerical execution.
