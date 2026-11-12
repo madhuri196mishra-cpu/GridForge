@@ -498,3 +498,43 @@ def test_wound_field_synchronous_rejects_nonpositive_mutual_energy():
             damper_q_resistance_ohm=.6,damper_d_inductance_h=.04,damper_q_inductance_h=.05,
             mutual_field_inductance_h=.2,mutual_damper_d_inductance_h=.01,
             mutual_damper_q_inductance_h=.01,pole_pairs=2,inertia_kg_m2=.08)
+
+
+def test_hysteresis_motor_solver_reports_pullout_margin_and_speed():
+    import numpy as np
+    from plugins.motor_dynamics.transient_solver import HysteresisMotorParameters, solve_hysteresis_motor_transient_cpu
+    p=HysteresisMotorParameters(pole_pairs=2,rated_voltage_rms_v=400.,frequency_hz=50.,
+        pullout_torque_nm=100.,inertia_kg_m2=.2,initial_load_angle_rad=.1)
+    r=solve_hysteresis_motor_transient_cpu("hyst",p,.02,.0001,supply_voltage_rms_v=400.,load_torque_nm=10.)
+    c=r.channels(p)
+    assert r.backend=="cpu-rk4" and np.isfinite(r.state_data).all()
+    assert np.allclose(c["pullout_torque_margin_nm"],90.)
+    assert np.isfinite(c["synchronous_speed_error_rad_s"]).all()
+
+
+def test_hysteresis_motor_rejects_invalid_pullout_torque():
+    import pytest
+    from plugins.motor_dynamics.transient_solver import HysteresisMotorParameters
+    with pytest.raises(ValueError,match="pullout_torque_nm"):
+        HysteresisMotorParameters(pole_pairs=2,rated_voltage_rms_v=400.,frequency_hz=50.,
+            pullout_torque_nm=0.,inertia_kg_m2=.2)
+
+
+
+def test_ac_servo_catalogue_distinguishes_machine_technologies_and_drive_feedback():
+    profile = motor_family_profile(MotorFamily.AC_SERVO)
+    assert "synchronous PM or induction" in profile.principle
+    assert profile.dynamic_model is None
+    points = {p.point_id: p for p in motor_measurement_points(MotorFamily.AC_SERVO)}
+    assert {
+        "drive.dc_link_voltage", "drive.dc_link_current",
+        "drive.d_axis_current_reference", "drive.q_axis_current_reference",
+        "drive.d_axis_current_feedback", "drive.q_axis_current_feedback",
+        "feedback.encoder_position", "feedback.encoder_speed",
+        "feedback.position_command", "feedback.position_error",
+        "feedback.speed_command", "feedback.torque_command",
+        "drive.inverter_temperature", "drive.brake_state",
+        "drive.ready_state", "drive.fault_state",
+    }.issubset(points)
+    assert points["feedback.position_error"].unit == "rad"
+    assert points["drive.brake_state"].signal_type.value == "digital"
