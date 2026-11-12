@@ -3398,3 +3398,20 @@ Per-terminal current base contract — 12 November 2026:
   reusing a source-terminal per-unit base at a differently based node.
 - Verification: source fetch-back and dimensional/formula inspection only;
   no tests or numerical execution.
+
+
+
+Core network-base terminal current aggregation — 12 November 2026:
+- Added aggregate_dynamic_terminal_injections to the existing Core component
+  assembly module. It accepts immutable per-device DynamicTerminalInjection
+  contributions, converts each per-unit current through its explicit ampere
+  base, converts to the host-declared target current base for each
+  (terminal_id, phase_id), and deterministically sums contributions.
+- Injection IDs are unique across the batch; missing or invalid network
+  current bases and non-finite aggregate currents fail closed. The output is
+  immutable and sorted by terminal/phase identity.
+- This helper deliberately does not resolve terminal-to-bus topology,
+  construct Y-bus, solve the network or own the integration clock. Those
+  remain Core network/solver and Application orchestration responsibilities.
+- Verification: source fetch-back and dimensional/static aggregation review
+  only; no tests or numerical execution.
