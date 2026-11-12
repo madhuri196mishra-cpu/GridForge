@@ -130,3 +130,28 @@ Application-owned ingestion path. It verifies equipment and point identity,
 unit equality, sample chronology, counter/digital/analog value shape, and
 configured numeric limits. It does not write, publish, persist, or authorize
 telemetry; those remain Application responsibilities.
+
+## Project-owned physical instrumentation records
+
+The Core source/interface/installation value contracts are now grouped by
+`ProjectInstrumentationCollection`, and the canonical `.gridforge` project
+payload is schema 6. Schema 5 projects migrate deterministically to an empty
+instrumentation collection; existing CT/PT/CVT electrical-terminal channel
+definitions are unchanged. Project save/load serializes and reconstructs the
+collection, and Application activation installs it as project-scoped state
+with rollback alongside the other project authorities.
+
+Each installation is checked at persistence and candidate-activation
+boundaries for project identity, source/interface existence, monitored
+equipment existence, and monitored equipment type. Instrumentation remains
+separate from `Network` membership and electrical `Terminal` connectivity.
+No MeasurementChannel is provisioned by this collection, and it does not
+create producer identities or accept telemetry samples.
+
+**Winding-point limitation:** the current Core `Transformer` is a
+two-terminal electrical model and does not own a canonical multi-winding
+identity collection. The plugin profile's winding identifiers are descriptive
+metadata, not an authoritative Core winding registry. Consequently, the
+current project validation does not claim to prove that an installation's
+`monitored_point_id` is a valid physical winding. That requires a canonical
+winding/monitoring-point contract before the first RTD channel is commissioned.
