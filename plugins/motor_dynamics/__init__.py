@@ -19,7 +19,7 @@ from .transient_solver import (
     DCServoParameters, DCServoSimulationResult, solve_dc_servo_transient_cpu,
 )
 __all__ = [
-    "MotorDynamicsPlugin", "MotorFamily", "MotorFamilyProfile", "MotorNameplate", "MotorOperatingMode",
+    "MotorDynamicsPlugin", "motor_measurement_contracts", "motor_model_capability", "MotorFamily", "MotorFamilyProfile", "MotorNameplate", "MotorOperatingMode",
     "MOTOR_FAMILY_PROFILES", "motor_family_profile", "MotorMeasurementPoint", "motor_measurement_points",
     "provision_motor_measurement_channels", "MotorParameters", "MotorSimulationResult", "PMSMParameters",
     "PMSMSimulationResult", "solve_pmsm_transient_cpu", "BLDCParameters", "BLDCSimulationResult",
