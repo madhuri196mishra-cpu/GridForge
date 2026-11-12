@@ -18,6 +18,7 @@ from .measurement_binding import (
 from .telemetry import (
     ChannelDefinition, MeasurementQuality, SignalKind, TelemetrySample,
     TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
+    validate_transformer_snapshot,
 )
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "InsulationSystem", "CoolingMethod", "ChannelDefinition",
     "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
     "TransformerQuantity", "build_transformer_channel_catalogue",
+    "validate_transformer_snapshot",
     "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
 __version__ = "0.2.0"

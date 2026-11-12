@@ -120,3 +120,13 @@ An Application integration must additionally prove that the selected
 instrument channel is actually associated with the stated transformer in
 the active project topology; this plugin resolver does not claim to prove
 that relationship.
+
+
+## Snapshot validation
+
+`validate_transformer_snapshot(snapshot, catalogue)` checks every observation
+against its declared transformer channel before the caller passes it to an
+Application-owned ingestion path. It verifies equipment and point identity,
+unit equality, sample chronology, counter/digital/analog value shape, and
+configured numeric limits. It does not write, publish, persist, or authorize
+telemetry; those remain Application responsibilities.
