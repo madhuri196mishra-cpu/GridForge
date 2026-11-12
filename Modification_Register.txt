@@ -3195,11 +3195,13 @@ Implementation branch: electrical-dynamics-application-composition-2026-11-12
   to Application, not the Motor Dynamics plugin. Plugin shutdown must not clear
   this shared projection.
 - The composition exposes the canonical Application measurement-channel
-  snapshot and a typed capability report. Only the activated Motor plugin is
-  reported registered; generator/load registrations and sampled-study adapters
-  are unavailable. Measurement-point normalization and Core terminal-injection
-  contract exposure remain unavailable in this host composition. Fully coupled
-  network transient execution is unavailable for all three.
+  snapshot, Core dynamic component/terminal-injection contract types, the Core
+  network-stage solver protocol, and a typed capability report. Only the activated
+  Motor plugin is reported registered; generator/load registrations and sampled-
+  study adapters are unavailable. Measurement-point normalization remains
+  unavailable in the host composition. The Core network-stage protocol is not
+  consumed by the production transient study loop, so fully coupled network
+  transient execution remains unavailable for all three.
 - Generator and Load plugin activation is intentionally not enabled by this
   slice: their required host solver adapters are absent from create_application().
   No placeholder solver or false execution capability is introduced.
@@ -3216,3 +3218,28 @@ Implementation branch: electrical-dynamics-application-composition-2026-11-12
   contract exposure, and fully coupled network execution remain open; do not
   merge PR #218 on this evidence alone.
 ======================================================================
+
+
+Application composition follow-up:
+- Migrated the real MotorDynamicsPlugin consumer from the legacy
+  motor_dynamics_composition service key to the canonical
+  electrical_dynamics_composition key.
+- Motor activation now fails closed unless the shared composition reports an
+  available motor solver/executable study and supplies the Application-owned
+  motor read model contract.
+- Removed plugin-owned MotorSimulationReadModelStore construction and shutdown
+  clearing. The former plugin read_models module is now an import-compatible
+  facade over core/application/electrical_dynamics_read_models.py.
+- Added Application package exports for the motor simulation read-model DTO
+  and store. The shared composition's project-event subscriptions are closed
+  from the real application shutdown path.
+- Reconciled Core typed DynamicTerminalInjection, component binding/evaluation,
+  deterministic current aggregation, topology-aware terminal-voltage checks,
+  and the fail-closed network-stage request/solution protocol from PR #218.
+  The package export file's malformed literal escaped newlines were corrected.
+- No existing Core machine system or DAESolver was changed to claim support for
+  the new terminal injections. The network-stage protocol remains an extension
+  contract only; no accepted/rejected integration-step transient host loop was
+  added.
+- Verification: source fetch-back and static import/reference/ownership review
+  only. No tests, imports, CI, startup, GUI or numerical execution were run.
