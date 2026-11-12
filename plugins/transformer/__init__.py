@@ -11,7 +11,7 @@ from .grounding import Grounding
 from .tap_changer import TapChanger
 from .equivalent import TransformerEquivalent
 from .profile import TransformerProfile, TransformerFamily, InsulationSystem, CoolingMethod
-from .telemetry import (
+from .measurement_binding import (\n    TransformerMeasurementBinding, resolve_transformer_measurement_bindings,\n)\nfrom .telemetry import (
     ChannelDefinition, MeasurementQuality, SignalKind, TelemetrySample,
     TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
 )
@@ -21,6 +21,6 @@ __all__ = [
     "TransformerEquivalent", "TransformerProfile", "TransformerFamily",
     "InsulationSystem", "CoolingMethod", "ChannelDefinition",
     "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
-    "TransformerQuantity", "build_transformer_channel_catalogue",
+    "TransformerQuantity", "build_transformer_channel_catalogue",\n    "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
 __version__ = "0.2.0"
