@@ -121,6 +121,13 @@ def test_validator_rejects_invalid_sld_coordinate_provenance(overrides) -> None:
         validate_drawing_plan(_sld_plan(_sld_entity(provenance=_sld_mapping_provenance(**overrides))))
 
 
+def test_validator_rejects_sld_mapping_metadata_drift_from_reviewed_fingerprint() -> None:
+    provenance = _sld_mapping_provenance()
+    provenance["world_origin_mm"] = (1001.0, 2000.0)
+    with pytest.raises(DrawingPlanValidationError, match="coordinate mapping fingerprint mismatch"):
+        validate_drawing_plan(_sld_plan(_sld_entity(provenance=provenance)))
+
+
 def test_validator_rejects_conflicting_sld_coordinate_mapping_provenance() -> None:
     first = _sld_entity("first")
     second = _sld_entity(
