@@ -151,6 +151,7 @@ def _commit(app, draft: DraftNetwork):
             project_id=draft.project_id,
             activation_generation=draft.activation_generation,
             draft_network=draft.to_dict(),
+            document_id=app.presentation.document_id,
         )
     )
 
@@ -384,6 +385,7 @@ def _commit_with_sld(draft: DraftNetwork):
         project_id=draft.project_id,
         activation_generation=draft.activation_generation,
         draft_network=draft.to_dict(),
+        document_id=app.presentation.document_id,
     ))
     return app, result, document
 
@@ -499,6 +501,7 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
                 project_id=draft.project_id,
                 activation_generation=draft.activation_generation,
                 draft_network=stale_payload,
+                document_id=app.presentation.document_id,
             )
         )
 
