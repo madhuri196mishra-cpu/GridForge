@@ -68,11 +68,11 @@ class LoadDynamicsPlugin(GridForgePlugin):
         study_service = getattr(application, "study_service", None)
         if not isinstance(study_service, StudyService):
             raise RuntimeError("Application.study_service must be the canonical StudyService")
-        composition = services.get("load_dynamics_composition")
+        composition = services.get("electrical_dynamics_composition")
         if composition is None:
             raise RuntimeError(
                 "Load dynamics activation requires the host-supplied "
-                "'load_dynamics_composition'; the plugin does not create a solver."
+                "'electrical_dynamics_composition'; the plugin does not create a solver."
             )
         solver = getattr(composition, "load_transient_solver", None)
         adapter_factory = getattr(composition, "create_load_sampled_adapter", None)
