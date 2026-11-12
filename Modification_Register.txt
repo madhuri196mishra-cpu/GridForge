@@ -3569,3 +3569,25 @@ Generator augmented-stage integration of fixed-point network coupling — 12 Nov
   before its derivative vector is returned to the integrator.
 - Verification: source fetch-back and static invariant inspection only; no
   tests, imports, runtime execution, network solve or numerical simulation.
+
+
+Accepted augmented-step evidence retained on checkpoint publication failure — 12 November 2026:
+- GeneratorAugmentedDAEAdapter already distinguished an accepted numerical
+  step from failure to publish its host checkpoint, attaching the exact
+  GeneratorAugmentedStepResult to the raised integration error.
+- The raised error now also exposes that step's versioned primitive
+  to_archive_payload() as partial_result. Application StudyService's existing
+  exception path preserves partial_result in the terminal StudyResult and
+  sends it through the configured StudyResult persister; the plugin does not
+  persist independently or create another result authority.
+- The original accepted_step_result remains attached for in-process host
+  reconciliation. The primitive payload is the durable-compatible evidence,
+  including accepted state and final algebraic stage, while derivative
+  evaluations remain labelled as non-accepted trial-stage evidence.
+- This does not claim the failed host checkpoint was committed. It preserves
+  numerical acceptance evidence so the Application can archive and diagnose
+  the split outcome without falsely converting the accepted state into a
+  rejected solver step.
+- Verification: touched-file fetch-back and static inspection of the
+  StudyService exception path and archive encoder only. No tests, imports,
+  runtime, CI or numerical simulation.
