@@ -8,7 +8,7 @@ from math import isfinite
 from core.model.transformer import Transformer
 from core.measurement.measurement_source import MeasurementSourceInterface
 from .profile import TransformerProfile, validate_transformer_profile_windings
-from typing import Iterable
+from collections.abc import Callable, Iterable, Mapping
 
 class MeasurementQuality(str, Enum):
     GOOD="good"; UNCERTAIN="uncertain"; BAD="bad"; NOT_CONNECTED="not_connected"
@@ -266,6 +266,91 @@ def build_transformer_measurement_source_interfaces(
             maximum=point.maximum,
         ))
     return tuple(result)
+
+
+
+def publish_transformer_sensor_snapshot(
+    snapshot: TelemetrySnapshot,
+    catalogue: Iterable[ChannelDefinition],
+    *,
+    attestations: Mapping[str, object],
+    publish_sample: Callable[..., object],
+) -> tuple[object, ...]:
+    """Hand attested physical sensor samples to Application's canonical ingress.
+
+    This is an adapter only: it creates no producer identity, signature,
+    clock authority, activation generation, channel registry, or sample state.
+    The deployment producer adapter must supply one already-authenticated
+    MeasurementSampleAttestation per sample. Application remains responsible
+    for signature verification, project/generation binding, trusted clock and
+    monotonic sequence enforcement.
+
+    Timestamps are required to represent UTC Unix seconds, matching the
+    canonical Application measurement clock domain configured by the host.
+    """
+    from math import isclose
+
+    if not isinstance(attestations, Mapping):
+        raise TypeError("attestations must map channel IDs to signed producer attestations.")
+    if not callable(publish_sample):
+        raise TypeError("publish_sample must be the canonical Application sample-ingress callable.")
+
+    points = tuple(catalogue)
+    validate_transformer_snapshot(snapshot, points)
+    by_id = {point.channel_id: point for point in points}
+    sample_ids = {sample.channel_id for sample in snapshot.samples}
+    if set(attestations) != sample_ids:
+        raise ValueError("Exactly one producer attestation is required for every snapshot sample.")
+
+    results: list[object] = []
+    for sample in snapshot.samples:
+        point = by_id[sample.channel_id]
+        if point.sensor_type is None or point.signal_kind is SignalKind.ESTIMATED:
+            raise ValueError(
+                f"Telemetry point {sample.channel_id!r} is not a declared physical sensor channel."
+            )
+        if sample.sequence is None:
+            raise ValueError(
+                f"Physical sensor sample {sample.channel_id!r} requires an explicit producer sequence."
+            )
+        attestation = attestations[sample.channel_id]
+        expected_quality = sample.core_quality
+        expected_available = sample.available
+        if getattr(attestation, "channel_id", None) != sample.channel_id:
+            raise ValueError("Producer attestation channel identity does not match its telemetry sample.")
+        if getattr(attestation, "sample_sequence", None) != sample.sequence:
+            raise ValueError("Producer attestation sequence does not match its telemetry sample.")
+        if getattr(attestation, "quality", None) is not expected_quality:
+            raise ValueError("Producer attestation quality does not match its telemetry sample.")
+        if getattr(attestation, "available", None) is not expected_available:
+            raise ValueError("Producer attestation availability does not match its telemetry sample.")
+        if tuple(getattr(attestation, "diagnostic_codes", ())) != sample.diagnostic_codes:
+            raise ValueError("Producer attestation diagnostics do not match its telemetry sample.")
+        attested_timestamp = getattr(attestation, "timestamp", None)
+        if (
+            isinstance(attested_timestamp, bool)
+            or not isinstance(attested_timestamp, (int, float))
+            or not isfinite(attested_timestamp)
+            or not isclose(
+                float(attested_timestamp),
+                sample.timestamp.timestamp(),
+                rel_tol=0.0,
+                abs_tol=1e-6,
+            )
+        ):
+            raise ValueError(
+                "Producer attestation timestamp must match the sample's UTC Unix timestamp."
+            )
+        results.append(
+            publish_sample(
+                sample.channel_id,
+                sample.value,
+                attestation=attestation,
+                quality=expected_quality,
+                available=expected_available,
+            )
+        )
+    return tuple(results)
 
 
 def validate_transformer_snapshot(

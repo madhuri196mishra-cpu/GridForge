@@ -21,6 +21,7 @@ from .telemetry import (
     build_transformer_channel_catalogue_for_core,
     build_transformer_measurement_source_interfaces, validate_transformer_snapshot,
     to_core_measurement_quality, measurement_availability_for_quality,
+    publish_transformer_sensor_snapshot,
 )
 
 __all__ = [
@@ -30,7 +31,7 @@ __all__ = [
     "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
     "TransformerQuantity", "build_transformer_channel_catalogue", "build_transformer_channel_catalogue_for_core", "build_transformer_measurement_source_interfaces",
     "validate_transformer_snapshot", "to_core_measurement_quality",
-    "measurement_availability_for_quality",
+    "measurement_availability_for_quality", "publish_transformer_sensor_snapshot",
     "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
 __version__ = "0.2.0"
