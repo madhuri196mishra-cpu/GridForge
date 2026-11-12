@@ -54,7 +54,7 @@ class TransformerModelService(ModelServiceSupport):
         impedance_base_voltage_kv: float | None = None,
         hv_winding_connection: TransformerWindingConnection | str | None = None,
         lv_winding_connection: TransformerWindingConnection | str | None = None,
-        windings: tuple[Any, ...] = (),
+        windings: tuple[TransformerWinding, ...] = (),
         hv_neutral_grounding_impedance_ohm: complex | None = None,
         lv_neutral_grounding_impedance_ohm: complex | None = None,
         hv_neutral_earth_return_impedance_ohm: complex | None = None,
@@ -196,6 +196,10 @@ class TransformerModelService(ModelServiceSupport):
         self._require_id(transformer_id, "transformer_id")
         transformer = self._get_required("transformer", transformer_id, "Transformer")
         self._require_type(transformer, Transformer, transformer_id, "Transformer")
+        if windings is not ...:
+            if isinstance(windings, (str, bytes)):
+                raise TypeError("windings must be a collection of TransformerWinding records.")
+            windings = tuple(windings)
 
         if not isinstance(replace_physical_conductor_configuration, bool):
             raise TypeError("replace_physical_conductor_configuration must be a bool.")
