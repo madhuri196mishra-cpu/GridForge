@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from core.application.endpoint_resolver import resolve_terminal_reference
 from core.application.results import ApplicationResult
+from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
 from core.application.transaction import Transaction
 from core.model import CurrentTransformer, EndpointReference, EquipmentType
 from core.measurement.measurement_channel import (
@@ -232,16 +233,31 @@ class MeasurementChannelService:
         network: Network,
         definitions: Sequence[Mapping[str, Any]] = (),
         generation: int = 0,
+        instrumentation: ProjectInstrumentationCollection | None = None,
     ) -> Any:
-        """Reconstruct candidate project channels and return one rollback callback."""
+        """Reconstruct candidate project channels and return one rollback callback.
+
+        Candidate instrumentation is supplied explicitly by the project
+        lifecycle. It is never read from the currently active Application
+        facade, which may still represent the project being replaced.
+        """
         if context is None:
             if definitions:
                 raise ValueError("A project-less measurement activation cannot contain channel definitions.")
+            if instrumentation is not None:
+                raise ValueError("A project-less measurement activation cannot contain instrumentation.")
             next_channels: dict[str, MeasurementChannel] = {}
             next_project_id = None
         else:
             if not isinstance(network, Network):
                 raise TypeError("network must be a Network.")
+            if instrumentation is None:
+                instrumentation = ProjectInstrumentationCollection(context.project_id)
+            if not isinstance(instrumentation, ProjectInstrumentationCollection):
+                raise TypeError("instrumentation must be a ProjectInstrumentationCollection.")
+            if instrumentation.project_id != context.project_id:
+                raise ValueError("Candidate instrumentation belongs to a different project.")
+            validate_instrumentation_targets(instrumentation, network)
             next_channels = {}
             next_project_id = context.project_id
             for definition in definitions:
