@@ -3415,3 +3415,28 @@ Core network-base terminal current aggregation — 12 November 2026:
   remain Core network/solver and Application orchestration responsibilities.
 - Verification: source fetch-back and dimensional/static aggregation review
   only; no tests or numerical execution.
+
+
+
+Generator/motor source reconciliation and injection evidence — 12 November 2026:
+- Re-fetched the latest generator-dynamics-plugin source and reconciled
+  generator network-stage/stage-evaluation code, augmented integrator adapter,
+  generator and motor package exports, generator/motor documentation,
+  motor family catalogue, instrumentation, manifest, transient solver and
+  family coverage source into this unified branch.
+- Reapplied the single wound-rotor external-resistance measurement point
+  correction and the shared Application composition/read-model ownership
+  changes after importing latest motor sources. The motor plugin no longer
+  depends on motor_dynamics_composition or constructs/clears its own result
+  projection store.
+- The generator augmented-step archive payload now preserves each typed
+  terminal injection's ID, terminal, phase, complex per-unit current and
+  ampere base as solver-stage evidence. This records contributions; it does
+  not imply the generator network solver consumes motor/load injections.
+- The integration branch remains ahead of main with no main-side commits
+  missing. It remains history-diverged from generator-dynamics-plugin;
+  source reconciliation is not a merge commit and does not authorize a PR
+  merge. No merge or changes to main were made.
+- Verification: fetch-back of touched sources and static source reconciliation
+  only. No tests, CI, imports, startup, GUI, network solve, numerical
+  simulation, hardware probing or commissioning were run.
