@@ -114,6 +114,12 @@ class DynamicTerminalInjection:
             if not isinstance(value, str) or not value.strip():
                 raise DynamicComponentContractError(f"{name} must be a non-empty stable identity")
             object.__setattr__(self, name, value.strip())
+        if isinstance(self.current_injection_pu, bool) or not isinstance(
+            self.current_injection_pu, (int, float, complex)
+        ):
+            raise DynamicComponentContractError(
+                "current_injection_pu must be numeric complex data"
+            )
         try:
             current = complex(self.current_injection_pu)
         except (TypeError, ValueError, OverflowError) as exc:
