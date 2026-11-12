@@ -96,8 +96,8 @@ class DynamicComponentInputs:
 class DynamicTerminalInjection:
     """One phase-resolved current contribution into the solved network.
 
-    current_injection_pu uses the study's declared per-unit current base and
-    the network-injection sign convention: positive current is injected from
+    current_injection_pu is expressed on the explicit current_base_a carried by
+    this contribution. The network-injection sign convention is positive from
     equipment into the network. phase_id is a canonical host-supplied label;
     this DTO does not infer phase mapping.
     """
