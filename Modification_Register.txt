@@ -3486,3 +3486,21 @@ Complete multi-terminal input/topology validation refinement — 12 November 202
   while retaining fail-closed terminal and topology provenance checks.
 - Verification: touched-file fetch-back and static contract checks only;
   no tests, imports, runtime or numerical execution.
+
+
+
+Injection-aware composed network-stage contract — 12 November 2026:
+- Added Core DynamicNetworkSolveRequest and DynamicNetworkSolver protocol.
+  A request carries the detached machine trial state, exact stage time,
+  topology revision, aggregated terminal/phase currents on host network
+  current bases, and generator field-voltage handoffs.
+- Added validate_dynamic_network_solution to reuse the canonical
+  AlgebraicNetworkSolution record and fail closed unless the result is
+  accepted, quality-verified, and matches the exact stage time and topology
+  revision. No parallel algebraic quality or topology authority is created.
+- Exported the contract through core.solver.dynamics. The existing legacy
+  DAESolver callback remains unchanged and does not yet consume this protocol;
+  nonlinear current/voltage fixed-point coordination and Application wiring
+  remain open integration work.
+- Verification: source fetch-back and static type/validation-path inspection
+  only. No tests, imports, runtime, network solve or numerical simulation.
