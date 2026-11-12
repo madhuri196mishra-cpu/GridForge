@@ -26,8 +26,9 @@ class LoadPhaseTerminal:
     terminal_voltage_v and phase_voltage_base_v use the same branch voltage
     definition. For a two-terminal branch, terminal_voltage_v is the oriented
     source-to-return voltage and the optional return fields identify the
-    opposite nodal current injection. phase_power_base_va is the matching
-    per-branch apparent-power base. power_share allocates total demand.
+    opposite nodal current injection. return_current_base_a is the return node's
+    own current base. phase_power_base_va is the matching per-branch apparent-
+    power base. power_share allocates total demand.
     """
 
     injection_id: str
@@ -97,7 +98,8 @@ def evaluate_zip_terminal_injections(
     orientation and matching voltage/apparent-power bases. Shares allocate
     total load demand exactly once. Source-node current is negative and
     return-node current positive under the equipment-to-network injection
-    convention. This is a reduced ZIP representation, not a detailed motor,
+    convention. Each nodal per-unit current carries its own ampere base so
+    different terminal voltage bases are not silently conflated. This is a reduced ZIP representation, not a detailed motor,
     converter, furnace or unbalanced device model.
     """
     if not isinstance(nameplate, LoadNameplate):
