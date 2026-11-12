@@ -210,8 +210,9 @@ class MeasurementChannelService:
                 raise ValueError("Measurement sample sequence must increase monotonically.")
             if channel.timestamp is not None and attestation.timestamp < channel.timestamp:
                 raise ValueError("Measurement source timestamp cannot move backwards.")
+            validated_value = channel.validate_source_value(value)
             channel.update(
-                value,
+                validated_value,
                 _authority=self._sample_update_authority,
                 timestamp=float(attestation.timestamp),
                 timestamp_domain=attestation.timestamp_domain,
