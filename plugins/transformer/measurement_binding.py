@@ -58,9 +58,12 @@ def resolve_transformer_measurement_bindings(
     incompatible associations fail closed. Unbound catalogue points are
     permitted because a transformer may not have every optional sensor.
     """
-    points = {point.channel_id: point for point in catalogue}
-    if len(points) != len(tuple(catalogue)) if not isinstance(catalogue, tuple) else False:
+    catalogue_items = tuple(catalogue)
+    points = {point.channel_id: point for point in catalogue_items}
+    if len(points) != len(catalogue_items):
         raise ValueError("Transformer telemetry catalogue contains duplicate channel ids.")
+    if not isinstance(measurement_channels, Mapping):
+        raise TypeError("measurement_channels must be the Application channel mapping.")
 
     resolved: list[tuple[ChannelDefinition, Any]] = []
     seen_points: set[str] = set()
