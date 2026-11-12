@@ -14,6 +14,7 @@ from core.application.events import (
     ElementCreated, ElementRemoved, ElementUpdated, NetworkChanged,
     ProtectionChanged, TopologyChanged, NetworkCommitted, ProjectClosed, ProjectLoaded,
     StudyStarted, StudyCompleted, StudyFailed, StudyCancelled,
+    InstrumentationWiringChanged,
 )
 from ui.canvas.canvas_framework import CanvasStateMachine
 from ui.canvas.engineering_canvas_contract import CanvasFeedback, CanvasInteractionAdapter
@@ -785,7 +786,7 @@ class ProtectionWorkspace(QWidget):
     _EVENT_TYPES = (
         ElementCreated, ElementRemoved, ElementUpdated, NetworkChanged,
         ProtectionChanged, TopologyChanged, NetworkCommitted,
-        ProjectLoaded, ProjectClosed,
+        ProjectLoaded, ProjectClosed, InstrumentationWiringChanged,
         StudyStarted, StudyCompleted, StudyFailed, StudyCancelled,
     )
 
