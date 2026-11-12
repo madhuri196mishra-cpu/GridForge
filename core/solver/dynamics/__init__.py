@@ -26,6 +26,7 @@ from .component_assembly import (
     DynamicComponentBinding,
     DynamicComponentBatchEvaluation,
     evaluate_dynamic_components,
+    aggregate_dynamic_terminal_injections,
 )
 from .dynamic_state_layout import (
     DynamicSystemLayoutError,
@@ -36,8 +37,18 @@ from .component_contract import (
     DynamicComponentContractError,
     DynamicComponentInputs,
     DynamicComponentEvaluation,
+    DynamicTerminalInjection,
     DynamicStateComponent,
     validate_dynamic_state_component,
+)
+from .network_coupling import (
+    DynamicNetworkCouplingError,
+    DynamicNetworkSolveRequest,
+    DynamicNetworkSolver,
+    validate_dynamic_network_solution,
+    DynamicNetworkStageResult,
+    TerminalInjectionEvaluator,
+    solve_dynamic_network_stage,
 )
 from .events import EventBatchConflictError, EventExecution, EventManager, EventOperation, EventTransition, SimulationEvent
 from .dae_solver import (
@@ -69,6 +80,7 @@ __all__ = [
     "DynamicComponentContractError",
     "DynamicComponentInputs",
     "DynamicComponentEvaluation",
+    "DynamicTerminalInjection",
     "DynamicStateComponent",
     "validate_dynamic_state_component",
     "DynamicSystemLayoutError",
@@ -78,6 +90,7 @@ __all__ = [
     "DynamicComponentBinding",
     "DynamicComponentBatchEvaluation",
     "evaluate_dynamic_components",
+    "aggregate_dynamic_terminal_injections",
     "DynamicDerivativeAssemblyError",
     "DynamicSystemDerivativeAssembly",
     "MachineDerivativeEvaluator",
@@ -88,6 +101,13 @@ __all__ = [
     "EventExecution",
     "EventTransition",
     "EventManager",
+    "DynamicNetworkCouplingError",
+    "DynamicNetworkSolveRequest",
+    "DynamicNetworkSolver",
+    "validate_dynamic_network_solution",
+    "DynamicNetworkStageResult",
+    "TerminalInjectionEvaluator",
+    "solve_dynamic_network_stage",
     "AlgebraicNetworkSolution",
     "NetworkSolver",
     "MechanicalPowerMap",
