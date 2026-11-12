@@ -31,6 +31,8 @@ def _text(value: Any, field: str, *, optional: bool = False) -> str | None:
 
 def _token(value: Any, field: str) -> str:
     result = _text(value, field)
+    if result is None:
+        raise TypeError(f"{field} must be a string.")
     if not _TOKEN.fullmatch(result):
         raise ValueError(f"{field} must be a lowercase canonical token.")
     return result
