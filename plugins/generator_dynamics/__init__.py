@@ -10,6 +10,7 @@ from .instrumentation import (
 )
 from .compute import GENERATOR_WORKLOADS, NPU_INFERENCE_WORKLOADS, select_generator_backend
 from .plugin import GeneratorDynamicsPlugin, PLUGIN_DESCRIPTOR
+from .interoperability import generator_measurement_contracts, generator_model_capability
 from .controllers import (
     FirstOrderAVRParameters, FirstOrderAVR, TGOV1Governor,
     PSSParameters, WashoutLeadLagPSS, TGOV1Parameters, TGOV1SteamGovernor,
@@ -45,7 +46,12 @@ from .excitation_handoff import (
     GeneratorExcitationSnapshot,
     build_generator_excitation_snapshot,
 )
-from .interoperability import generator_measurement_contracts, generator_model_capability
+from .avr_component import AVRComponentBindingError, FirstOrderAVRStateComponent
+from .stage_evaluation import (
+    GeneratorDynamicStageError, GeneratorDynamicStageResult,
+    TerminalVoltageProjector, ElectricalPowerEvaluator,
+    GeneratorMachineDerivativeEvaluator, evaluate_generator_dynamic_stage,
+)
 from .network_stage import (
     GeneratorNetworkStageError,
     GeneratorNetworkStageRequest,
@@ -77,6 +83,10 @@ __all__ = [
     "GGOV1BindingError", "GGOV1GeneratorBinding", "GGOV1MechanicalPowerHandoff",
     "ExcitationHandoffError", "AVRGeneratorBinding",
     "GeneratorExcitationSnapshot", "build_generator_excitation_snapshot",
+    "AVRComponentBindingError", "FirstOrderAVRStateComponent",
+    "GeneratorDynamicStageError", "GeneratorDynamicStageResult",
+    "TerminalVoltageProjector", "ElectricalPowerEvaluator",
+    "GeneratorMachineDerivativeEvaluator", "evaluate_generator_dynamic_stage",
     "GeneratorNetworkStageError", "GeneratorNetworkStageRequest",
     "GeneratorNetworkStageSolution", "GeneratorNetworkSolver",
     "solve_generator_network_stage",
