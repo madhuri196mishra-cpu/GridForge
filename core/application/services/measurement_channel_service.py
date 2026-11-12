@@ -261,10 +261,18 @@ class MeasurementChannelService:
             validate_instrumentation_targets(instrumentation, network)
             next_channels = {}
             next_project_id = context.project_id
+            provisioned_source_installations: set[str] = set()
             for definition in definitions:
                 channel = self._provision_definition(context, network, definition, instrumentation=instrumentation)
                 if channel.id in next_channels:
                     raise ValueError(f"Duplicate measurement channel ID: {channel.id}")
+                if isinstance(channel.source_reference, MeasurementSourceReference):
+                    installation_id = channel.source_installation_id
+                    if installation_id in provisioned_source_installations:
+                        raise ValueError(
+                            f"Physical source installation {installation_id!r} is assigned to more than one MeasurementChannel."
+                        )
+                    provisioned_source_installations.add(installation_id)
                 if isinstance(channel.source, CurrentTransformer):
                     self._validate_ct_channel_definition(
                         definition, channel, existing_channels=next_channels
