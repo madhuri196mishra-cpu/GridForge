@@ -10,7 +10,6 @@ from .instrumentation import (
 )
 from .compute import GENERATOR_WORKLOADS, NPU_INFERENCE_WORKLOADS, select_generator_backend
 from .plugin import GeneratorDynamicsPlugin, PLUGIN_DESCRIPTOR
-from .interoperability import generator_measurement_contracts, generator_model_capability
 from .controllers import (
     FirstOrderAVRParameters, FirstOrderAVR, TGOV1Governor,
     PSSParameters, WashoutLeadLagPSS, TGOV1Parameters, TGOV1SteamGovernor,
@@ -40,6 +39,20 @@ from .ggov1_step_transaction import (
 )
 from .study_handler import GeneratorTransientStudyHandler
 from .plugin import GENERATOR_TRANSIENT_STUDY_TYPE
+from .excitation_handoff import (
+    ExcitationHandoffError,
+    AVRGeneratorBinding,
+    GeneratorExcitationSnapshot,
+    build_generator_excitation_snapshot,
+)
+from .interoperability import generator_measurement_contracts, generator_model_capability
+from .network_stage import (
+    GeneratorNetworkStageError,
+    GeneratorNetworkStageRequest,
+    GeneratorNetworkStageSolution,
+    GeneratorNetworkSolver,
+    solve_generator_network_stage,
+)
 
 __all__ = [
     "GeneratorFamily", "GeneratorNameplate", "GeneratorOperatingMode",
@@ -62,5 +75,10 @@ __all__ = [
     "GGOV1AcceptedStepCheckpoint", "GGOV1StepAttempt", "begin_ggov1_step_attempt",
     "GGOV1StateSlice", "GGOV1DynamicStateLayout",
     "GGOV1BindingError", "GGOV1GeneratorBinding", "GGOV1MechanicalPowerHandoff",
+    "ExcitationHandoffError", "AVRGeneratorBinding",
+    "GeneratorExcitationSnapshot", "build_generator_excitation_snapshot",
+    "GeneratorNetworkStageError", "GeneratorNetworkStageRequest",
+    "GeneratorNetworkStageSolution", "GeneratorNetworkSolver",
+    "solve_generator_network_stage",
     "generator_measurement_contracts", "generator_model_capability",
 ]
