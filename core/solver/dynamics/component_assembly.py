@@ -161,16 +161,9 @@ def evaluate_dynamic_components(
     component_derivatives: dict[str, tuple[float, ...]] = {}
     mechanical_outputs: dict[str, float] = {}
     terminal_injections: list[DynamicTerminalInjection] = []
-    equipment_keys: set[tuple[str, str]] = set()
 
     for component_id, component in registered.items():
         binding = binding_by_id[component_id]
-        equipment_key = (binding.equipment_kind, binding.equipment_id)
-        if equipment_key in equipment_keys:
-            raise DynamicComponentAssemblyError(
-                f"canonical equipment {equipment_key!r} is bound more than once"
-            )
-        equipment_keys.add(equipment_key)
         if binding.machine_id is not None:
             if binding.machine_id not in machine_ids:
                 raise DynamicComponentAssemblyError(
