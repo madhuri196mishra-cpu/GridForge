@@ -3557,3 +3557,7 @@ Generator augmented-stage integration of fixed-point network coupling — 12 Nov
   projection, current bases, topology snapshot and solver implementation.
 - Verification: source fetch-back and static call-path/provenance inspection
   only. No tests, imports, runtime, network solve or numerical simulation.
+
+- Coupled terminal-current archive records are stored as structured rows with
+  separate terminal_id and phase_id fields, avoiding delimiter-based identity
+  collisions and preserving the phase-resolved provenance losslessly.
