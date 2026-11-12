@@ -3654,3 +3654,40 @@ Augmented generator host-loop integration audit — 12 November 2026:
 - Verification: feature-branch fetch-back and static source/call-path
   inspection only. No tests, imports, runtime, CI, GUI or numerical
   simulations. No changes to main or SubhenduMishra29/GridForge.
+
+
+Canonical Application/plugin composition gap audit — 12 November 2026:
+- Inspected core/application/bootstrap.py:create_application, Application,
+  MotorDynamicsComposition, StudyService, StudyResultArchive,
+  ElectricalDynamicsComposition, PluginContext and PluginManager.
+- The canonical root creates the one StudyService and archive and registers
+  power_flow, contingency, short_circuit and transient_stability handlers.
+  Existing transient_stability still follows PreparedTransientStability,
+  MultiMachineSystem, TransientNetworkRuntime, legacy DAESolver and
+  TransientStabilitySolver.
+- The root attaches only application.motor_dynamics_composition. The current
+  MotorDynamicsComposition provides MotorDraftService and transactional motor
+  command registration only. It does not implement the shared
+  ElectricalDynamicsComposition protocol, motor_read_models, generator/load
+  solver capabilities or request-scoped adapter factories.
+- PluginContext freezes its supplied services mapping. PluginManager.set_context
+  and set_contexts only store caller-provided contexts; they do not construct
+  or inject Application services. No automatic bridge from
+  application.motor_dynamics_composition to
+  services["electrical_dynamics_composition"] was found in the inspected
+  canonical context/manager path.
+- Consequently all three electrical dynamics plugins require an externally
+  supplied complete shared composition to initialize. The current root does
+  not supply it. Generator augmented DAE dispatch is therefore one part of a
+  broader host-composition integration gap, not an isolated missing solver.
+- Required implementation boundary is the canonical Application root plus
+  the caller that builds PluginContext.services. Preserve the existing
+  StudyService, extension-handler registry, project snapshot and archive.
+  Motor read models must be Application-owned; generator/load solver
+  capabilities must not be exposed until concrete host implementations exist.
+- No speculative composition object, duplicate authority or placeholder
+  solver was added. This audit records the exact integration boundary before
+  implementation.
+- Verification: source fetch-back and static source/call-path inspection only.
+  No tests, imports, runtime, CI, GUI or numerical simulations. No main or
+  SubhenduMishra29/GridForge changes.
