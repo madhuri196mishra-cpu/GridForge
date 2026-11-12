@@ -3305,3 +3305,20 @@ VERIFICATION
 - Static source inspection only. No tests, imports, application startup, GUI,
   CI, live acquisition, or numerical simulation were executed.
 ======================================================================
+
+
+CANVAS PROJECTION REVIEW
+- ui.canvas.sld_canvas_projection.SLDCanvasProjection is a renderer-neutral
+  projection of SLD document nodes/connections plus selected Application
+  StudyResult annotations. It does not own MeasurementChannel state.
+- ui.canvas.control_canvas.ControlCanvas is a passive projection of the
+  Application Control read model; ControlWorkspace refreshes it from existing
+  Application events and disposes its subscriptions.
+- ui.protection.protection_workspace.ProtectionGraphicsSurface projects
+  configured Protection input channel IDs as channel/relay-input nodes and
+  connections. ProtectionPresentationDocument owns only canvas node positions
+  and connection routes, not measurement values.
+- These are distinct projections, consistent with the intended architecture,
+  but the inspected canvas projections do not yet expose a shared trace-from-
+  instrument/trace-to-consumer navigation contract or dynamic signal quality/
+  freshness details end-to-end. No new canvas-side signal registry was added.
