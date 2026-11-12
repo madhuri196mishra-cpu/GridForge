@@ -19,7 +19,7 @@ from .component_assembly import (
     DynamicComponentBatchEvaluation,
     evaluate_dynamic_components,
 )
-from .component_contract import DynamicComponentInputs, DynamicStateComponent
+from .component_contract import DynamicComponentInputs, DynamicStateComponent, DynamicTerminalInjection
 from .dynamic_state_layout import DynamicSystemStateLayout
 
 
@@ -53,7 +53,7 @@ class DynamicSystemDerivativeAssembly:
         object.__setattr__(self, "mechanical_powers_pu", MappingProxyType(powers))
 
     @property
-    def terminal_injections(self):
+    def terminal_injections(self) -> tuple[DynamicTerminalInjection, ...]:
         """Phase-resolved equipment current contributions for network assembly."""
         return self.component_evaluation.terminal_injections
 
@@ -88,8 +88,9 @@ def evaluate_composed_dynamic_derivatives(
 
     The network solver must run before this function. The supplied
     `inputs.terminal_voltages` are keyed by authoritative terminal IDs while
-    `bus_voltages` are keyed by the bus IDs consumed by existing machine
-    equations. Each binding explicitly connects all three identities.
+    `bus_voltages` are keyed by canonical bus IDs. Generator bindings also
+    validate their machine-to-bus relationship; motor/load bindings reference
+    their Core equipment and terminal directly without a machine identity.
     """
     if not isinstance(layout, DynamicSystemStateLayout):
         raise TypeError("layout must be DynamicSystemStateLayout")
