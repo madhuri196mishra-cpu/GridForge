@@ -12,7 +12,12 @@ from typing import Callable, Mapping, Sequence
 
 import numpy as np
 
-from core.solver.dynamics.component_assembly import DynamicComponentBinding
+from core.solver.dynamics.component_assembly import DynamicComponentBinding, evaluate_dynamic_components
+from core.solver.dynamics.network_coupling import (
+    DynamicNetworkStageResult,
+    DynamicNetworkSolver,
+    solve_dynamic_network_stage,
+)
 from core.solver.dynamics.component_contract import DynamicComponentInputs, DynamicStateComponent
 from core.solver.dynamics.derivative_assembly import (
     DynamicSystemDerivativeAssembly,
@@ -57,6 +62,7 @@ class GeneratorDynamicStageResult:
     network: GeneratorNetworkStageSolution
     component_inputs: DynamicComponentInputs
     derivative_assembly: DynamicSystemDerivativeAssembly
+    coupled_network: DynamicNetworkStageResult | None = None
 
     def __post_init__(self) -> None:
         if self.excitation.simulation_time_s != self.network.simulation_time_s:
@@ -67,6 +73,11 @@ class GeneratorDynamicStageResult:
             raise GeneratorDynamicStageError("network result AVR provenance differs from excitation snapshot")
         if self.component_inputs.simulation_time_s != self.network.simulation_time_s:
             raise GeneratorDynamicStageError("component input time differs from network stage time")
+        if self.coupled_network is not None:
+            if dict(self.coupled_network.solution.bus_voltages) != dict(self.network.bus_voltages):
+                raise GeneratorDynamicStageError("generator projection and coupled network solution differ")
+            if self.coupled_network.request.simulation_time_s != self.network.simulation_time_s:
+                raise GeneratorDynamicStageError("coupled network stage time differs from generator stage time")
 
 
 def evaluate_generator_dynamic_stage(
@@ -84,6 +95,10 @@ def evaluate_generator_dynamic_stage(
     base_mechanical_powers_pu: Mapping[str, float],
     machine_derivative_evaluator: GeneratorMachineDerivativeEvaluator,
     machine_connection_states: Mapping[str, bool] | None = None,
+    coupled_network_solver: DynamicNetworkSolver | None = None,
+    topology_revision: int | None = None,
+    network_current_bases_a: Mapping[tuple[str, str], float] | None = None,
+    initial_terminal_currents_pu: Mapping[tuple[str, str], complex] | None = None,
 ) -> GeneratorDynamicStageResult:
     """Evaluate a single continuous DAE stage in excitation/network order.
 
@@ -144,10 +159,58 @@ def evaluate_generator_dynamic_stage(
         avrs_by_component={key: value.avr for key, value in by_component.items()},
         states_by_component={key: component_states[key] for key in by_component},
     )
-    network = solve_generator_network_stage(
-        GeneratorNetworkStageRequest(machine_state=machine_state, excitation=snapshot),
-        network_solver,
-    )
+    coupled_result = None
+    if coupled_network_solver is not None:
+        if type(topology_revision) is not int or topology_revision < 0:
+            raise GeneratorDynamicStageError("coupled network stages require a non-negative topology_revision")
+        if not isinstance(network_current_bases_a, Mapping):
+            raise GeneratorDynamicStageError("coupled network stages require host network current bases")
+
+        def evaluate_trial_injections(solution):
+            trial_voltages = terminal_voltage_projector(solution.bus_voltages, binding_values)
+            if not isinstance(trial_voltages, Mapping) or not trial_voltages:
+                raise GeneratorDynamicStageError("terminal voltage projection returned no trial terminal voltages")
+            trial_powers = electrical_power_evaluator(
+                machine_state.copy(), solution.bus_voltages, snapshot.field_voltages_pu
+            )
+            if not isinstance(trial_powers, Mapping):
+                raise GeneratorDynamicStageError("electrical power evaluator returned invalid trial powers")
+            trial_inputs = DynamicComponentInputs(
+                simulation_time_s=float(simulation_time_s),
+                terminal_voltages=trial_voltages,
+                electrical_active_power_pu=trial_powers,
+                mechanical_power_inputs_pu=base_mechanical_powers_pu,
+            )
+            trial_batch = evaluate_dynamic_components(
+                components=component_values,
+                bindings=binding_values,
+                layout=layout,
+                global_state=vector,
+                inputs=trial_inputs,
+            )
+            return trial_batch.terminal_injections
+
+        coupled_result = solve_dynamic_network_stage(
+            machine_state=machine_state,
+            simulation_time_s=float(simulation_time_s),
+            topology_revision=topology_revision,
+            generator_field_voltages_pu=snapshot.field_voltages_pu,
+            network_solver=coupled_network_solver,
+            terminal_injection_evaluator=evaluate_trial_injections,
+            network_current_bases_a=network_current_bases_a,
+            initial_terminal_currents_pu=initial_terminal_currents_pu,
+        )
+        network = GeneratorNetworkStageSolution(
+            simulation_time_s=float(simulation_time_s),
+            bus_voltages=coupled_result.solution.bus_voltages,
+            field_voltages_pu=snapshot.field_voltages_pu,
+            component_ids_by_machine=snapshot.component_ids_by_machine,
+        )
+    else:
+        network = solve_generator_network_stage(
+            GeneratorNetworkStageRequest(machine_state=machine_state, excitation=snapshot),
+            network_solver,
+        )
     terminal_voltages = terminal_voltage_projector(network.bus_voltages, binding_values)
     if not isinstance(terminal_voltages, Mapping) or not terminal_voltages:
         raise GeneratorDynamicStageError("terminal_voltage_projector must return a non-empty terminal mapping")
@@ -189,6 +252,7 @@ def evaluate_generator_dynamic_stage(
         network=network,
         component_inputs=inputs,
         derivative_assembly=assembly,
+        coupled_network=coupled_result,
     )
 
 
