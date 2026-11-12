@@ -32,6 +32,15 @@ class TransformerQuantity(str, Enum):
     PRESSURE_RELIEF_ALARM="pressure_relief_alarm"; SUDDEN_PRESSURE_ALARM="sudden_pressure_alarm"
     DIFFERENTIAL_OPERATE="differential_operate"; THERMAL_ALARM="thermal_alarm"
     TRIP_STATUS="trip_status"; BREAKER_STATUS="breaker_status"
+    BUSHING_LEAKAGE_CURRENT="bushing_leakage_current"; OIL_DIELECTRIC_STRENGTH="oil_dielectric_strength"
+    OIL_ACIDITY="oil_acidity"; OIL_INHIBITOR="oil_inhibitor"; FURAN="furan"
+    DISSOLVED_OXYGEN="dissolved_oxygen"; DISSOLVED_NITROGEN="dissolved_nitrogen"
+    VIBRATION="vibration"; ACOUSTIC_EMISSION="acoustic_emission"
+    CORE_GROUND_CURRENT="core_ground_current"; TAP_TRANSITION_TIME="tap_transition_time"
+    TAP_CONTACT_RESISTANCE="tap_contact_resistance"; FAN_RUNTIME="fan_runtime"
+    PUMP_RUNTIME="pump_runtime"; BREATHER_MOISTURE="breather_moisture"
+    GAS_PRESSURE="gas_pressure"; WINDING_RESISTANCE="winding_resistance"
+    INSULATION_RESISTANCE="insulation_resistance"
 
 @dataclass(frozen=True, slots=True)
 class ChannelDefinition:
@@ -163,6 +172,24 @@ _COMMON = (
     (TransformerQuantity.THERMAL_ALARM,"bool","protection_indication",SignalKind.DIGITAL,"thermal relay indication"),
     (TransformerQuantity.TRIP_STATUS,"bool","protection_indication",SignalKind.DIGITAL,"trip circuit status"),
     (TransformerQuantity.BREAKER_STATUS,"bool","switchgear",SignalKind.DIGITAL,"breaker auxiliary contact"),
+    (TransformerQuantity.BUSHING_LEAKAGE_CURRENT,"mA","bushing",SignalKind.ANALOG,"bushing leakage CT"),
+    (TransformerQuantity.OIL_DIELECTRIC_STRENGTH,"kV","oil_quality",SignalKind.ANALOG,"oil dielectric strength tester"),
+    (TransformerQuantity.OIL_ACIDITY,"mgKOH/g","oil_quality",SignalKind.ANALOG,"oil acidity monitor or lab result"),
+    (TransformerQuantity.OIL_INHIBITOR,"%","oil_quality",SignalKind.ANALOG,"oil inhibitor monitor or lab result"),
+    (TransformerQuantity.FURAN,"ppm","oil_quality",SignalKind.ANALOG,"oil furan laboratory result"),
+    (TransformerQuantity.DISSOLVED_OXYGEN,"ppm","dga",SignalKind.ANALOG,"dissolved gas monitor"),
+    (TransformerQuantity.DISSOLVED_NITROGEN,"ppm","dga",SignalKind.ANALOG,"dissolved gas monitor"),
+    (TransformerQuantity.VIBRATION,"mm/s","mechanical",SignalKind.ANALOG,"vibration sensor"),
+    (TransformerQuantity.ACOUSTIC_EMISSION,"dB","mechanical",SignalKind.ANALOG,"acoustic emission sensor"),
+    (TransformerQuantity.CORE_GROUND_CURRENT,"mA","grounding",SignalKind.ANALOG,"core ground CT"),
+    (TransformerQuantity.TAP_TRANSITION_TIME,"ms","tap_changer",SignalKind.ANALOG,"OLTC timing monitor"),
+    (TransformerQuantity.TAP_CONTACT_RESISTANCE,"microohm","tap_changer",SignalKind.ANALOG,"dynamic resistance measurement"),
+    (TransformerQuantity.FAN_RUNTIME,"h","cooling",SignalKind.COUNTER,"fan runtime counter"),
+    (TransformerQuantity.PUMP_RUNTIME,"h","cooling",SignalKind.COUNTER,"pump runtime counter"),
+    (TransformerQuantity.BREATHER_MOISTURE,"%","oil_system",SignalKind.ANALOG,"breather humidity sensor"),
+    (TransformerQuantity.GAS_PRESSURE,"kPa","gas_system",SignalKind.ANALOG,"gas pressure transmitter"),
+    (TransformerQuantity.WINDING_RESISTANCE,"ohm","diagnostics",SignalKind.ANALOG,"winding resistance test set"),
+    (TransformerQuantity.INSULATION_RESISTANCE,"Mohm","diagnostics",SignalKind.ANALOG,"insulation resistance test set"),
 )
 
 def build_transformer_channel_catalogue(
