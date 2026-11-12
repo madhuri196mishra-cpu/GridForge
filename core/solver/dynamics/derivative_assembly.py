@@ -19,7 +19,7 @@ from .component_assembly import (
     DynamicComponentBatchEvaluation,
     evaluate_dynamic_components,
 )
-from .component_contract import DynamicComponentInputs, DynamicStateComponent
+from .component_contract import DynamicComponentInputs, DynamicStateComponent, DynamicTerminalInjection
 from .dynamic_state_layout import DynamicSystemStateLayout
 
 
@@ -52,6 +52,11 @@ class DynamicSystemDerivativeAssembly:
         object.__setattr__(self, "state_derivatives", derivatives)
         object.__setattr__(self, "mechanical_powers_pu", MappingProxyType(powers))
 
+    @property
+    def terminal_injections(self) -> tuple[DynamicTerminalInjection, ...]:
+        """Phase-resolved equipment current contributions for network assembly."""
+        return self.component_evaluation.terminal_injections
+
 
 MachineDerivativeEvaluator = Callable[..., Sequence[float] | np.ndarray]
 
@@ -83,8 +88,9 @@ def evaluate_composed_dynamic_derivatives(
 
     The network solver must run before this function. The supplied
     `inputs.terminal_voltages` are keyed by authoritative terminal IDs while
-    `bus_voltages` are keyed by the bus IDs consumed by existing machine
-    equations. Each binding explicitly connects all three identities.
+    `bus_voltages` are keyed by canonical bus IDs. Generator bindings also
+    validate their machine-to-bus relationship; motor/load bindings reference
+    their Core equipment and terminal directly without a machine identity.
     """
     if not isinstance(layout, DynamicSystemStateLayout):
         raise TypeError("layout must be DynamicSystemStateLayout")
@@ -128,31 +134,29 @@ def evaluate_composed_dynamic_derivatives(
     for binding in bindings:
         if not isinstance(binding, DynamicComponentBinding):
             raise DynamicDerivativeAssemblyError("bindings must contain DynamicComponentBinding values")
-        if binding.machine_id not in machine_ids:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} references unknown machine {binding.machine_id!r}"
-            )
-        if machine_bus_ids[binding.machine_id] != binding.bus_id:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} bus identity does not match its canonical machine"
-            )
-        if binding.bus_id not in voltages:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} has no solved voltage for bus {binding.bus_id!r}"
-            )
-        if binding.terminal_id not in inputs.terminal_voltages:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} has no voltage for terminal {binding.terminal_id!r}"
-            )
-        if not np.isclose(
-            inputs.terminal_voltages[binding.terminal_id],
-            voltages[binding.bus_id],
-            rtol=1e-9,
-            atol=1e-12,
-        ):
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} terminal voltage is inconsistent with its solved bus voltage"
-            )
+        if binding.machine_id is not None:
+            if binding.machine_id not in machine_ids:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} references unknown machine {binding.machine_id!r}"
+                )
+            if machine_bus_ids[binding.machine_id] != binding.bus_id:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} bus identity does not match its canonical machine"
+                )
+        for terminal_id, bus_id in binding.terminal_bus_ids.items():
+            if bus_id not in voltages:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} has no solved voltage for bus {bus_id!r}"
+                )
+            if terminal_id not in inputs.terminal_voltages:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} has no voltage for terminal {terminal_id!r}"
+                )
+            # Terminal voltage is a host-resolved electrical quantity. For
+            # line-line, delta and DC branches it may be an oriented
+            # difference between multiple bus potentials, not the voltage of
+            # one bus. Topology provenance is validated above; the host owns
+            # the actual terminal-voltage construction.
 
     global_state = layout.pack(machine_vector, component_states)
     component_result = evaluate_dynamic_components(
