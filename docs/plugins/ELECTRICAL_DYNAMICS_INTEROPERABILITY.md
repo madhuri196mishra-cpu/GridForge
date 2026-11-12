@@ -48,7 +48,7 @@ Each plugin retains its specialist model equations and existing study handler:
 - `motor_transient`
 - `load_transient`
 
-Those specialist handlers are not themselves a coupled network solver. A future Application-owned coupled transient assembler must collect selected generator, motor and load model contributions into one global state layout, one algebraic network solve, one integration clock, one accepted-step transaction and one StudyService result/provenance envelope. It must not run three independent simulations and combine plots afterward.
+Those specialist handlers are not themselves a coupled network solver. The canonical solver-facing extension point is already defined by `core.solver.dynamics.component_contract`: `DynamicStateComponent`, `DynamicComponentInputs` and `DynamicComponentEvaluation`. The shared plugin package re-exports those exact Core contracts; it does not define a parallel dynamic-component protocol. The current `DAESolver`/`MultiMachineSystem` do not yet consume the contract. A future Application-owned coupled transient assembler must collect selected generator, motor and load contributions into one global state layout, one algebraic network solve, one integration clock, one accepted-step transaction and one StudyService result/provenance envelope. It must not run three independent simulations and combine plots afterward.
 
 Power-flow demand aggregation must likewise count each physical injection once. ZIP demand is a supported reduced-order load representation; it is not a substitute for detailed motor, converter, furnace or unbalanced phase-domain equations.
 
@@ -70,7 +70,7 @@ No family is labelled reference-validated or field-validated by this integration
 
 ## Remaining integration gates
 
-1. Add one Application-owned model contribution/assembly boundary that accepts validated equipment bindings and specialist model contributions.
+1. Extend the existing Core `DynamicStateComponent` contract into the solver-owned global state/DAE assembly, preserving one integration clock and accepted/rejected-step transaction; do not introduce a second component protocol.
 2. Establish explicit physical-asset equivalence mapping so a detailed motor cannot also be counted as a static load.
 3. Implement global coupled dynamic state layout and stage-synchronous evaluation across generator, motor, load and network algebraic equations.
 4. Connect the shared point metadata to actual canonical MeasurementChannel provisioning and source-terminal validation.
