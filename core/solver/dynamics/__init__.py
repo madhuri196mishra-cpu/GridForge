@@ -45,7 +45,7 @@ from .network_coupling import (
     DynamicNetworkCouplingError,
     DynamicNetworkSolveRequest,
     DynamicNetworkSolver,
-    validate_dynamic_network_solution,
+    validate_dynamic_network_solution,\n    DynamicNetworkStageResult,\n    TerminalInjectionEvaluator,\n    solve_dynamic_network_stage,
 )
 from .events import EventBatchConflictError, EventExecution, EventManager, EventOperation, EventTransition, SimulationEvent
 from .dae_solver import (
@@ -101,7 +101,7 @@ __all__ = [
     "DynamicNetworkCouplingError",
     "DynamicNetworkSolveRequest",
     "DynamicNetworkSolver",
-    "validate_dynamic_network_solution",
+    "validate_dynamic_network_solution",\n    "DynamicNetworkStageResult",\n    "TerminalInjectionEvaluator",\n    "solve_dynamic_network_stage",
     "AlgebraicNetworkSolution",
     "NetworkSolver",
     "MechanicalPowerMap",
