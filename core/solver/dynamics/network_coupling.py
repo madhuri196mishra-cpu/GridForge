@@ -41,8 +41,8 @@ class DynamicNetworkSolveRequest:
             state = np.asarray(self.machine_state, dtype=float).copy()
         except (TypeError, ValueError, OverflowError) as exc:
             raise DynamicNetworkCouplingError("machine_state must be a finite numeric vector") from exc
-        if state.ndim != 1 or state.size == 0 or not np.all(np.isfinite(state)):
-            raise DynamicNetworkCouplingError("machine_state must be a finite non-empty vector")
+        if state.ndim != 1 or not np.all(np.isfinite(state)):
+            raise DynamicNetworkCouplingError("machine_state must be a finite one-dimensional vector (empty when no generators are present)")
         if isinstance(self.simulation_time_s, bool) or not isinstance(
             self.simulation_time_s, (int, float)
         ) or not np.isfinite(float(self.simulation_time_s)) or self.simulation_time_s < 0:
