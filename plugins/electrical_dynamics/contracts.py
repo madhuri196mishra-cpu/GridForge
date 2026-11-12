@@ -159,6 +159,33 @@ class DynamicsModelCapability:
             raise ValueError("catalogue-only models cannot advertise executable study types")
 
 
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicsParticipant:
+    """Pair one canonical Core equipment reference with one plugin model capability."""
+    equipment: DynamicsEquipmentBinding
+    capability: DynamicsModelCapability
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.equipment, DynamicsEquipmentBinding):
+            raise TypeError("equipment must be DynamicsEquipmentBinding")
+        if not isinstance(self.capability, DynamicsModelCapability):
+            raise TypeError("capability must be DynamicsModelCapability")
+        expected = _CORE_EQUIPMENT_TYPES[self.capability.equipment_kind]
+        if self.equipment.equipment_type is not expected:
+            raise ValueError(
+                "plugin model capability equipment kind does not match canonical Core equipment type"
+            )
+
+
+def participant_from_endpoint(
+    endpoint: EndpointReference,
+    capability: DynamicsModelCapability,
+) -> DynamicsParticipant:
+    """Bind a specialist capability to a Core terminal owner's immutable identity."""
+    return DynamicsParticipant(equipment_binding_from_endpoint(endpoint), capability)
+
 def validate_unique_equipment_participants(
     bindings: Iterable[DynamicsEquipmentBinding],
 ) -> tuple[DynamicsEquipmentBinding, ...]:
@@ -173,8 +200,8 @@ def validate_unique_equipment_participants(
 
 
 __all__ = [
-    "DynamicsEquipmentKind", "DynamicsModelReadiness", "DynamicsEquipmentBinding",
+    "DynamicsEquipmentKind", "DynamicsModelReadiness", "DynamicsEquipmentBinding", "DynamicsParticipant",
     "MeasurementPointContract", "DynamicsModelCapability",
-    "equipment_binding_from_endpoint", "normalize_measurement_points",
+    "equipment_binding_from_endpoint", "participant_from_endpoint", "normalize_measurement_points",
     "validate_unique_equipment_participants",
 ]
