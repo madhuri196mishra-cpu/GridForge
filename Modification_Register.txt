@@ -3185,3 +3185,6 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
 - Root-main cable/core/terminal/signal-loop schedule APIs are read-only projections. They do not introduce physical tray/conduit routing; physical routing is excluded per user direction.
 - Source baseline root main `c75b3a43ce4125d787dc9bd584313430d95d9691`; Madhuri base `7a9f5374d5f121dc4a81b3e1571f9d8cddbba263`.
 - Static fetch-back only; no imports, tests, CI, startup, GUI or persistence runtime checks.
+
+- Added the root-main read-only `SLDInstrumentationWiringAdapter` and projection records. It consumes the detached Application wiring read model and maps stable carrier/core/signal identities to SLD endpoint/route presentation; it does not create electrical network connections.
+- Added semantic event publication for wiring and temperature inventory mutations and subscribed SLD, Control and Protection refresh coordinators to wiring changes. This provides refresh invalidation only; it does not yet create complete instrument/cable objects in all three canvas renderers or bidirectional trace navigation.
