@@ -89,6 +89,7 @@ def main_smoke() -> None:
                 project_id=draft.project_id,
                 activation_generation=draft.activation_generation,
                 draft_network=draft.to_dict(),
+                document_id=application.presentation.document_id,
             )
         )
         if not commit_result.success:

@@ -14,6 +14,18 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 
+def _canonical_value(value: Any) -> Any:
+    """Normalize nested immutable containers to stable snapshot containers."""
+    if isinstance(value, Mapping):
+        return {str(key): _canonical_value(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_canonical_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted((_canonical_value(item) for item in value), key=repr)
+    return deepcopy(value)
+
+
+
 @dataclass(frozen=True, slots=True)
 class DraftEndpointReference:
     """Stable authoring identity for a draft terminal or a Bus attachment."""
@@ -201,17 +213,26 @@ class DraftEquipment:
         object.__setattr__(self, "command_field_dispositions", MappingProxyType(dispositions))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"draft_id": self.draft_id, "equipment_type": self.equipment_type, "display_name": self.display_name,
-                "terminal_contract": list(self.terminal_contract), "engineering_data": deepcopy(dict(self.engineering_data)),
-                "endpoints": {k: v.to_dict() for k, v in self.endpoints.items()},
-                "placement": None if self.placement is None else list(self.placement),
-                "presentation": deepcopy(dict(self.presentation)), "validation_state": deepcopy(dict(self.validation_state)),
-                "command_type": self.command_type, "id_field": self.id_field,
-                "parameter_mapping": dict(self.parameter_mapping), "endpoint_mapping": dict(self.endpoint_mapping),
-                "required_connection_terminals": list(self.required_connection_terminals),
-                "parameter_contract": [dict(x) for x in self.parameter_contract],
-                "conditional_requirements": [dict(x) for x in self.conditional_requirements],
-                "command_field_dispositions": {k: dict(v) for k, v in self.command_field_dispositions.items()}, "layer_id": self.layer_id}
+        return {
+            "draft_id": self.draft_id,
+            "equipment_type": self.equipment_type,
+            "display_name": self.display_name,
+            "terminal_contract": list(self.terminal_contract),
+            "engineering_data": _canonical_value(self.engineering_data),
+            "endpoints": _canonical_value({key: endpoint.to_dict() for key, endpoint in self.endpoints.items()}),
+            "placement": None if self.placement is None else list(self.placement),
+            "presentation": _canonical_value(self.presentation),
+            "validation_state": _canonical_value(self.validation_state),
+            "command_type": self.command_type,
+            "id_field": self.id_field,
+            "parameter_mapping": _canonical_value(self.parameter_mapping),
+            "endpoint_mapping": _canonical_value(self.endpoint_mapping),
+            "required_connection_terminals": list(self.required_connection_terminals),
+            "parameter_contract": _canonical_value(self.parameter_contract),
+            "conditional_requirements": _canonical_value(self.conditional_requirements),
+            "command_field_dispositions": _canonical_value(self.command_field_dispositions),
+            "layer_id": self.layer_id,
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "DraftEquipment":
@@ -294,22 +315,13 @@ class DraftConnection:
     def target_terminal(self) -> str | None: return self.target.terminal_role
 
     def to_dict(self) -> dict[str, Any]:
-        def canonical_value(value: Any) -> Any:
-            # Command payloads thaw immutable tuples into lists. Keep nested
-            # route metadata canonical across that round-trip.
-            if isinstance(value, Mapping):
-                return {str(key): canonical_value(item) for key, item in value.items()}
-            if isinstance(value, (tuple, list)):
-                return [canonical_value(item) for item in value]
-            return deepcopy(value)
-
         return {
             "connection_id": self.connection_id,
             "source": self.source.to_dict(),
             "target": self.target.to_dict(),
             "connection_kind": self.connection_kind,
-            "route": canonical_value(self.route),
-            "validation_state": canonical_value(self.validation_state),
+            "route": _canonical_value(self.route),
+            "validation_state": _canonical_value(self.validation_state),
             "layer_id": self.layer_id,
         }
 
@@ -646,7 +658,15 @@ class DraftNetwork:
     def restore_snapshot(self, snapshot: Mapping[str, Any]) -> None:
         restored = DraftNetwork.from_dict(snapshot, project_id=self.project_id, activation_generation=self.activation_generation)
         self._equipment = restored._equipment; self._connections = restored._connections; self.validation_state = restored.validation_state
-    def to_dict(self) -> dict[str, Any]: return {"schema": self.SCHEMA, "project_id": self.project_id, "activation_generation": self.activation_generation, "equipment": [x.to_dict() for x in self.equipment], "connections": [x.to_dict() for x in self.connections], "validation_state": deepcopy(self.validation_state)}
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "project_id": self.project_id,
+            "activation_generation": self.activation_generation,
+            "equipment": [item.to_dict() for item in self.equipment],
+            "connections": [item.to_dict() for item in self.connections],
+            "validation_state": _canonical_value(self.validation_state),
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], *, project_id: str, activation_generation: int) -> "DraftNetwork":

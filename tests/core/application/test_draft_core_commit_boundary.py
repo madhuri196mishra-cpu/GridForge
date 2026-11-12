@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from core.application.errors import ExecutionError
+
 from core.application.bootstrap import create_application
 from core.application.commands.draft_commands import (
     AddDraftEquipmentCommand,
@@ -11,6 +13,7 @@ from core.application.creation import CreationCommitIntent, CreationCommandPrepa
 from core.application.creation_schema import creation_contracts_from_definitions
 
 _CANONICAL_CREATION_CONTRACTS = creation_contracts_from_definitions()
+from core.application.draft.handlers import _thaw_payload
 from core.application.draft.network import (
     DraftConnection,
     DraftEndpointReference,
@@ -144,15 +147,41 @@ def _breaker(draft_id: str) -> DraftEquipment:
     )
 
 
+def _attach_sld_document(app) -> SLDDocument:
+    project_id = app.project_lifecycle.context.project_id
+    document = SLDDocument(f"{project_id}:sld", project_id=project_id)
+    app.project_lifecycle.activate_presentation(document)
+    app.attach_sld_service(SLDService(
+        document,
+        symbol_presentation_factory=lambda element_type: {
+            "symbol_id": f"test-symbol-{element_type}",
+            "definition_id": f"test-definition-{element_type}",
+            "standard_reference_id": f"test-standard-{element_type}",
+        },
+    ))
+    return document
+
+
 def _commit(app, draft: DraftNetwork):
+    document = _attach_sld_document(app)
     app.set_draft_network(draft)
-    return app.execute(
-        CommitNetworkCommand(
-            project_id=draft.project_id,
-            activation_generation=draft.activation_generation,
-            draft_network=draft.to_dict(),
-        )
+    command = CommitNetworkCommand(
+        project_id=draft.project_id,
+        activation_generation=draft.activation_generation,
+        draft_network=app.draft_network.to_dict(),
+        document_id=document.document_id,
     )
+    active = app._draft_network_for_command(document.document_id)
+    round_trip = DraftNetwork.from_dict(
+        _thaw_payload(command.payload["draft_network"]),
+        project_id=draft.project_id,
+        activation_generation=draft.activation_generation,
+    )
+    assert round_trip.to_dict() == active.to_dict(), (
+        "immutable CommitNetworkCommand payload must round-trip to the active "
+        "document DraftNetwork snapshot"
+    )
+    return app.execute(command)
 
 
 
@@ -246,7 +275,7 @@ def test_creation_intent_matches_canonical_preparer_for_bus_transformer_breaker(
 
 def test_commit_prepares_multiple_equipment_deterministically_and_clears_draft():
     app = create_application(Network())
-    draft = DraftNetwork("project-1", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
     draft.add_equipment(_transformer("t2"))
     draft.add_equipment(_bus("b1"))
     draft.add_equipment(_bus("b2"))
@@ -269,7 +298,7 @@ def test_commit_prepares_multiple_equipment_deterministically_and_clears_draft()
 
 def test_commit_rejects_missing_required_engineering_data_before_core_mutation():
     app = create_application(Network())
-    draft = DraftNetwork("project-2", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
     invalid = _transformer("t-invalid")
     invalid = DraftEquipment(
         **{
@@ -292,7 +321,7 @@ def test_commit_rejects_missing_required_engineering_data_before_core_mutation()
 
 def test_commit_rejects_core_identity_collision_before_mutation():
     app = create_application(Network())
-    draft = DraftNetwork("project-3", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
     draft.add_equipment(_bus("b1"))
 
     # Establish the exact deterministic Core identity expected from the
@@ -341,7 +370,7 @@ def test_draft_endpoint_translation_maps_draft_bus_and_terminal_to_core_identity
 
 def test_commit_undo_restores_draft_and_redo_recommits():
     app = create_application(Network())
-    draft = DraftNetwork("project-undo", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
     draft.add_equipment(_bus("b1"))
 
     assert _commit(app, draft).success
@@ -371,25 +400,37 @@ def _route() -> dict:
 
 def _commit_with_sld(draft: DraftNetwork):
     app = create_application(Network())
-    document = SLDDocument("route:sld", project_id=draft.project_id)
+    project_id = app.project_lifecycle.context.project_id
+    draft_data = draft.to_dict()
+    draft_data["project_id"] = project_id
+    draft_data["activation_generation"] = app.project_lifecycle.activation_generation
+    draft = DraftNetwork.from_dict(
+        draft_data,
+        project_id=project_id,
+        activation_generation=app.project_lifecycle.activation_generation,
+    )
+    document = SLDDocument("route:sld", project_id=project_id)
+    app.project_lifecycle.activate_presentation(document)
     app.attach_sld_service(SLDService(
         document,
         symbol_presentation_factory=lambda element_type: {
             "symbol_id": f"test-symbol-{element_type}",
             "definition_id": f"test-definition-{element_type}",
+            "standard_reference_id": f"test-standard-{element_type}",
         },
     ))
     app.set_draft_network(draft)
     result = app.execute(CommitNetworkCommand(
         project_id=draft.project_id,
         activation_generation=draft.activation_generation,
-        draft_network=draft.to_dict(),
+        draft_network=app.draft_network.to_dict(),
+        document_id=document.document_id,
     ))
     return app, result, document
 
 def test_valid_draft_connection_commits_as_core_simple_wire():
     app = create_application(Network())
-    draft = DraftNetwork("project-4", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
     bus = _bus("b1")
     transformer = _transformer("t1")
     draft.add_equipment(bus)
@@ -474,7 +515,7 @@ def test_commit_route_save_reload_preserves_persistent_sld_route(tmp_path):
     assert result.success
 
     path = tmp_path / "route-roundtrip.gridforge"
-    context = ProjectContext(draft.project_id, "Route Persistence", None)
+    context = ProjectContext(app.project_lifecycle.context.project_id, "Route Persistence", None)
     ProjectPersistenceService().save(context, app._command_manager.context.network, document.to_dict(), path)
     loaded = ProjectPersistenceService().load(path)
     restored = SLDDocument.from_dict(loaded.presentation)
@@ -484,23 +525,30 @@ def test_commit_route_save_reload_preserves_persistent_sld_route(tmp_path):
 
 def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
     app = create_application(Network())
-    draft = DraftNetwork("project-stale-snapshot", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
+    document = _attach_sld_document(app)
     draft.add_equipment(_bus("b1"))
     app.set_draft_network(draft)
-    stale_payload = draft.to_dict()
+    stale_payload = app.draft_network.to_dict()
 
     # Model a later, valid Application-owned authoring command after the
     # original commit snapshot was captured.
-    app.execute(AddDraftEquipmentCommand(equipment=_bus("b2").to_dict()))
+    app.execute(AddDraftEquipmentCommand(
+        equipment=_bus("b2").to_dict(),
+        document_id=document.document_id,
+    ))
 
-    with pytest.raises(ValueError, match="current active DraftNetwork snapshot"):
+    with pytest.raises(ExecutionError, match="network.commit_draft") as error:
         app.execute(
             CommitNetworkCommand(
                 project_id=draft.project_id,
                 activation_generation=draft.activation_generation,
                 draft_network=stale_payload,
+                document_id=document.document_id,
             )
         )
+    assert isinstance(error.value.__cause__, ValueError)
+    assert "current active DraftNetwork snapshot" in str(error.value.__cause__)
 
     assert app.read_network().elements == ()
     assert {item.draft_id for item in app.draft_network.equipment} == {"b1", "b2"}
@@ -508,7 +556,8 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
 
 def test_application_draft_network_exposes_only_detached_snapshots():
     app = create_application(Network())
-    supplied = DraftNetwork("project-detached-draft", 1)
+    document = _attach_sld_document(app)
+    supplied = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
     supplied.add_equipment(_bus("b1"))
     app.set_draft_network(supplied)
 
@@ -523,13 +572,13 @@ def test_application_draft_network_exposes_only_detached_snapshots():
     assert {item.draft_id for item in app.draft_network.equipment} == {"b1"}
 
     # Active authoring changes remain available through Application commands.
-    app.execute(AddDraftEquipmentCommand(equipment=_bus("b2").to_dict()))
+    app.execute(AddDraftEquipmentCommand(equipment=_bus("b2").to_dict(), document_id=document.document_id))
     assert {item.draft_id for item in app.draft_network.equipment} == {"b1", "b2"}
 
 
 def test_empty_draft_commit_is_rejected_and_retained():
     app = create_application(Network())
-    draft = DraftNetwork("project-5", 1)
+    draft = DraftNetwork(app.project_lifecycle.context.project_id, app.project_lifecycle.activation_generation)
 
     with pytest.raises(Exception):
         _commit(app, draft)
@@ -583,6 +632,8 @@ def test_draft_connection_presentation_layer_round_trips_and_survives_route_upda
     }).layer_id == "default"
 
     draft = DraftNetwork("project-layer-wire", 1)
+    draft.add_equipment(_breaker("layered-source"))
+    draft.add_equipment(_breaker("layered-target"))
     draft.add_connection(restored)
     updated = draft.update_connection_route(
         "layered-wire",
