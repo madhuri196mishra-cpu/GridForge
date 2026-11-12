@@ -12,7 +12,7 @@ from core.solver.dynamics.derivative_assembly import (
     MachineDerivativeEvaluator, evaluate_composed_dynamic_derivatives,
 )
 from core.solver.dynamics.component_contract import (
-    DynamicComponentInputs, DynamicComponentEvaluation, DynamicStateComponent,
+    DynamicComponentInputs, DynamicComponentEvaluation, DynamicTerminalInjection, DynamicStateComponent,
     validate_dynamic_state_component,
 )
 from .contracts import (
@@ -30,7 +30,7 @@ from .contracts import (
 
 __all__ = [
     "ElectricalDynamicsComposition", "require_electrical_dynamics_composition",
-    "DynamicComponentInputs", "DynamicComponentEvaluation", "DynamicStateComponent",
+    "DynamicComponentInputs", "DynamicComponentEvaluation", "DynamicTerminalInjection", "DynamicStateComponent",
     "validate_dynamic_state_component",
     "DynamicDerivativeAssemblyError", "DynamicSystemDerivativeAssembly",
     "MachineDerivativeEvaluator", "evaluate_composed_dynamic_derivatives",
