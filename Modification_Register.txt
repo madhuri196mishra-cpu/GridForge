@@ -3175,3 +3175,58 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+
+======================================================================
+GRIDFORGE V2 — ELECTRICAL DYNAMICS INTEROPERABILITY (ASSEMBLY BASELINE)
+Date: 12 November 2026
+Implementation repository: madhuri196mishra-cpu/GridForge
+Implementation branch: electrical-dynamics-interoperability
+Baseline: latest generator-dynamics-plugin including Core component assembly
+
+- Created this integration branch from the latest generator-dynamics branch,
+  preserving its current Core component contract, global state layout,
+  component assembly, generator GGOV1 binding, and latest motor family/solver
+  work at branch creation.
+- Ported the Load Dynamics package and its design record; the original
+  load-dynamics-plugin branch remains intact.
+- Added shared electrical-dynamics metadata contracts for references to
+  canonical Core equipment identities, normalized family-specific
+  measurement-point definitions, model readiness, and duplicate equipment
+  participant rejection.
+- Re-exported the existing Core DynamicStateComponent,
+  DynamicComponentInputs, DynamicComponentEvaluation,
+  DynamicSystemStateLayout, DynamicComponentBinding,
+  DynamicComponentBatchEvaluation and evaluate_dynamic_components contracts.
+  No competing dynamic component, global state layout or component assembly
+  protocol was created.
+- Generator, motor and load plugin activation now resolves one
+  Application-supplied electrical_dynamics_composition object from
+  PluginContext.services. Specialist plugin hooks remain capabilities on
+  that one host object; Application owns its implementation and lifecycle.
+- The canonical Core component assembly currently handles controller-style
+  derivative contributions and generator mechanical-power handoff. It does
+  not yet emit dynamic motor/load terminal current or power injections, and
+  the DAE does not yet execute a complete coupled generator/motor/load step.
+  This remains an explicit Core solver integration gate, not a claimed
+  completed capability.
+- Documented no-double-counting: one physical motor may not contribute both
+  its detailed motor terminal injection and a separate static load injection
+  in the same study. Cross-type physical asset equivalence requires an
+  explicit host-owned mapping.
+- Load ZIP equations remain experimental model data and do not advertise an
+  integrated power-flow or transient study. Motor readiness follows existing
+  family profiles; generator transient solver remains host-supplied.
+- Repaired literal escaped-newline sequences in Core dynamic solver and
+  generator/motor package exports encountered on the latest generator branch;
+  removed duplicated motor package export and repeated manifest capability.
+- Remaining: typed motor/load terminal injection contributions, coupled DAE
+  stage assembly, accepted/rejected-step rollback integration, physical asset
+  equivalence, host composition-root implementation, canonical measurement
+  provisioning, persistence/UI integration and model reference validation.
+- Verification: source-level fetch-back and architecture reconciliation
+  only. No tests, CI, imports, startup, GUI, coupled simulation, hardware
+  probing or commissioning were run. No merge to main and no changes to
+  SubhenduMishra29/GridForge.
+======================================================================
