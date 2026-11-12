@@ -138,6 +138,11 @@ def _shutdown_components(*, ui_lifecycle: UILifecycle, workspace_controller: Wor
     _invoke_cleanup(plugin_manager.shutdown_all, errors)
     if engineering_plugin_host is not None:
         _invoke_cleanup(engineering_plugin_host.shutdown_all, errors)
+    if application is not None:
+        dynamics_composition = getattr(application, "electrical_dynamics_composition", None)
+        close_dynamics_composition = getattr(dynamics_composition, "close", None)
+        if callable(close_dynamics_composition):
+            _invoke_cleanup(close_dynamics_composition, errors)
     if errors: raise errors[0]
 
 
