@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
 
+from core.model.transformer import Transformer
+
 class TransformerFamily(str, Enum):
     POWER="power"; DISTRIBUTION="distribution"; AUTOTRANSFORMER="autotransformer"
     INSTRUMENT_CURRENT="instrument_current"; INSTRUMENT_POTENTIAL="instrument_potential"
@@ -92,3 +94,22 @@ class TransformerProfile:
             InsulationSystem.MINERAL_OIL, InsulationSystem.NATURAL_ESTER,
             InsulationSystem.SYNTHETIC_ESTER, InsulationSystem.SILICONE_FLUID,
         }
+
+
+def validate_transformer_profile_windings(
+    profile: TransformerProfile,
+    transformer: Transformer,
+) -> tuple[str, ...]:
+    """Require plugin profile winding IDs to match the authoritative Core model."""
+    if not isinstance(profile, TransformerProfile):
+        raise TypeError("profile must be a TransformerProfile.")
+    if not isinstance(transformer, Transformer):
+        raise TypeError("transformer must be a Core Transformer.")
+    if profile.transformer_id != transformer.id:
+        raise ValueError("Transformer profile equipment identity does not match the Core Transformer.")
+    core_winding_ids = tuple(item.winding_id for item in transformer.windings)
+    if tuple(profile.winding_ids) != core_winding_ids:
+        raise ValueError(
+            "Transformer profile winding_ids must exactly match the ordered canonical Core Transformer winding IDs."
+        )
+    return core_winding_ids
