@@ -17,7 +17,7 @@ from core.application.services._model_service_support import ModelServiceSupport
 from core.application.transaction import Transaction
 from core.model.bus import Bus
 from core.model.terminal import Terminal
-from core.model.transformer import Transformer, TransformerWindingConnection
+from core.model.transformer import Transformer, TransformerWinding, TransformerWindingConnection
 from core.model.transformer_zero_sequence_contracts import TransformerVectorGroupConfiguration, TransformerZeroSequenceTestConfiguration
 from core.model.transformer_zero_sequence_test_data import TransformerZeroSequenceTwoWindingTestData
 from core.model.transformer_zero_sequence_multiport_evidence import TransformerZeroSequenceMultiportEvidence, TransformerDeltaLoopState
@@ -164,6 +164,7 @@ class TransformerModelService(ModelServiceSupport):
         in_service: bool | None = None,
         hv_winding_connection: TransformerWindingConnection | str | None = None,
         lv_winding_connection: TransformerWindingConnection | str | None = None,
+        windings: tuple[TransformerWinding, ...] | object = ...,
         hv_neutral_grounding_impedance_ohm: complex | None = None,
         lv_neutral_grounding_impedance_ohm: complex | None = None,
         hv_neutral_earth_return_impedance_ohm: complex | None | object = ...,
@@ -220,7 +221,7 @@ class TransformerModelService(ModelServiceSupport):
             zero_sequence_resistance_ohm, zero_sequence_reactance_ohm,
             core_construction, zero_sequence_test_basis,
             vector_group_configuration, zero_sequence_test_configuration,
-            zero_sequence_two_winding_test_data,
+            zero_sequence_two_winding_test_data, windings,
             phase_domain_terminal_admittance_siemens, zero_sequence_multiport_evidence,
             phase_domain_delta_loop_states, phase_domain_multiport_tap_ratio, phase_domain_multiport_phase_shift_rad,
         )
@@ -256,6 +257,7 @@ class TransformerModelService(ModelServiceSupport):
             "in_service": transformer.in_service,
             "hv_winding_connection": transformer.hv_winding_connection,
             "lv_winding_connection": transformer.lv_winding_connection,
+            "windings": transformer.configured_windings,
             "hv_neutral_grounding_impedance_ohm": transformer.hv_neutral_grounding_impedance_ohm,
             "lv_neutral_grounding_impedance_ohm": transformer.lv_neutral_grounding_impedance_ohm,
             "hv_neutral_earth_return_impedance_ohm": transformer.hv_neutral_earth_return_impedance_ohm,
@@ -309,6 +311,7 @@ class TransformerModelService(ModelServiceSupport):
                 )
             )
         )
+        winding_configuration_changed = windings is not ... and tuple(windings) != old_state["windings"]
         multiport_configuration_changed = replace_phase_domain_multiport_configuration and any(
             old_state[key] != value
             for key, value in (
@@ -335,6 +338,8 @@ class TransformerModelService(ModelServiceSupport):
             in_service=in_service,
             hv_winding_connection=hv_winding_connection,
             lv_winding_connection=lv_winding_connection,
+            windings=None if windings is ... else windings,
+            _replace_windings=windings is not ...,
             hv_neutral_grounding_impedance_ohm=hv_neutral_grounding_impedance_ohm,
             lv_neutral_grounding_impedance_ohm=lv_neutral_grounding_impedance_ohm,
             hv_neutral_earth_return_impedance_ohm=hv_neutral_earth_return_impedance_ohm,
@@ -362,7 +367,7 @@ class TransformerModelService(ModelServiceSupport):
             _replace_phase_domain_multiport_configuration=replace_phase_domain_multiport_configuration,
         )
 
-        if service_state_changed or physical_topology_changed or multiport_configuration_changed:
+        if service_state_changed or physical_topology_changed or winding_configuration_changed or multiport_configuration_changed:
             self._network.invalidate_topology()
 
         def restore() -> None:
@@ -371,8 +376,10 @@ class TransformerModelService(ModelServiceSupport):
                 _replace_physical_conductor_configuration=True,
                 _replace_phase_domain_multiport_configuration=True,
                 _replace_winding_configuration=True,
+                windings=old_state["windings"],
+                _replace_windings=True,
             )
-            if service_state_changed or physical_topology_changed or multiport_configuration_changed:
+            if service_state_changed or physical_topology_changed or winding_configuration_changed or multiport_configuration_changed:
                 self._network.invalidate_topology()
 
         transaction.record_undo(restore)
