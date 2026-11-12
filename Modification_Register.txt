@@ -3252,3 +3252,21 @@ Follow-up source reconciliation — 12 November 2026:
 - Verification: GitHub source fetch-back, shared-key inspection and static
   duplicate point inspection only. No tests, imports, runtime, GUI or
   numerical execution were performed.
+
+
+
+Application read-model ownership reconciliation — 12 November 2026:
+- MotorDynamicsPlugin previously constructed MotorSimulationReadModelStore
+  itself and cleared it during plugin shutdown. This created plugin-owned
+  projection lifetime contrary to the frozen Application read-model
+  ownership boundary.
+- The shared electrical_dynamics_composition contract now supplies
+  motor_read_models. MotorDynamicsPlugin validates the required publish,
+  study lookup, summary and channel-read methods and uses that Application-
+  owned projection for its result publisher and optional dashboard.
+- Plugin shutdown now releases its subscribers/dashboard and drops its
+  reference; it does not clear the Application-owned read model store.
+- The MotorSimulationReadModelStore DTO implementation remains the projection
+  shape, but its instance lifecycle belongs to Application composition.
+- Verification: source fetch-back and ownership/call-site inspection only;
+  no tests, imports, GUI or runtime experiments were run.
