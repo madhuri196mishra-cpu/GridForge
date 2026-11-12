@@ -9,6 +9,7 @@ DAE evaluation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import fsum, isfinite
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -221,9 +222,57 @@ def evaluate_dynamic_components(
     )
 
 
+def aggregate_dynamic_terminal_injections(
+    injections: Sequence[DynamicTerminalInjection],
+    *,
+    current_bases_a: Mapping[tuple[str, str], float],
+) -> Mapping[tuple[str, str], complex]:
+    """Convert and sum device currents on each network terminal/phase base.
+
+    Each source contribution carries its own ampere base. The host supplies
+    the target network current base for each (terminal_id, phase_id), which
+    permits correct aggregation when source/return terminals use different
+    voltage bases. This function does not resolve terminal-to-bus topology or
+    invoke a network solver.
+    """
+    values = tuple(injections)
+    if any(not isinstance(item, DynamicTerminalInjection) for item in values):
+        raise DynamicComponentAssemblyError(
+            "injections must contain DynamicTerminalInjection values"
+        )
+    ids = [item.injection_id for item in values]
+    if len(ids) != len(set(ids)):
+        raise DynamicComponentAssemblyError("terminal injection identities must be unique")
+    grouped: dict[tuple[str, str], list[tuple[str, complex]]] = {}
+    for item in values:
+        key = (item.terminal_id, item.phase_id)
+        base = current_bases_a.get(key)
+        if isinstance(base, bool) or not isinstance(base, (int, float)) or not isfinite(float(base)) or base <= 0.0:
+            raise DynamicComponentAssemblyError(
+                f"network current base for terminal/phase {key!r} must be finite and positive"
+            )
+        amperes = item.current_injection_pu * item.current_base_a
+        network_pu = amperes / float(base)
+        if not (isfinite(network_pu.real) and isfinite(network_pu.imag)):
+            raise DynamicComponentAssemblyError(
+                f"aggregated current for terminal/phase {key!r} is non-finite"
+            )
+        grouped.setdefault(key, []).append((item.injection_id, network_pu))
+
+    aggregated: dict[tuple[str, str], complex] = {}
+    for key in sorted(grouped):
+        ordered = sorted(grouped[key], key=lambda item: item[0])
+        aggregated[key] = complex(
+            fsum(value.real for _, value in ordered),
+            fsum(value.imag for _, value in ordered),
+        )
+    return MappingProxyType(aggregated)
+
+
 __all__ = [
     "DynamicComponentAssemblyError",
     "DynamicComponentBinding",
     "DynamicComponentBatchEvaluation",
     "evaluate_dynamic_components",
+    "aggregate_dynamic_terminal_injections",
 ]
