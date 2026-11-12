@@ -21,13 +21,17 @@ def _snapshot(*, units="sld-unit") -> SLDExportSnapshot:
 
 
 def _mapping(*, units="sld-unit", scale=2.0) -> SLDCoordinateTransform:
-    return SLDCoordinateTransform(
+    values = dict(
         mapping_id="site-grid-01", mapping_version="1.0.0",
         source_coordinate_system="sld-document-local", source_units=units,
         millimetres_per_source_unit=scale,
         world_origin_x_mm=1000.0, world_origin_y_mm=2000.0,
         rotation_degrees=90.0, reviewer="engineering-review",
         reviewed_on="2026-11-03", review_reference="review:DWG-COORD-001",
+    )
+    return SLDCoordinateTransform(
+        **values,
+        reviewed_mapping_fingerprint=SLDCoordinateTransform.calculate_fingerprint(**values),
     )
 
 
@@ -105,6 +109,7 @@ def test_adapter_transforms_all_entity_geometry_and_records_review_provenance() 
     assert by_id["arc"].geometry["start_angle"] == pytest.approx(90.0)
     evidence = by_id["symbol"].metadata["coordinate_transform"]
     assert evidence["review_reference"] == "review:DWG-COORD-001"
+    assert evidence["mapping_fingerprint"] == _mapping().fingerprint
     assert evidence["target_units"] == "mm"
 
 
@@ -125,6 +130,7 @@ def test_transform_rejects_invalid_scale_and_missing_review_evidence() -> None:
             source_units="sld-unit", millimetres_per_source_unit=1,
             world_origin_x_mm=0, world_origin_y_mm=0, rotation_degrees=0,
             reviewer="reviewer", reviewed_on="2026-11-03", review_reference=" ",
+            reviewed_mapping_fingerprint="0" * 64,
         )
 
 
