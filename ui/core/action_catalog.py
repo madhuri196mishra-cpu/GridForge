@@ -62,6 +62,7 @@ _SURFACE_ACTIONS: tuple[ActionDefinition, ...] = (
     ActionDefinition("view.toggle_messages", "Messages", "Show or hide messages and diagnostics in the active workspace.", category="view", checkable=True),
     ActionDefinition("view.toggle_tool_settings", "Tool Settings", "Show or hide contextual tool settings in the active workspace.", category="view", checkable=True),
     ActionDefinition("view.equipment_browser", "Equipment Browser", "Open the equipment browser.", category="workspace"),
+    ActionDefinition("view.layers", "SLD Layers", "Show or hide the SLD layer manager.", category="view", checkable=True),
     ActionDefinition("control.panel", "Control Workspace", "Activate the Control workspace.", category="workspace"),
     ActionDefinition("protection.panel", "Protection Workspace", "Activate the Protection workspace.", category="workspace"),
     ActionDefinition("study.cases", "Study Cases", "Open Study Cases.", category="study"),
