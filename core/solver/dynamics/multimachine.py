@@ -642,6 +642,8 @@ class MultiMachineSystem:
             str,
             complex
         ],
+        *,
+        field_voltages: Mapping[str, float] | None = None,
     ) -> dict[
         str,
         MachineElectricalOutput
@@ -655,6 +657,7 @@ class MultiMachineSystem:
                 state
             )
         )
+        field_voltages = self._validate_field_voltages(field_voltages)
 
         outputs: dict[
             str,
@@ -690,6 +693,7 @@ class MultiMachineSystem:
                         bus_id
                     ]
                 ),
+                field_voltage=field_voltages.get(machine_id),
             )
 
         return outputs
@@ -701,6 +705,8 @@ class MultiMachineSystem:
             str,
             complex
         ],
+        *,
+        field_voltages: Mapping[str, float] | None = None,
     ) -> dict[
         str,
         float
@@ -713,6 +719,7 @@ class MultiMachineSystem:
             self.electrical_outputs(
                 state,
                 terminal_voltages,
+                field_voltages=field_voltages,
             )
         )
 
@@ -742,6 +749,7 @@ class MultiMachineSystem:
         ],
         *,
         machine_connection_states: Mapping[str, bool] | None = None,
+        field_voltages: Mapping[str, float] | None = None,
         time: float = 0.0,
     ) -> np.ndarray:
         """
@@ -759,6 +767,7 @@ class MultiMachineSystem:
                 )
             if any(type(value) is not bool for value in machine_connection_states.values()):
                 raise MultiMachineError("Machine connection states must be explicit bool values.")
+        field_voltages = self._validate_field_voltages(field_voltages)
 
         local_states = (
             self.unpack_states(
@@ -777,6 +786,7 @@ class MultiMachineSystem:
                 terminal_voltages=(
                     terminal_voltages
                 ),
+                field_voltages=field_voltages,
             )
         )
 
@@ -816,6 +826,7 @@ class MultiMachineSystem:
                         if machine_connection_states is None or machine_connection_states[machine_id]
                         else 0.0
                     ),
+                    field_voltage=field_voltages.get(machine_id),
                     time=time,
                 )
             )
@@ -844,6 +855,33 @@ class MultiMachineSystem:
             )
 
         return derivative
+
+    def _validate_field_voltages(
+        self,
+        field_voltages: Mapping[str, float] | None,
+    ) -> dict[str, float]:
+        """Validate optional AVR outputs keyed by canonical machine identity."""
+        if field_voltages is None:
+            return {}
+        if not isinstance(field_voltages, Mapping):
+            raise MultiMachineError("field_voltages must be a machine-to-voltage mapping")
+        values: dict[str, float] = {}
+        for machine_id, value in field_voltages.items():
+            if not isinstance(machine_id, str) or not machine_id.strip():
+                raise MultiMachineError("field-voltage keys must be non-empty machine identities")
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise MultiMachineError(f"field voltage for {machine_id!r} must be numeric")
+            numeric = float(value)
+            if not np.isfinite(numeric) or numeric < 0.0:
+                raise MultiMachineError(f"field voltage for {machine_id!r} must be finite and non-negative")
+            values[machine_id] = numeric
+        known_machine_ids = {machine.machine_id for machine in self._machines}
+        unknown = set(values) - known_machine_ids
+        if unknown:
+            raise MultiMachineError(
+                f"Field-voltage inputs reference unknown machines: {sorted(unknown)}"
+            )
+        return values
 
     # ==================================================================
     # VALIDATION
