@@ -256,24 +256,34 @@ second quality or measurement-channel authority.
 
 ## Attested transformer sensor snapshot handoff
 
-`publish_transformer_sensor_snapshot(snapshot, catalogue, attestations, publish_sample=...)`+
-is the plugin-side adapter from an immutable transformer telemetry snapshot
-to the existing Application `MeasurementChannelService.publish_sample()`
-ingress. It validates the complete snapshot against the catalogue, requires
-exactly one attestation per sample, and requires the attested channel ID,
-sequence, Core quality, availability, diagnostics, and UTC Unix timestamp to
-match the telemetry sample before forwarding it.
+`publish_transformer_sensor_snapshot()` accepts explicit telemetry-to-Core
+`TransformerMeasurementBinding` records, the active channel mapping,
+project instrumentation, per-Core-channel producer attestations, and the
+canonical Application publication callable. It resolves the declared
+bindings first, so plugin telemetry point IDs are translated to the actual
+Core `MeasurementChannel.id`; attestations are keyed by that Core ID and
+must match the sample sequence, Core quality, availability, diagnostics and
+UTC Unix timestamp before publication.
 
-The caller must pass the canonical Application publication callable and
-attestations already produced by the deployment's trusted producer adapter.
-The plugin does not create signatures, producer identities, project IDs,
-activation generations, clock domains, or trusted timestamps. Application
-still verifies the signature and active project/generation, checks the trusted
-clock and monotonic sequence, validates source bounds, and owns the only
-authoritative channel update path. The helper rejects estimated/derived points
-and points without a declared physical sensor type.
+`publish_active_transformer_sensor_snapshot(application, ...)` is the
+host-context convenience entry point. It obtains the active project context,
+Network, instrumentation collection and `MeasurementChannelService`
+from the supplied Application, rejects project/generation/network identity
+mismatches, resolves the explicit binding set, and forwards samples through
+the service's canonical `publish_sample()` method. It does not create
+producer identity, signatures, clock authority, channel registries or sample
+state.
 
-This handoff is a software integration boundary, not a device driver or
-commissioning workflow. RTD/fiber-optic protocol acquisition, device
-certificate provisioning, calibration evidence, wiring inspection, and
-site acceptance remain deployment responsibilities.
+The deployment producer adapter must supply genuine signed attestations.
+Application remains responsible for signature verification, project and
+activation-generation binding, trusted clock, monotonic sequence, physical
+interface bounds and authoritative channel mutation. This integration
+currently supports only telemetry points for which the existing binding
+resolver has a physical sensor path (winding temperature); estimated/derived
+points and other physical quantities still require their own producer/model
+adapters.
+
+This is a software handoff, not a device driver or commissioning workflow.
+RTD/fiber-optic protocol acquisition, device certificate provisioning,
+calibration evidence, wiring inspection and site acceptance remain deployment
+responsibilities.
