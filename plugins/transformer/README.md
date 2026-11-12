@@ -148,10 +148,4 @@ separate from `Network` membership and electrical `Terminal` connectivity.
 No MeasurementChannel is provisioned by this collection, and it does not
 create producer identities or accept telemetry samples.
 
-**Winding-point limitation:** the current Core `Transformer` is a
-two-terminal electrical model and does not own a canonical multi-winding
-identity collection. The plugin profile's winding identifiers are descriptive
-metadata, not an authoritative Core winding registry. Consequently, the
-current project validation does not claim to prove that an installation's
-`monitored_point_id` is a valid physical winding. That requires a canonical
-winding/monitoring-point contract before the first RTD channel is commissioned.
+**Winding-point boundary:** the current Core `Transformer` remains a two-terminal electrical model. Application validation now supports winding-bound instrumentation only for the explicitly declared Core `HV` and `LV` winding sides, requiring the source interface `winding_id` and installation `monitored_point_id` to agree and the corresponding Core winding connection to be present. Declared phase metadata is checked against Core phase roles when those roles are available. Tertiary and higher-order winding IDs from plugin profiles remain descriptive metadata and are rejected for winding-bound commissioning until Core gains a canonical serializable multi-winding contract. This is a limited two-side association, not a claim that the full plugin winding catalogue is authoritative.
