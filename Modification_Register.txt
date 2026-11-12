@@ -3561,3 +3561,11 @@ Generator augmented-stage integration of fixed-point network coupling — 12 Nov
 - Coupled terminal-current archive records are stored as structured rows with
   separate terminal_id and phase_id fields, avoiding delimiter-based identity
   collisions and preserving the phase-resolved provenance losslessly.
+
+- The generator stage result now verifies that the final derivative assembly
+  returns exactly the same typed terminal-injection contributions (matched by
+  stable injection_id) as the converged network/current fixed-point result.
+  A post-convergence component-current change therefore rejects the stage
+  before its derivative vector is returned to the integrator.
+- Verification: source fetch-back and static invariant inspection only; no
+  tests, imports, runtime execution, network solve or numerical simulation.
