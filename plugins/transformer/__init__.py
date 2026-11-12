@@ -15,7 +15,11 @@ from .measurement_binding import (
     TransformerMeasurementBinding,
     resolve_transformer_measurement_bindings,
 )
-from .rtd import (\n    RTDConfiguration, RTDCommissioningEvidence, RTDObservation,\n    resistance_to_iec60751_temperature, adapt_rtd_observation,\n)\nfrom .telemetry import (
+from .rtd import (
+    RTDConfiguration, RTDCommissioningEvidence, RTDObservation,
+    resistance_to_iec60751_temperature, adapt_rtd_observation,
+)
+from .telemetry import (
     ChannelDefinition, MeasurementQuality, SignalKind, TelemetrySample,
     TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
     build_transformer_channel_catalogue_for_core,
