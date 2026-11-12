@@ -249,9 +249,9 @@ class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
             })
 
         return MappingProxyType({
-            "generator": report(registered=True, solver=False, study=False),
+            "generator": report(registered=False, solver=False, study=False),
             "motor": report(registered=True, solver=True, study=True),
-            "load": report(registered=True, solver=False, study=False),
+            "load": report(registered=False, solver=False, study=False),
         })
 
 
