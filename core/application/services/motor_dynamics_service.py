@@ -225,6 +225,7 @@ class ElectricalDynamicsCapability:
     measurement_point_normalization_available: bool
     measurement_channel_access_available: bool
     core_terminal_injection_contract_available: bool
+    network_coupling_protocol_available: bool
 
 
 
@@ -279,6 +280,34 @@ class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
         self._closed = True
 
     @property
+    def dynamic_component_contracts(self) -> Mapping[str, Any]:
+        """Expose Core-owned dynamic contracts without creating plugin copies."""
+        from types import MappingProxyType
+        from core.solver.dynamics import (
+            DynamicComponentBinding,
+            DynamicComponentEvaluation,
+            DynamicComponentInputs,
+            DynamicStateComponent,
+            DynamicTerminalInjection,
+            aggregate_dynamic_terminal_injections,
+        )
+
+        return MappingProxyType({
+            "component_binding": DynamicComponentBinding,
+            "component_evaluation": DynamicComponentEvaluation,
+            "component_inputs": DynamicComponentInputs,
+            "state_component": DynamicStateComponent,
+            "terminal_injection": DynamicTerminalInjection,
+            "aggregate_terminal_injections": aggregate_dynamic_terminal_injections,
+        })
+
+    @property
+    def network_coupling_contract(self) -> Any:
+        """Expose the Core stage-solver protocol, not a fabricated solver adapter."""
+        from core.solver.dynamics import DynamicNetworkSolver
+        return DynamicNetworkSolver
+
+    @property
     def measurement_channels(self) -> tuple[Any, ...]:
         """Read the active canonical Application measurement-channel snapshot."""
         return tuple(self.application.measurement_channel_service.channels)
@@ -296,7 +325,8 @@ class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
                 fully_coupled_network_execution=False,
                 measurement_point_normalization_available=False,
                 measurement_channel_access_available=True,
-                core_terminal_injection_contract_available=False,
+                core_terminal_injection_contract_available=True,
+                network_coupling_protocol_available=True,
             )
 
         return MappingProxyType({
