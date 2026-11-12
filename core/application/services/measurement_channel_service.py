@@ -438,7 +438,7 @@ class MeasurementChannelService:
         reference = self._endpoint_reference(terminal_data)
         if reference.terminal_role not in {"S1", "S2"}:
             raise ValueError("CT measurement channels must originate from physical secondary terminal S1 or S2.")
-        if getattr(reference.equipment_type, "value", None) != "current_transformer":
+        if getattr(reference.equipment_type, "value", None) != "ct":
             raise ValueError("CT secondary measurement channels require a CURRENT_TRANSFORMER terminal reference.")
         source = self._network.get_by_identity(source_id)
         if not isinstance(source, CurrentTransformer):
@@ -536,7 +536,7 @@ class MeasurementChannelService:
         if getattr(source, "id", None) != source_id:
             raise ValueError(f"Measurement source '{source_id}' could not be resolved.")
         if isinstance(source, CurrentTransformer) and (
-            getattr(reference.equipment_type, "value", None) != "current_transformer"
+            getattr(reference.equipment_type, "value", None) != "ct"
             or reference.terminal_role not in {"S1", "S2"}
         ):
             raise ValueError("CT measurement channels must resolve to the physical S1 or S2 secondary terminal.")
