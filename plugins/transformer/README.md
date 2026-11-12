@@ -99,17 +99,18 @@ Application-level integration work.
 
 `measurement_binding.py` adds an explicit, fail-closed binding contract from
 a transformer catalogue point to an already provisioned canonical Core
-`MeasurementChannel`. The resolver validates point/equipment identity,
-uniqueness, supported Core signal type, unit, and phase. It never creates a
-Core channel, changes its source, publishes a sample, or bypasses the
-Application's signed producer/clock checks.
+`MeasurementChannel`. The resolver validates point/equipment identity, uniqueness, signal type,
+physical instrument family, canonical source-terminal identity, non-empty
+unit equality, and phase. It never creates a Core channel, changes its source,
+publishes a sample, or bypasses the Application's signed producer/clock checks.
 
-Only direct scalar quantities with a matching canonical Core signal type are
-currently bindable (voltage, current, frequency, phase angle, and explicitly
-typed power/custom quantities). Thermal, oil, DGA, insulation, bushing,
-mechanical, OLTC diagnostic, and protection-indication points require
-appropriate physical source models and/or dedicated Application producer
-adapters. They are intentionally rejected by this direct-binding resolver.
+Only direct scalar voltage from a PT/CVT and current from a CT are currently
+bindable. Frequency, phase angle, derived power/energy, power factor, thermal,
+oil, DGA, insulation, bushing, mechanical, OLTC diagnostic, and
+protection-indication points require dedicated physical source models and/or
+Application producer adapters. They are intentionally rejected by this
+direct-binding resolver. A Core signal enum by itself is not proof that the
+physical source can produce that quantity.
 An Application integration must additionally prove that the selected
 instrument channel is actually associated with the stated transformer in
 the active project topology; this plugin resolver does not claim to prove
