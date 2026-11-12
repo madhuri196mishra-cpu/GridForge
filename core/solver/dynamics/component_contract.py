@@ -1,9 +1,9 @@
 """Side-effect-free contract for solver-owned dynamic state components.
 
-The contract separates dynamic state from electrical-machine identity. A
-component may contribute controller states and mechanical-power inputs while
-the canonical machine remains responsible for electrical equations, terminal
-identity and network coupling.
+The contract separates extension-owned dynamic state from canonical Core equipment
+identity. Generator controller components may hand off mechanical power;
+motor/load components may contribute phase-resolved terminal current while
+Core remains responsible for equipment, terminals and network topology.
 
 This module defines the boundary only. MultiMachineSystem and DAESolver do
 not yet consume it; wiring requires a coordinated global-state and
@@ -97,7 +97,7 @@ class DynamicTerminalInjection:
     """One phase-resolved current contribution into the solved network.
 
     current_injection_pu uses the study's declared per-unit current base and
-    the passive network sign convention: positive current is injected from
+    the network-injection sign convention: positive current is injected from
     equipment into the network. phase_id is a canonical host-supplied label;
     this DTO does not infer phase mapping.
     """
