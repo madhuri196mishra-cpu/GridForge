@@ -23,7 +23,7 @@
     "bldc_trapezoidal_cpu_transient",
     "synrm_dq_cpu_transient",
     "srm_phase_inductance_cpu_transient",
-    "dc_excitation_cpu_transient","single_phase_rms_envelope_cpu_transient","single_phase_rms_envelope_cpu_transient","single_phase_rms_envelope_cpu_transient"
+    "dc_excitation_cpu_transient","single_phase_rms_envelope_cpu_transient"
   ],
   "runtime": {
     "python": ">=3.10",
