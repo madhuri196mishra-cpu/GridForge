@@ -143,23 +143,25 @@ def evaluate_composed_dynamic_derivatives(
                 raise DynamicDerivativeAssemblyError(
                     f"component {binding.component_id!r} bus identity does not match its canonical machine"
                 )
-        if binding.bus_id not in voltages:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} has no solved voltage for bus {binding.bus_id!r}"
-            )
-        if binding.terminal_id not in inputs.terminal_voltages:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} has no voltage for terminal {binding.terminal_id!r}"
-            )
-        if not np.isclose(
-            inputs.terminal_voltages[binding.terminal_id],
-            voltages[binding.bus_id],
-            rtol=1e-9,
-            atol=1e-12,
-        ):
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} terminal voltage is inconsistent with its solved bus voltage"
-            )
+        for terminal_id, bus_id in binding.terminal_bus_ids.items():
+            if bus_id not in voltages:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} has no solved voltage for bus {bus_id!r}"
+                )
+            if terminal_id not in inputs.terminal_voltages:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} has no voltage for terminal {terminal_id!r}"
+                )
+            if not np.isclose(
+                inputs.terminal_voltages[terminal_id],
+                voltages[bus_id],
+                rtol=1e-9,
+                atol=1e-12,
+            ):
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} terminal voltage is inconsistent "
+                    f"with its resolved bus voltage"
+                )
 
     global_state = layout.pack(machine_vector, component_states)
     component_result = evaluate_dynamic_components(
