@@ -8,7 +8,7 @@ from math import isfinite
 from core.model.transformer import Transformer
 from core.measurement.measurement_source import MeasurementSourceInterface
 from .profile import TransformerProfile, validate_transformer_profile_windings
-from typing import Iterable
+from collections.abc import Callable, Iterable, Mapping
 
 class MeasurementQuality(str, Enum):
     GOOD="good"; UNCERTAIN="uncertain"; BAD="bad"; NOT_CONNECTED="not_connected"
@@ -273,8 +273,8 @@ def publish_transformer_sensor_snapshot(
     snapshot: TelemetrySnapshot,
     catalogue: Iterable[ChannelDefinition],
     *,
-    attestations: dict[str, object],
-    publish_sample,
+    attestations: Mapping[str, object],
+    publish_sample: Callable[..., object],
 ) -> tuple[object, ...]:
     """Hand attested physical sensor samples to Application's canonical ingress.
 
@@ -288,9 +288,7 @@ def publish_transformer_sensor_snapshot(
     Timestamps are required to represent UTC Unix seconds, matching the
     canonical Application measurement clock domain configured by the host.
     """
-    from collections.abc import Mapping
     from math import isclose
-    from core.measurement.measurement_channel import MeasurementQuality as CoreQuality
 
     if not isinstance(attestations, Mapping):
         raise TypeError("attestations must map channel IDs to signed producer attestations.")
