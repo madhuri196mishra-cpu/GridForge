@@ -88,11 +88,16 @@ measurement, command, and simulation orchestration.
 ## Current implementation status
 
 This branch adds family/construction profiles, typed telemetry contracts,
-and a deterministic instrumentation catalogue. It is the first implementation
-slice, not a claim of complete live SCADA/IEC 61850/IEC 60870-5-104/Modbus
-integration, thermal ageing validation, protection integration, or
-GPU/NPU solver acceleration. Those require explicit adapter and
-Application-level integration work.
+and a deterministic instrumentation catalogue. Channel definitions validate
+canonical identifiers, enum types, optional winding/sensor/source metadata,
+positive integer sample periods, and finite numeric engineering limits.
+Samples require timezone-aware timestamps, typed quality, finite numeric or
+boolean values, non-empty provenance and units, and non-negative integer
+sequence numbers. Snapshots enforce equipment scope and typed, non-duplicate
+observations. This is the first implementation slice, not a claim of complete
+live SCADA/IEC 61850/IEC 60870-5-104/Modbus integration, thermal ageing
+validation, protection integration, or GPU/NPU solver acceleration. Those
+require explicit adapter and Application-level integration work.
 
 
 ## Application measurement binding boundary
