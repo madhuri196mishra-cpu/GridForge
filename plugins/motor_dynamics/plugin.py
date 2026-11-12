@@ -302,7 +302,6 @@ class MotorDynamicsPlugin(GridForgePlugin):
             # Publish only the handles that could not be released. The normal
             # initialization path remains atomic, while failed rollback remains
             # owned and retryable through shutdown().
-            self.context = context
             self.application = application
             self.persistence = persistence
             self.read_models = read_models
@@ -316,7 +315,6 @@ class MotorDynamicsPlugin(GridForgePlugin):
                 [initialization_error, *cleanup_errors],
             ) from None
 
-        self.context = context
         self.application = application
         self.persistence = persistence
         self.read_models = read_models
