@@ -93,11 +93,46 @@ class DynamicComponentInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class DynamicTerminalInjection:
+    """One phase-resolved current contribution into the solved network.
+
+    current_injection_pu uses the study's declared per-unit current base and
+    the passive network sign convention: positive current is injected from
+    equipment into the network. phase_id is a canonical host-supplied label;
+    this DTO does not infer phase mapping.
+    """
+
+    injection_id: str
+    terminal_id: str
+    phase_id: str
+    current_injection_pu: complex
+
+    def __post_init__(self) -> None:
+        for name in ("injection_id", "terminal_id", "phase_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise DynamicComponentContractError(f"{name} must be a non-empty stable identity")
+            object.__setattr__(self, name, value.strip())
+        try:
+            current = complex(self.current_injection_pu)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise DynamicComponentContractError(
+                "current_injection_pu must be a finite complex value"
+            ) from exc
+        if not math.isfinite(current.real) or not math.isfinite(current.imag):
+            raise DynamicComponentContractError(
+                "current_injection_pu must be a finite complex value"
+            )
+        object.__setattr__(self, "current_injection_pu", current)
+
+
+@dataclass(frozen=True, slots=True)
 class DynamicComponentEvaluation:
-    """Pure derivative contribution and optional machine power handoff."""
+    """Pure derivative, optional machine handoff and terminal injections."""
 
     state_derivative: tuple[float, ...]
     mechanical_power_outputs_pu: Mapping[str, float]
+    terminal_injections: tuple[DynamicTerminalInjection, ...] = ()
 
     def __post_init__(self) -> None:
         derivative = _finite_vector(self.state_derivative, "state_derivative")
@@ -108,8 +143,17 @@ class DynamicComponentEvaluation:
                     "mechanical_power_outputs_pu keys must be non-empty machine identities"
                 )
             outputs[machine_id] = _finite_number(value, f"mechanical_power_outputs_pu[{machine_id}]")
+        injections = tuple(self.terminal_injections)
+        if any(not isinstance(item, DynamicTerminalInjection) for item in injections):
+            raise DynamicComponentContractError(
+                "terminal_injections must contain DynamicTerminalInjection values"
+            )
+        injection_ids = [item.injection_id for item in injections]
+        if len(injection_ids) != len(set(injection_ids)):
+            raise DynamicComponentContractError("terminal injection identities must be unique per component")
         object.__setattr__(self, "state_derivative", derivative)
         object.__setattr__(self, "mechanical_power_outputs_pu", MappingProxyType(outputs))
+        object.__setattr__(self, "terminal_injections", injections)
 
 
 def validate_dynamic_state_component(component: object) -> tuple[str, int]:
@@ -159,6 +203,7 @@ class DynamicStateComponent(Protocol):
 __all__ = [
     "DynamicComponentContractError",
     "DynamicComponentInputs",
+    "DynamicTerminalInjection",
     "DynamicComponentEvaluation",
     "DynamicStateComponent",
     "validate_dynamic_state_component",
