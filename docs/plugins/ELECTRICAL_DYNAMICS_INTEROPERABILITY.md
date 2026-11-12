@@ -54,7 +54,7 @@ Power-flow demand aggregation must likewise count each physical injection once. 
 
 ## Compute interoperability
 
-All three plugins reuse `core.numerics.backend` and its capability records. CPU remains the reproducible reference path when supplied. GPU execution is allowed only for workloads and precision modes explicitly advertised by the runtime capability. NPU is restricted to inference workloads such as forecasting or condition/anomaly inference; it is not an authoritative protection decision-maker or an assumed physical differential-equation solver.
+All three plugins resolve the same `PluginContext.services["electrical_dynamics_composition"]` host object. Its protocol exposes the existing plugin-specific registration hooks and sampled solver adapters; the object is supplied and owned by Application, not constructed by plugins. All three plugins reuse `core.numerics.backend` and its capability records. CPU remains the reproducible reference path when supplied. GPU execution is allowed only for workloads and precision modes explicitly advertised by the runtime capability. NPU is restricted to inference workloads such as forecasting or condition/anomaly inference; it is not an authoritative protection decision-maker or an assumed physical differential-equation solver.
 
 ## Readiness honesty
 
@@ -63,6 +63,10 @@ All three plugins reuse `core.numerics.backend` and its capability records. CPU 
 - Load family adapters expose ZIP demand equations as experimental model data; no power-flow or transient study is advertised as integrated until the Application solver composition consumes the model.
 
 No family is labelled reference-validated or field-validated by this integration contract.
+
+## Shared composition boundary
+
+`plugins/electrical_dynamics/composition.py` defines the common host protocol. Generator, motor and load activation now resolve the same `electrical_dynamics_composition` key. The protocol groups their existing extension registration, motor service, and per-request sampled solver adapter capabilities into one host-supplied object. It creates no new Application service and owns no service lifecycle. The Application composition root still must implement and supply this object.
 
 ## Remaining integration gates
 
