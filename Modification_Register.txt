@@ -3243,3 +3243,21 @@ Application composition follow-up:
   added.
 - Verification: source fetch-back and static import/reference/ownership review
   only. No tests, imports, CI, startup, GUI or numerical execution were run.
+
+
+Engineering plugin context and shared interop follow-up:
+- EngineeringPluginContext and HostPluginContext now carry the active
+  ProjectContext snapshot and activation_generation supplied by
+  EngineeringPluginHost from Application.project_lifecycle at activation.
+  Activation fails closed when no active project or valid generation exists.
+- Added the shared plugins/electrical_dynamics contract package, including
+  identity-preserving equipment bindings, model readiness declarations,
+  measurement point DTO normalization, and duplicate participant rejection.
+- The shared normalizer is now available to specialist plugins. The
+  Application composition currently exposes canonical MeasurementChannel
+  access but does not yet surface a direct normalizer callable; capability
+  reporting therefore continues to mark composition-level point normalization
+  unavailable rather than overstate integration.
+- Generator and Load plugin constructors are not yet activated by main.py.
+  Their host solver dependencies remain unavailable; this branch does not
+  introduce placeholder adapters or register non-executable study handlers.
