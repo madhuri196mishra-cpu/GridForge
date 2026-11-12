@@ -52,6 +52,11 @@ class DynamicSystemDerivativeAssembly:
         object.__setattr__(self, "state_derivatives", derivatives)
         object.__setattr__(self, "mechanical_powers_pu", MappingProxyType(powers))
 
+    @property
+    def terminal_injections(self):
+        """Phase-resolved equipment current contributions for network assembly."""
+        return self.component_evaluation.terminal_injections
+
 
 MachineDerivativeEvaluator = Callable[..., Sequence[float] | np.ndarray]
 
