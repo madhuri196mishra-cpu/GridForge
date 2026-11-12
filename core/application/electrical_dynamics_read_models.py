@@ -142,3 +142,6 @@ class MotorSimulationReadModelStore:
             view = arr.view(); view.setflags(write=False); return view
     def snapshot(self) -> tuple[SimulationSummary, ...]:
         with self._lock: return tuple(self._summaries.values())
+
+
+__all__ = ["SimulationSummary", "MotorSimulationReadModelStore"]
