@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from math import isfinite
-from typing import Iterable
+from typing import Iterable, Mapping
 
 class MeasurementQuality(str, Enum):
     GOOD="good"; UNCERTAIN="uncertain"; BAD="bad"; NOT_CONNECTED="not_connected"
@@ -160,6 +160,50 @@ class TelemetrySnapshot:
         batch = tuple(samples)
         return cls(equipment_id, captured_at or datetime.now(timezone.utc), batch)
 
+def validate_transformer_snapshot(
+    snapshot: TelemetrySnapshot,
+    catalogue: Iterable[ChannelDefinition],
+) -> None:
+    """Validate samples against the transformer catalogue; does not publish data."""
+    if not isinstance(snapshot, TelemetrySnapshot):
+        raise TypeError("snapshot must be a TelemetrySnapshot.")
+    catalogue_items = tuple(catalogue)
+    points = {point.channel_id: point for point in catalogue_items}
+    if len(points) != len(catalogue_items):
+        raise ValueError("Transformer telemetry catalogue contains duplicate channel ids.")
+    if any(point.equipment_id != snapshot.equipment_id for point in catalogue_items):
+        raise ValueError("Catalogue contains a point for another transformer equipment id.")
+
+    for sample in snapshot.samples:
+        point = points.get(sample.channel_id)
+        if point is None:
+            raise KeyError(f"Telemetry sample references an unknown catalogue point: {sample.channel_id}")
+        if sample.equipment_id != point.equipment_id:
+            raise ValueError("Telemetry sample equipment identity does not match its catalogue point.")
+        if sample.unit.casefold() != point.unit.casefold():
+            raise ValueError(
+                f"Telemetry unit mismatch for {sample.channel_id}: "
+                f"sample={sample.unit!r}, catalogue={point.unit!r}."
+            )
+        if sample.timestamp > snapshot.captured_at:
+            raise ValueError("Telemetry sample timestamp cannot be later than its snapshot capture time.")
+        value = sample.value
+        if point.signal_kind is SignalKind.COUNTER:
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"Counter point {sample.channel_id} requires a non-negative integer.")
+        elif point.signal_kind is SignalKind.DIGITAL:
+            if not isinstance(value, (bool, int)):
+                raise ValueError(f"Digital point {sample.channel_id} requires a boolean or integer state.")
+        elif point.signal_kind in {SignalKind.ANALOG, SignalKind.ESTIMATED}:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"Analog/estimated point {sample.channel_id} requires a numeric value.")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if point.minimum is not None and value < point.minimum:
+                raise ValueError(f"Telemetry value is below the configured minimum for {sample.channel_id}.")
+            if point.maximum is not None and value > point.maximum:
+                raise ValueError(f"Telemetry value exceeds the configured maximum for {sample.channel_id}.")
+
+
 _PHASED = (
     (TransformerQuantity.VOLTAGE, "V", "electrical", "PT/VT secondary"),
     (TransformerQuantity.CURRENT, "A", "electrical", "CT secondary"),
@@ -235,6 +279,14 @@ def build_transformer_channel_catalogue(
 ) -> tuple[ChannelDefinition, ...]:
     """Create stable channel definitions from explicitly declared winding ids."""
     _require_canonical_text(equipment_id, "equipment_id")
+    for flag_name, flag_value in (
+        ("include_dga", include_dga),
+        ("include_oltc", include_oltc),
+        ("include_partial_discharge", include_partial_discharge),
+        ("include_bushing_monitoring", include_bushing_monitoring),
+    ):
+        if not isinstance(flag_value, bool):
+            raise TypeError(f"{flag_name} must be a boolean.")
     windings = tuple(winding_ids)
     if not windings:
         raise ValueError("At least one non-empty winding id is required.")
