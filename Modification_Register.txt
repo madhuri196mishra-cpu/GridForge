@@ -3532,3 +3532,28 @@ Fixed-point dynamic network/device current coordination — 12 November 2026:
   The result object independently recomputes the reported current residual
   from its request and returned aggregate, preventing caller-supplied
   convergence numbers from being treated as evidence.
+
+
+Generator augmented-stage integration of fixed-point network coupling — 12 November 2026:
+- Added an opt-in coupled network solver path to
+  plugins/generator_dynamics/stage_evaluation.py and
+  GeneratorAugmentedDAEAdapter. The caller supplies an implementation of the
+  Core DynamicNetworkSolver protocol, a topology revision, and network
+  current bases. Exactly one of the legacy generator callback or coupled
+  solver path must be selected.
+- For each trial stage, AVR excitation is snapshotted first. The coupling
+  evaluator projects each trial network solution into host-oriented terminal
+  voltages, evaluates registered continuous components for typed terminal
+  currents, and iterates until the network algebraic solution and current
+  contributions agree within the configured tolerances. Only then are the
+  machine and component derivatives assembled from that final network
+  solution and the same AVR field-voltage snapshot.
+- The augmented archive payload now preserves topology revision, coupling
+  iteration count, current residual, aggregated terminal/phase currents and
+  AlgebraicNetworkSolution quality evidence.
+- This does not wire the legacy DAESolver, establish Application lifecycle
+  or StudyService ownership, or prove full motor/load model completeness.
+  The host remains responsible for correct oriented terminal voltage
+  projection, current bases, topology snapshot and solver implementation.
+- Verification: source fetch-back and static call-path/provenance inspection
+  only. No tests, imports, runtime, network solve or numerical simulation.
