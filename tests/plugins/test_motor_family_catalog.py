@@ -538,3 +538,59 @@ def test_ac_servo_catalogue_distinguishes_machine_technologies_and_drive_feedbac
     }.issubset(points)
     assert points["feedback.position_error"].unit == "rad"
     assert points["drive.brake_state"].signal_type.value == "digital"
+
+
+def test_pmsm_servo_cascade_tracks_position_and_reports_encoder_and_regeneration():
+    import numpy as np
+    from plugins.motor_dynamics.transient_solver import PMSMServoParameters, solve_pmsm_servo_transient_cpu
+    machine = _pmsm_parameters()
+    drive = PMSMServoParameters(machine, position_kp=12., speed_kp=1.5, speed_ki=8.,
+        current_kp=3., current_ki=80., maximum_speed_rad_s=80.,
+        maximum_current_a=35., maximum_voltage_v=300., encoder_counts_per_revolution=4096)
+    result = solve_pmsm_servo_transient_cpu("servo-01", drive, .02, .0001,
+        position_command_rad=.05, load_torque_nm=0.)
+    channels = result.channels(drive)
+    assert result.backend == "cpu-rk4"
+    assert np.isfinite(result.state_data).all()
+    assert abs(channels["mechanical_position_rad"][-1]) > 0.
+    assert np.isfinite(channels["encoder_position_rad"]).all()
+    assert np.isfinite(channels["position_error_rad"]).all()
+
+
+def test_pmsm_servo_rejects_invalid_current_limit():
+    from plugins.motor_dynamics.transient_solver import PMSMServoParameters
+    with pytest.raises(ValueError, match="maximum_current_a"):
+        PMSMServoParameters(_pmsm_parameters(), position_kp=1., speed_kp=1., speed_ki=1.,
+            current_kp=1., current_ki=1., maximum_speed_rad_s=10.,
+            maximum_current_a=0., maximum_voltage_v=100.)
+
+
+def test_induction_servo_foc_is_distinct_and_reports_flux_encoder_and_limits():
+    import numpy as np
+    from plugins.motor_dynamics.transient_solver import MotorParameters, InductionServoParameters, solve_induction_servo_transient_cpu
+    machine = MotorParameters(stator_resistance_ohm=.45, rotor_resistance_ohm=.3, stator_leakage_inductance_h=.012, rotor_leakage_inductance_h=.012, magnetizing_inductance_h=.18, pole_pairs=2, inertia_kg_m2=.02)
+    drive = InductionServoParameters(machine, rotor_time_constant_s=.08, rotor_inductance_h=.192, position_kp=8., speed_kp=1.2, speed_ki=5., current_kp=2., current_ki=30., flux_current_reference_a=4., maximum_speed_rad_s=60., maximum_current_a=25., maximum_voltage_v=250., encoder_counts_per_revolution=4096)
+    result = solve_induction_servo_transient_cpu('ind-servo', drive, .01, .0001, position_command_rad=.02, load_torque_nm=.02)
+    channels = result.channels(drive)
+    assert result.backend == 'cpu-rk4' and np.isfinite(result.state_data).all()
+    assert np.isfinite(channels['rotor_flux_magnitude_wb']).all()
+    assert np.isfinite(channels['encoder_position_rad']).all()
+    assert np.isfinite(channels['electromagnetic_torque_nm']).all()
+    assert result.diagnostics['model'] == 'rotor_flux_oriented_induction_position_speed_current_cascade'
+
+
+def test_induction_servo_rejects_invalid_rotor_time_constant():
+    from plugins.motor_dynamics.transient_solver import MotorParameters, InductionServoParameters
+    machine = MotorParameters(stator_resistance_ohm=.45, rotor_resistance_ohm=.3, stator_leakage_inductance_h=.012, rotor_leakage_inductance_h=.012, magnetizing_inductance_h=.18, pole_pairs=2, inertia_kg_m2=.02)
+    with pytest.raises(ValueError, match='rotor_time_constant_s'):
+        InductionServoParameters(machine, rotor_time_constant_s=0., rotor_inductance_h=.192, position_kp=1., speed_kp=1., speed_ki=1., current_kp=1., current_ki=1., flux_current_reference_a=1., maximum_speed_rad_s=10., maximum_current_a=10., maximum_voltage_v=100.)
+
+
+def test_dc_servo_cascade_position_and_limits():
+    import numpy as np
+    from plugins.motor_dynamics.transient_solver import DCMotorParameters,DCServoParameters,solve_dc_servo_transient_cpu
+    machine=DCMotorParameters(armature_resistance_ohm=.8,armature_inductance_h=.02,inertia_kg_m2=.03,excitation='permanent_magnet',permanent_magnet_flux_wb=.08)
+    p=DCServoParameters(machine,position_kp=8.,speed_kp=1.5,speed_ki=5.,current_kp=2.,current_ki=30.,maximum_speed_rad_s=60.,maximum_current_a=20.,maximum_armature_voltage_v=120.)
+    r=solve_dc_servo_transient_cpu('dc-servo',p,.02,.0001,position_command_rad=.03,load_torque_nm=.02); ch=r.channels(p)
+    assert r.backend=='cpu-rk4' and np.isfinite(r.state_data).all() and abs(ch['mechanical_position_rad'][-1])>0.
+    assert np.max(np.abs(ch['armature_voltage_command_v']))<=p.maximum_armature_voltage_v
