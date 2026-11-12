@@ -1129,6 +1129,16 @@ def create_application(
             raise ValueError("Instrumentation receiver reconciliation failed; candidate inventory was rejected: " + details)
 
     instrumentation_wiring_service.bind_receiver_validator(validate_instrumentation_receivers)
+    # The initial project is already ACTIVE at generation 1; initialize both
+    # new project-scoped inventories explicitly rather than waiting for a
+    # later project transition to invoke the lifecycle activator.
+    instrumentation_wiring_service.activate(
+        initial_context, None, network=network, generation=1
+    )
+    temperature_instrument_service.activate(
+        initial_context, None, network=network, generation=1
+    )
+    temperature_instrument_service.validate_measurement_channels()
 
     lifecycle = ProjectLifecycleService(
         network=network,
