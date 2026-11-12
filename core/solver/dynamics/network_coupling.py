@@ -14,6 +14,8 @@ from typing import Callable, Mapping, Protocol, Sequence, runtime_checkable
 import numpy as np
 
 from .dae_solver import AlgebraicNetworkSolution
+from .component_assembly import aggregate_dynamic_terminal_injections
+from .component_contract import DynamicTerminalInjection
 
 
 class DynamicNetworkCouplingError(ValueError):
@@ -121,10 +123,6 @@ def validate_dynamic_network_solution(
 
 
 
-from .component_assembly import aggregate_dynamic_terminal_injections
-from .component_contract import DynamicTerminalInjection
-
-
 @dataclass(frozen=True, slots=True)
 class DynamicNetworkStageResult:
     """Converged network/current fixed-point evidence for one trial stage."""
@@ -136,6 +134,8 @@ class DynamicNetworkStageResult:
     iteration_count: int
     injection_residual_norm: float
     scaled_injection_residual: float
+    absolute_tolerance: float
+    relative_tolerance: float
 
     def __post_init__(self) -> None:
         if not isinstance(self.request, DynamicNetworkSolveRequest):
@@ -160,7 +160,33 @@ class DynamicNetworkStageResult:
         ):
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(float(value)) or value < 0:
                 raise DynamicNetworkCouplingError(f"{name} must be finite and non-negative")
-        if self.scaled_injection_residual > 1.0:
+        for name, value in (
+            ("absolute_tolerance", self.absolute_tolerance),
+            ("relative_tolerance", self.relative_tolerance),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(float(value)) or value < 0:
+                raise DynamicNetworkCouplingError(f"{name} must be finite and non-negative")
+        if self.absolute_tolerance == 0 and self.relative_tolerance == 0:
+            raise DynamicNetworkCouplingError("stage result requires a positive convergence tolerance")
+        actual_norm = 0.0
+        actual_scaled = 0.0
+        for key in set(self.request.terminal_current_injections_pu) | set(currents):
+            previous = complex(self.request.terminal_current_injections_pu.get(key, 0j))
+            candidate = complex(currents.get(key, 0j))
+            difference = abs(candidate - previous)
+            allowed = float(self.absolute_tolerance) + float(self.relative_tolerance) * max(
+                abs(previous), abs(candidate)
+            )
+            actual_norm = max(actual_norm, difference)
+            actual_scaled = max(
+                actual_scaled,
+                difference / allowed if allowed > 0.0 else (0.0 if difference == 0.0 else float("inf")),
+            )
+        if not np.isclose(actual_norm, float(self.injection_residual_norm), rtol=1e-10, atol=1e-15):
+            raise DynamicNetworkCouplingError("reported injection residual does not match request/result currents")
+        if not np.isclose(actual_scaled, float(self.scaled_injection_residual), rtol=1e-10, atol=1e-15):
+            raise DynamicNetworkCouplingError("reported scaled residual does not match request/result currents")
+        if actual_scaled > 1.0:
             raise DynamicNetworkCouplingError("stage result cannot be published above the injection convergence threshold")
         object.__setattr__(self, "terminal_injections", injections)
         object.__setattr__(self, "aggregated_terminal_currents_pu", MappingProxyType(currents))
@@ -285,6 +311,8 @@ def solve_dynamic_network_stage(
                 iteration_count=iteration,
                 injection_residual_norm=residual_norm,
                 scaled_injection_residual=scaled_residual,
+                absolute_tolerance=float(absolute_tolerance),
+                relative_tolerance=float(relative_tolerance),
             )
         current_guess = updated
 
