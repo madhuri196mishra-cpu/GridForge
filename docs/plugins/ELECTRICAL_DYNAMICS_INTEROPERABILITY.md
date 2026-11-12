@@ -60,7 +60,7 @@ All three plugins reuse `core.numerics.backend` and its capability records. CPU 
 
 - Generator family adapters report `host_solver_required`: controller and machine components exist, but the Application host must supply the sampled generator transient solver.
 - Motor family adapters map existing family profile maturity. Experimental solver families are labelled experimental; catalogued-only families advertise no executable transient study.
-- Load family adapters expose the initial ZIP power-flow representation as experimental; family-specific transient models are not claimed.
+- Load family adapters expose ZIP demand equations as experimental model data; no power-flow or transient study is advertised as integrated until the Application solver composition consumes the model.
 
 No family is labelled reference-validated or field-validated by this integration contract.
 
