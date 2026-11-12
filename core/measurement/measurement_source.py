@@ -130,6 +130,11 @@ class PhysicalMeasurementSource:
             raise ValueError("Physical measurement source contains duplicate interface IDs.")
         object.__setattr__(self, "interfaces", interfaces)
 
+    @property
+    def id(self) -> str:
+        """Compatibility identity view for generic Core source references."""
+        return self.source_id
+
     def interface(self, interface_id: str) -> MeasurementSourceInterface:
         for item in self.interfaces:
             if item.interface_id == interface_id:
