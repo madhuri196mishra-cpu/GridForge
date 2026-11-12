@@ -86,7 +86,7 @@ from .temperature_instrument import (
     TemperatureInstrument, TemperatureInterfaceDevice,
     TemperatureAlarmTripBinding, TemperatureInstrumentInventory,
 )
-__all__ += [
+__all__ = [*__all__,
     "WiringTerminalReference", "WiringConductorRole", "SignalKind", "CarrierKind",
     "CableAssembly", "CableCore", "PanelWire", "SignalDefinition",
     "SignalCarrierBinding", "PhysicalConnectionHop", "WiringTagSeries",
