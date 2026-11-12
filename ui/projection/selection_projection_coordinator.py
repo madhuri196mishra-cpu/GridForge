@@ -62,6 +62,7 @@ class SelectionProjectionCoordinator:
         self.application = None
         self.properties_panel = properties_panel
         self._disposed = False
+        self._batch_projection_active = False
 
         signal = getattr(selection_manager, "selection_changed", None)
         if signal is None or not callable(getattr(signal, "connect", None)):
@@ -156,15 +157,49 @@ class SelectionProjectionCoordinator:
                         self.selection_manager.select_single(draft_id)
                         return
 
-        selected_ids = tuple(self.selection_manager.get_selected_ids())
+        selected_ids = tuple(dict.fromkeys(self.selection_manager.get_selected_ids()))
+        if self._batch_projection_active and len(selected_ids) > 1:
+            return
         if not selected_ids or self.application is None:
             self.clear_projection()
             return
 
-        object_id = selected_ids[0]
         removed_id = self._selected_event_id(event) if isinstance(
             event, (ElementRemoved, SimpleWireConnectionRemoved)
         ) else None
+        if removed_id is not None and any(str(value) == str(removed_id) for value in selected_ids):
+            self.selection_manager.clear()
+            self.clear_projection()
+            return
+        if isinstance(event, ElementUpdated) and self._selected_event_id(event) not in selected_ids:
+            return
+
+        if len(selected_ids) > 1 and self.properties_panel is not None:
+            temporary_selection = getattr(self.selection_manager, "temporary_single_selection", None)
+            batch_setter = getattr(self.properties_panel, "set_batch_targets", None)
+            if callable(temporary_selection) and callable(batch_setter):
+                projected: list[ProjectionState] = []
+                self._batch_projection_active = True
+                try:
+                    for selected_id in selected_ids:
+                        with temporary_selection(selected_id):
+                            self.refresh()
+                            target = getattr(self.properties_panel, "target", None)
+                            if isinstance(target, ProjectionState):
+                                projected.append(target)
+                finally:
+                    self._batch_projection_active = False
+                if (
+                    len(projected) == len(selected_ids)
+                    and all(state.identity_kind == "element" for state in projected)
+                    and len({state.display_type.strip().lower() for state in projected}) == 1
+                ):
+                    batch_setter(tuple(projected))
+                else:
+                    self.clear_projection()
+                return
+
+        object_id = selected_ids[0]
         if removed_id is not None and any(
             str(selected_id) == str(removed_id) for selected_id in selected_ids
         ):
@@ -212,9 +247,10 @@ class SelectionProjectionCoordinator:
         if element is None:
             # A committed Core object can disappear during undo. Do not leave
             # a stale Core identity selected after the authoritative read model
-            # has reconciled. SelectionManager remains the sole selection
-            # authority; this coordinator only reconciles its transient state.
-            self.selection_manager.clear()
+            # has reconciled. During temporary multi-selection projection,
+            # however, preserve the caller's original selection snapshot.
+            if not self._batch_projection_active:
+                self.selection_manager.clear()
             self.clear_projection()
             return
 
