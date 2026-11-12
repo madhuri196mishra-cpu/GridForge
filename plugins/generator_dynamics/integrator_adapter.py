@@ -112,6 +112,19 @@ class GeneratorAugmentedStepResult:
                     "mechanical_power_outputs_pu": dict(
                         stage.derivative_assembly.component_evaluation.mechanical_power_outputs_pu
                     ),
+                    "terminal_injections": [
+                        {
+                            "injection_id": item.injection_id,
+                            "terminal_id": item.terminal_id,
+                            "phase_id": item.phase_id,
+                            "current_injection_pu": {
+                                "real": item.current_injection_pu.real,
+                                "imag": item.current_injection_pu.imag,
+                            },
+                            "current_base_a": item.current_base_a,
+                        }
+                        for item in stage.derivative_assembly.terminal_injections
+                    ],
                 },
             }
 
