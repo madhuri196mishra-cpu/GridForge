@@ -151,6 +151,8 @@ class TelemetrySample:
             or not isfinite(float(self.value))
         ):
             raise ValueError("Telemetry value must be a finite number or boolean.")
+        if isinstance(self.diagnostic_codes, (str, bytes)):
+            raise TypeError("diagnostic_codes must be an iterable of canonical strings.")
         codes = tuple(self.diagnostic_codes)
         if any(not isinstance(code, str) or not code.strip() or code != code.strip() for code in codes):
             raise ValueError("diagnostic_codes must contain canonical non-empty strings.")
@@ -163,6 +165,16 @@ class TelemetrySample:
             or self.sequence < 0
         ):
             raise ValueError("Telemetry sequence must be a non-negative integer.")
+
+    @property
+    def core_quality(self):
+        """Return the equivalent canonical Core MeasurementQuality."""
+        return to_core_measurement_quality(self.quality)
+
+    @property
+    def available(self) -> bool:
+        """Return canonical channel availability implied by source quality."""
+        return measurement_availability_for_quality(self.quality)
 
 @dataclass(frozen=True, slots=True)
 class TelemetrySnapshot:
