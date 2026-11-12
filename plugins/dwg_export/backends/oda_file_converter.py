@@ -311,6 +311,10 @@ class ODAFileConverterBackend:
             raise ValueError("Drawing plan contains conflicting coordinate mapping provenance")
         if plan.source_kind == "sld_export_snapshot" and plan.entities and not mapping_records:
             raise ValueError("SLD export plan is missing reviewed coordinate mapping provenance")
+        if plan.source_kind == "control_program_read_model" and not plan.entities:
+            raise ValueError(
+                "Empty Control export plan cannot carry entity-bound reviewed coordinate mapping provenance"
+            )
 
         mapping_fingerprint = next(iter(mapping_records), None)
         mapping_details = mapping_records.get(mapping_fingerprint) if mapping_fingerprint else None
