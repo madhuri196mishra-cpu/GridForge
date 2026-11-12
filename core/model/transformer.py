@@ -94,6 +94,8 @@ class TransformerWinding:
             object.__setattr__(self, "phase_roles", phases)
         if self.neutral_terminal_role is not None and (not isinstance(self.neutral_terminal_role, str) or not self.neutral_terminal_role.strip()):
             raise ValueError("neutral_terminal_role must be a non-empty string when declared.")
+        if self.neutral_terminal_role is not None and self.connection is not TransformerWindingConnection.WYE_GROUNDED:
+            raise ValueError("neutral_terminal_role requires a grounded-wye winding connection.")
         if self.terminal_role is not None and self.terminal_role not in {"FROM", "TO"}:
             raise ValueError("terminal_role must be FROM or TO when declared.")
 
