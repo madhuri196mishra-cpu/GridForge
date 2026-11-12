@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-_TOKEN = re.compile(r"[a-z][a-z0-9_.-]*\\Z")
+_TOKEN = re.compile(r"[a-z][a-z0-9_.-]*\Z")
 _SIGNAL_KINDS = frozenset({"analog", "digital", "counter", "diagnostic"})
 
 
