@@ -3175,3 +3175,49 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+
+======================================================================
+GRIDFORGE V2 — ELECTRICAL DYNAMICS UNIFIED INTEGRATION BASELINE
+Date: 12 November 2026
+Implementation repository: madhuri196mishra-cpu/GridForge
+Implementation branch: electrical-dynamics-unified-current
+Baseline: latest generator-dynamics-plugin at branch creation, including
+Core component, state-layout, component and derivative assembly
+
+- Created the unified integration branch from the latest generator-dynamics
+  branch, preserving its latest Core machine model, dynamic component,
+  state-layout, component assembly, derivative assembly, generator and motor
+  changes at branch creation.
+- Ported Load Dynamics and shared electrical-dynamics interoperability
+  contracts from the prior integration branch without deleting or modifying
+  the source load-dynamics-plugin branch.
+- Re-exported the canonical Core DynamicStateComponent,
+  DynamicComponentInputs, DynamicComponentEvaluation,
+  DynamicSystemStateLayout, DynamicComponentBinding,
+  DynamicComponentBatchEvaluation, evaluate_dynamic_components and
+  evaluate_composed_dynamic_derivatives contracts. No duplicate solver
+  component/state/derivative contract was introduced.
+- Added common metadata adapters for Generator, Motor and Load equipment
+  families and logical measurement point catalogues. Canonical Core
+  equipment IDs and MeasurementChannel remain authoritative.
+- Generator, motor and load activation now resolves the single
+  Application-supplied electrical_dynamics_composition object. The host
+  object groups existing specialist registration and sampled-solver
+  capabilities; plugins do not create competing Application services.
+- Core derivative assembly currently coordinates machine derivatives with
+  controller-state derivatives and generator mechanical-power handoffs. It
+  does not yet provide motor/load electrical terminal injection outputs or a
+  complete coupled network integration step. These are explicit open gates.
+- Documented no-double-counting for detailed motor terminal injections versus
+  static load representations; cross-type physical asset equivalence must be
+  resolved by explicit host-owned mapping.
+- Load ZIP equations remain experimental model data and do not advertise an
+  integrated power-flow or transient study. Motor readiness follows family
+  profiles; generator execution remains dependent on the host solver.
+- Verification: source-level fetch-back and architecture reconciliation
+  only. No tests, CI, imports, startup, GUI, coupled simulation, hardware
+  probing or commissioning were run. No merge to main and no changes to
+  SubhenduMishra29/GridForge.
+======================================================================
