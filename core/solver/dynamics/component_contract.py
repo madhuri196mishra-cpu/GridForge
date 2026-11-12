@@ -173,7 +173,7 @@ def validate_dynamic_state_component(component: object) -> tuple[str, int]:
 
 @runtime_checkable
 class DynamicStateComponent(Protocol):
-    """Structural protocol for solver-owned non-electrical dynamic components.
+    """Structural protocol for solver-owned equipment/control dynamic components.
 
     Implementations must be referentially transparent: initial_state and
     evaluate may not advance clocks, mutate component state, dispatch events,
