@@ -3235,3 +3235,62 @@ Verification:
 - No tests, CI, Python imports, application startup, GUI, or runtime experiments
   were run.
 ======================================================================
+
+
+----------------------------------------------------------------------
+Controlled reconciliation follow-up — measurement and instrumentation contract review
+Date: 2026-11-12
+Pull request: #221 (same controlled synchronization branch)
+
+Source-level comparison:
+- Root MeasurementChannelService / MeasurementChannel use terminal-backed
+  EndpointReference provenance and retain channel lifecycle, attestation,
+  sample sequence, stale_after and CT/temperature engineering validation.
+- Madhuri MeasurementChannel adds canonical MeasurementSourceReference,
+  source_installation_id, physical source bounds and source-interface unit
+  validation. Its activation explicitly resolves ProjectInstrumentationCollection
+  before provisioning channels and validates each source installation.
+- Madhuri MeasurementProvisioning deliberately keeps two separate paths:
+  terminal-backed CT/PT/CVT provisioning through EndpointReference, and
+  non-electrical physical-source interface provisioning through
+  MeasurementSourceReference. This distinction must be preserved.
+- Madhuri ProjectInstrumentationCollection explicitly states that it owns
+  physical source records and monitored-equipment installation associations;
+  it is not the live sample registry, electrical Network collection, or
+  MeasurementChannel authority.
+- Root InstrumentationWiringService owns a separate project-scoped physical
+  wiring inventory and validates cable/panel-wire terminal paths against
+  canonical Core equipment terminals. Root TemperatureInstrumentService
+  consumes that wiring authority and the MeasurementChannel provider.
+
+Reconciliation classification:
+- PRESERVE Madhuri: MeasurementChannel, MeasurementChannelService,
+  MeasurementSourceReference, PhysicalMeasurementSource,
+  MeasurementSourceInstallation, MeasurementProvisioning and
+  ProjectInstrumentationCollection. Root versions do not contain the
+  physical-source provenance/installation contract and are not safe
+  replacements.
+- INCORPORATE ROOT AS A SIBLING AUTHORITY: InstrumentationWiringInventory
+  and TemperatureInstrumentInventory. These represent physical cable/core/
+  panel-wire/signal-carrier and service-specific temperature instrumentation
+  concerns, not replacements for MeasurementSourceReference or channel
+  ownership.
+- INTEGRATION REQUIRED BEFORE ACTIVATION: wire the root services through the
+  Madhuri Application command registry, project activation rollback, receiver
+  validation, read models and persistence. Temperature service must consume
+  the existing Madhuri MeasurementChannelService.channels provider; no second
+  measurement-channel registry is permitted.
+- PERSISTENCE BLOCKER: root ProjectPersistenceService/ProjectPackage and
+  migration changes add instrumentation_wiring and temperature_instruments
+  payloads. Madhuri has its own instrumentation schema and channel source
+  reference serialization. These payloads must be added independently while
+  retaining old .gridforge package loading and the existing Madhuri
+  instrumentation collection schema.
+- PR #1207 signal endpoint binding remains a separate root-side integration
+  item; do not fold its branch into this work.
+
+No source files in the measurement or persistence contracts were changed in
+this follow-up. The review establishes the safe ownership boundary and the
+required integration order; implementation must proceed through focused
+Application and persistence changes rather than copying root files wholesale.
+----------------------------------------------------------------------
