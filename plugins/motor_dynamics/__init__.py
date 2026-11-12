@@ -1,5 +1,6 @@
 """GridForge V2 motor dynamics extension; optional dependencies are loaded lazily."""
 from .plugin import MotorDynamicsPlugin
+from .interoperability import motor_measurement_contracts, motor_model_capability
 from .catalog import MOTOR_FAMILY_PROFILES, MotorFamily, MotorFamilyProfile, MotorNameplate, MotorOperatingMode, motor_family_profile
 from .instrumentation import MotorMeasurementPoint, motor_measurement_points, provision_motor_measurement_channels
 from .transient_solver import (
