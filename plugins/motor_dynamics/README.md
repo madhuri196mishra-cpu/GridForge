@@ -392,3 +392,10 @@ This is a comparative reduced-order envelope model, not a cycle-resolved double-
 The universal motor profile has a distinct series-field CPU model for AC and DC supplies. Armature and series-field current are the same state, with separate resistance and inductance contributions, a saturating field-flux approximation, electromagnetic torque, back EMF, speed/position, copper losses and lumped winding temperature. AC input is represented by an averaged rectified voltage envelope; DC uses its supplied voltage directly.
 
 This is not a cycle-resolved AC commutator model. Brush contact drop, commutation overlap, arcing, interpoles, armature reaction, magnetic hysteresis, field weakening and detailed thermal networks are omitted. The model is CPU/RK4 only and must be validated against manufacturer data before engineering use.
+
+
+## Wound-field synchronous motor (experimental)
+
+The wound-field synchronous profile has a separate CPU rotor-dq envelope solver with independently supplied stator d/q voltages and rotor DC field voltage. It tracks d/q stator currents, field current, d/q damper-current states, rotor angle and speed, synchronous-speed error, torque, copper losses and lumped winding temperature. Damper current states currently decay through their resistive-inductive time constants; induced damper EMF and full mutual flux-linkage matrix dynamics are not yet represented.
+
+This is an experimental averaged model, not a validated pull-in, synchronising, hunting or transient-stability model. It omits saturation, cross-saturation, iron loss, exciter/AVR dynamics, brushless exciter, detailed damper cage coupling, stator terminal-network coupling and PWM switching. CPU/RK4 only.
