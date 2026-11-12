@@ -3175,3 +3175,13 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+### Root instrumentation reconciliation — source-module and read-model port
+- Ported the authoritative root-main wiring and temperature Core models, reversible commands, project-scoped services, receiver compatibility validators, derived schedules, and versioned serializers to the controlled Madhuri reconciliation branch.
+- Exported the model and service contracts and added the detached `InstrumentationWiringReadModel` without replacing Madhuri's existing measurement read models.
+- No root MeasurementChannel or MeasurementChannelService implementation was copied. Madhuri's source-reference, source-installation, producer attestation, quality/freshness and project activation contracts remain the channel authority.
+- This is not yet activated or persisted by Madhuri Application composition. Further reconciliation of Application constructor, bootstrap rollback/activation, event publication, LoadedProject, project migration, save/reopen, and SLD/Control/Protection projection is required before completion.
+- Root-main cable/core/terminal/signal-loop schedule APIs are read-only projections. They do not introduce physical tray/conduit routing; physical routing is excluded per user direction.
+- Source baseline root main `c75b3a43ce4125d787dc9bd584313430d95d9691`; Madhuri base `7a9f5374d5f121dc4a81b3e1571f9d8cddbba263`.
+- Static fetch-back only; no imports, tests, CI, startup, GUI or persistence runtime checks.
