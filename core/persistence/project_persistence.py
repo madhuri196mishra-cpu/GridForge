@@ -739,7 +739,7 @@ class ProjectPersistenceService:
         allowed = {
             "schema", "project", "network", "presentations", "dynamic_models",
             "measurement", "control", "control_signal_mapping", "protection", "protection_presentation",
-            "draft_network", "draft_networks", "study_cases",
+            "draft_network", "draft_networks", "study_cases", "instrumentation",
         }
         unknown = sorted(set(project) - allowed)
         if unknown:
