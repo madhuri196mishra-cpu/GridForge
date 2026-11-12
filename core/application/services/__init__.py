@@ -19,6 +19,7 @@ from .phase_domain_conductor_service import PhaseDomainConductorNetworkCommandHa
 from .junction_service import JunctionCommandHandlers, JunctionService
 from .electrical_insertion_service import ElectricalInsertionCommandHandlers, ElectricalInsertionService
 from .insertion_contract import INSERTION_CONTRACTS, InsertionContract
+from .motor_dynamics_service import ElectricalDynamicsApplicationComposition, MotorDynamicsComposition, MotorDraftService
 
 __all__ = [
     "ElectricalConnectionCommandHandlers",
@@ -36,4 +37,7 @@ __all__ = [
     "ElectricalInsertionService",
     "INSERTION_CONTRACTS",
     "InsertionContract",
+    "ElectricalDynamicsApplicationComposition",
+    "MotorDynamicsComposition",
+    "MotorDraftService",
 ]
