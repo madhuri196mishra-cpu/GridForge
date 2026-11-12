@@ -213,9 +213,14 @@ def evaluate_dynamic_components(
                 raise DynamicComponentAssemblyError(
                     f"component {component_id!r} has no electrical-power input for machine {binding.machine_id!r}"
                 )
-        if binding.terminal_id not in inputs.terminal_voltages:
+        missing_terminal_voltages = [
+            terminal_id for terminal_id in binding.terminal_ids
+            if terminal_id not in inputs.terminal_voltages
+        ]
+        if missing_terminal_voltages:
             raise DynamicComponentAssemblyError(
-                f"component {component_id!r} references unavailable terminal {binding.terminal_id!r}"
+                f"component {component_id!r} has no resolved voltage input for bound "
+                f"terminals {missing_terminal_voltages!r}"
             )
         local_state = component_states[component_id]
         result = component.evaluate(local_state, inputs)
