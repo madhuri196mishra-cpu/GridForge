@@ -235,6 +235,8 @@ def aggregate_dynamic_terminal_injections(
     voltage bases. This function does not resolve terminal-to-bus topology or
     invoke a network solver.
     """
+    if not isinstance(current_bases_a, Mapping):
+        raise TypeError("current_bases_a must be a mapping keyed by terminal and phase")
     values = tuple(injections)
     if any(not isinstance(item, DynamicTerminalInjection) for item in values):
         raise DynamicComponentAssemblyError(
