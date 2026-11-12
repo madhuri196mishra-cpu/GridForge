@@ -78,12 +78,12 @@ class ModelDTO:
             configuration_schema = (
                 configuration_schema
                 if has_configuration_schema
-                else TRANSFORMER_CONFIGURATION_SCHEMA_VERSION
+                else 1
             )
             if (
                 isinstance(configuration_schema, bool)
                 or not isinstance(configuration_schema, int)
-                or configuration_schema != TRANSFORMER_CONFIGURATION_SCHEMA_VERSION
+                or configuration_schema not in {1, TRANSFORMER_CONFIGURATION_SCHEMA_VERSION}
             ):
                 raise ModelSerializationError(
                     f"Unsupported Transformer configuration schema: {configuration_schema!r}."

@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from core.application.endpoint_resolver import resolve_terminal_reference
 from core.application.results import ApplicationResult
+from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
 from core.application.transaction import Transaction
 from core.model import CurrentTransformer, EndpointReference, EquipmentType
 from core.measurement.measurement_channel import (
@@ -24,6 +25,7 @@ from core.measurement.measurement_channel import (
     MeasurementSignalType,
 )
 from core.measurement.measurement_provisioning import MeasurementProvisioning
+from core.measurement.measurement_source_reference import MeasurementSourceReference
 from core.network.network import Network
 
 
@@ -208,8 +210,9 @@ class MeasurementChannelService:
                 raise ValueError("Measurement sample sequence must increase monotonically.")
             if channel.timestamp is not None and attestation.timestamp < channel.timestamp:
                 raise ValueError("Measurement source timestamp cannot move backwards.")
+            validated_value = channel.validate_source_value(value)
             channel.update(
-                value,
+                validated_value,
                 _authority=self._sample_update_authority,
                 timestamp=float(attestation.timestamp),
                 timestamp_domain=attestation.timestamp_domain,
@@ -232,22 +235,45 @@ class MeasurementChannelService:
         network: Network,
         definitions: Sequence[Mapping[str, Any]] = (),
         generation: int = 0,
+        instrumentation: ProjectInstrumentationCollection | None = None,
     ) -> Any:
-        """Reconstruct candidate project channels and return one rollback callback."""
+        """Reconstruct candidate project channels and return one rollback callback.
+
+        Candidate instrumentation is supplied explicitly by the project
+        lifecycle. It is never read from the currently active Application
+        facade, which may still represent the project being replaced.
+        """
         if context is None:
             if definitions:
                 raise ValueError("A project-less measurement activation cannot contain channel definitions.")
+            if instrumentation is not None:
+                raise ValueError("A project-less measurement activation cannot contain instrumentation.")
             next_channels: dict[str, MeasurementChannel] = {}
             next_project_id = None
         else:
             if not isinstance(network, Network):
                 raise TypeError("network must be a Network.")
+            if instrumentation is None:
+                instrumentation = ProjectInstrumentationCollection(context.project_id)
+            if not isinstance(instrumentation, ProjectInstrumentationCollection):
+                raise TypeError("instrumentation must be a ProjectInstrumentationCollection.")
+            if instrumentation.project_id != context.project_id:
+                raise ValueError("Candidate instrumentation belongs to a different project.")
+            validate_instrumentation_targets(instrumentation, network)
             next_channels = {}
             next_project_id = context.project_id
+            provisioned_source_installations: set[str] = set()
             for definition in definitions:
-                channel = self._provision_definition(context, network, definition)
+                channel = self._provision_definition(context, network, definition, instrumentation=instrumentation)
                 if channel.id in next_channels:
                     raise ValueError(f"Duplicate measurement channel ID: {channel.id}")
+                if isinstance(channel.source_reference, MeasurementSourceReference):
+                    installation_id = channel.source_installation_id
+                    if installation_id in provisioned_source_installations:
+                        raise ValueError(
+                            f"Physical source installation {installation_id!r} is assigned to more than one MeasurementChannel."
+                        )
+                    provisioned_source_installations.add(installation_id)
                 if isinstance(channel.source, CurrentTransformer):
                     self._validate_ct_channel_definition(
                         definition, channel, existing_channels=next_channels
@@ -438,7 +464,7 @@ class MeasurementChannelService:
         reference = self._endpoint_reference(terminal_data)
         if reference.terminal_role not in {"S1", "S2"}:
             raise ValueError("CT measurement channels must originate from physical secondary terminal S1 or S2.")
-        if getattr(reference.equipment_type, "value", None) != "current_transformer":
+        if getattr(reference.equipment_type, "value", None) != "ct":
             raise ValueError("CT secondary measurement channels require a CURRENT_TRANSFORMER terminal reference.")
         source = self._network.get_by_identity(source_id)
         if not isinstance(source, CurrentTransformer):
@@ -523,10 +549,115 @@ class MeasurementChannelService:
                     f"already has measurement channel {existing_id!r}."
                 )
 
-    def _provision_definition(self, context: Any, network: Network, definition: Mapping[str, Any]) -> MeasurementChannel:
+    def _provision_definition(
+        self,
+        context: Any,
+        network: Network,
+        definition: Mapping[str, Any],
+        *,
+        instrumentation: ProjectInstrumentationCollection | None = None,
+    ) -> MeasurementChannel:
         if not isinstance(definition, Mapping):
             raise TypeError("Measurement channel definition must be a mapping.")
         channel_id = self._normalize_id(definition.get("channel_id", definition.get("id")))
+        physical_reference_data = definition.get("source_reference")
+        if physical_reference_data is not None:
+            if definition.get("source_terminal") is not None or definition.get("source_terminal_reference") is not None:
+                raise ValueError("A physical source channel cannot also declare an electrical source terminal.")
+            supplied_source_id = definition.get("source", definition.get("source_id"))
+            if supplied_source_id is not None and self._normalize_id(supplied_source_id) != MeasurementSourceReference.from_mapping(physical_reference_data).source_id:
+                raise ValueError("Physical source ID conflicts with the canonical source_reference.")
+            if not isinstance(instrumentation, ProjectInstrumentationCollection):
+                raise ValueError("Physical source channel provisioning requires the candidate project instrumentation collection.")
+            reference = MeasurementSourceReference.from_mapping(physical_reference_data)
+            source = instrumentation.source(reference.source_id)
+            installation_id = self._normalize_id(definition.get("source_installation_id"))
+            matches = [
+                item for item in instrumentation.installations
+                if item.installation_id == installation_id
+            ]
+            if len(matches) != 1:
+                raise ValueError(f"Physical source installation {installation_id!r} is not uniquely registered in this project.")
+            installation = matches[0]
+            if (
+                installation.source_id != reference.source_id
+                or installation.interface_id != reference.interface_id
+            ):
+                raise ValueError("Physical source installation does not match the configured source interface.")
+            interface = source.interface(reference.interface_id)
+            if interface.signal_kind == "analog":
+                if interface.quantity.endswith("_temperature"):
+                    signal_type = MeasurementSignalType.TEMPERATURE
+                else:
+                    signal_type = {
+                        "current": MeasurementSignalType.CURRENT,
+                        "voltage": MeasurementSignalType.VOLTAGE,
+                        "frequency": MeasurementSignalType.FREQUENCY,
+                        "phase_angle": MeasurementSignalType.PHASE_ANGLE,
+                        "power": MeasurementSignalType.POWER,
+                        "impedance": MeasurementSignalType.IMPEDANCE,
+                    }.get(interface.quantity, MeasurementSignalType.CUSTOM)
+            elif interface.signal_kind == "digital":
+                if interface.quantity.endswith("_temperature") or interface.quantity in {
+                    "current", "voltage", "frequency", "phase_angle", "power", "impedance"
+                }:
+                    raise ValueError("Digital physical interfaces cannot declare continuous analog quantities.")
+                signal_type = MeasurementSignalType.DIGITAL
+            else:
+                # Counter and diagnostic outputs have no dedicated Core
+                # scalar signal classification; preserve them as CUSTOM
+                # without pretending they are analog or digital states.
+                signal_type = MeasurementSignalType.CUSTOM
+            if "signal_type" in definition:
+                declared_signal = self._enum_value(
+                    MeasurementSignalType, definition["signal_type"], "signal_type"
+                )
+                if declared_signal is not signal_type:
+                    raise ValueError("Configured signal_type conflicts with the physical source interface quantity.")
+            producer_id = self._normalize_optional_id(definition.get("producer_id"))
+            if producer_id is None:
+                raise ValueError("Physical sensor channels require an explicit producer_id.")
+            timestamp_domain = definition.get("timestamp_domain")
+            if (
+                not isinstance(timestamp_domain, str)
+                or not timestamp_domain.strip()
+                or timestamp_domain != timestamp_domain.strip()
+            ):
+                raise ValueError("Physical sensor channels require an explicit canonical timestamp_domain.")
+            if self._clock_domain is not None and timestamp_domain != self._clock_domain:
+                raise ValueError("Physical sensor timestamp_domain must match the configured trusted Application clock domain.")
+            if "stale_after" not in definition:
+                raise ValueError("Physical sensor channels require an explicit stale_after duration.")
+            try:
+                stale_after = float(definition["stale_after"])
+            except (TypeError, ValueError, OverflowError) as exc:
+                raise ValueError("Physical sensor stale_after must be numeric.") from exc
+            if not math.isfinite(stale_after) or stale_after <= 0:
+                raise ValueError("Physical sensor stale_after must be finite and positive.")
+            phase = self._enum_value(
+                MeasurementPhase,
+                definition.get("phase", interface.phase or MeasurementPhase.NONE.value),
+                "phase",
+            )
+            if interface.phase is not None and phase.value != interface.phase.upper():
+                raise ValueError("Configured channel phase conflicts with the physical source interface.")
+            return MeasurementProvisioning.provision_physical_source_channel(
+                source=source,
+                source_reference=reference,
+                source_installation_id=installation_id,
+                channel_id=channel_id,
+                signal_type=signal_type,
+                name=str(definition.get("name", "")),
+                phase=phase,
+                unit=interface.unit,
+                nominal_value=float(definition.get("nominal_value", 0.0)),
+                scale=float(definition.get("scale", 1.0)),
+                polarity=float(definition.get("polarity", 1.0)),
+                timestamp_domain=timestamp_domain,
+                stale_after=stale_after,
+                available=False,
+                quality=MeasurementQuality.UNKNOWN,
+            )
         source_id = self._normalize_id(definition.get("source", definition.get("source_id")))
         terminal_data = definition.get("source_terminal", definition.get("source_terminal_reference"))
         if not isinstance(terminal_data, Mapping):
@@ -536,7 +667,7 @@ class MeasurementChannelService:
         if getattr(source, "id", None) != source_id:
             raise ValueError(f"Measurement source '{source_id}' could not be resolved.")
         if isinstance(source, CurrentTransformer) and (
-            getattr(reference.equipment_type, "value", None) != "current_transformer"
+            getattr(reference.equipment_type, "value", None) != "ct"
             or reference.terminal_role not in {"S1", "S2"}
         ):
             raise ValueError("CT measurement channels must resolve to the physical S1 or S2 secondary terminal.")
@@ -599,15 +730,11 @@ class MeasurementChannelService:
 
     @staticmethod
     def _serialize_channel(channel: MeasurementChannel) -> dict[str, Any]:
-        source_reference = channel.source_terminal
-        if not isinstance(source_reference, EndpointReference):
-            raise ValueError(f"MeasurementChannel '{channel.id}' has no canonical source EndpointReference.")
-        return {
+        data = {
             "channel_id": channel.id,
             "signal_type": channel.signal_type.value,
             "name": channel.name,
             "source": channel.source_id,
-            "source_terminal": dict(source_reference.to_mapping()),
             "phase": channel.phase.value,
             "unit": channel.unit,
             "nominal_value": channel.nominal_value,
@@ -617,6 +744,16 @@ class MeasurementChannelService:
             "stale_after": channel.stale_after,
             "producer_id": getattr(channel, "producer_id", None),
         }
+        physical_reference = getattr(channel, "source_reference", None)
+        if isinstance(physical_reference, MeasurementSourceReference):
+            data["source_reference"] = physical_reference.to_mapping()
+            data["source_installation_id"] = channel.source_installation_id
+            return data
+        terminal_reference = channel.source_terminal
+        if not isinstance(terminal_reference, EndpointReference):
+            raise ValueError(f"MeasurementChannel '{channel.id}' has no canonical source reference.")
+        data["source_terminal"] = dict(terminal_reference.to_mapping())
+        return data
 
 
 __all__ = ["MeasurementChannelService"]

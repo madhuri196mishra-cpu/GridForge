@@ -36,6 +36,7 @@ from core.analysis.transient_stability import TransientStabilityAnalysis, Transi
 from core.network import Network
 from core.model.breaker import Breaker
 from core.persistence import ProjectPersistenceService, StudyResultArchive
+from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
 from core.persistence.project_package import normalize_package_path
 from core.protection.project_configuration import ProtectionProjectConfiguration
 from core.control.configuration import ControlConfiguration
@@ -112,7 +113,10 @@ def create_application(
         clock_domain=measurement_clock_domain,
         max_source_clock_skew_seconds=max_measurement_source_clock_skew_seconds,
     )
-    measurement_channel_service.activate(initial_context, network, (), generation=1)
+    measurement_channel_service.activate(
+        initial_context, network, (), generation=1,
+        instrumentation=ProjectInstrumentationCollection(initial_context.project_id),
+    )
     protection_configuration_service = ProtectionConfigurationService(
         ProtectionProjectConfiguration(initial_context.project_id),
         network_provider=lambda: lifecycle.network if lifecycle is not None else network,
@@ -638,6 +642,7 @@ def create_application(
         control_service=control_service,
         protection_execution_audit_store=protection_execution_audit_store,
     )
+    application.instrumentation_collection = ProjectInstrumentationCollection(initial_context.project_id)
     measurement_channel_service.bind_execution_lock(application._execution_lock)
 
     def measurement_channel_is_referenced(channel_id: str) -> bool:
@@ -769,6 +774,7 @@ def create_application(
         previous_draft_collection = application.draft_network_collection
         previous_draft = application.draft_network
         previous_study_cases = dict(application._study_cases)
+        previous_instrumentation_collection = application.instrumentation_collection
 
         def restore_control_runtime() -> None:
             if not previous_control_active:
@@ -795,6 +801,7 @@ def create_application(
             if previous_draft_collection is None:
                 application.set_draft_network(previous_draft)
             application._study_cases = dict(previous_study_cases)
+            application.instrumentation_collection = previous_instrumentation_collection
             dynamic_models.replace(previous_dynamic_models)
             restore_control_runtime()
 
@@ -803,11 +810,19 @@ def create_application(
             # validating protection bindings or composing ProtectionRuntime.
             # The loaded definitions are configuration only; activation binds
             # them to this candidate Network and project generation.
+            candidate_instrumentation = (
+                loaded.instrumentation
+                if context is not None and loaded is not None and loaded.instrumentation is not None
+                else ProjectInstrumentationCollection(context.project_id)
+                if context is not None
+                else None
+            )
             measurement_channel_service.activate(
                 context,
                 network,
                 loaded.measurement_definitions if context is not None and loaded is not None else (),
                 generation=generation,
+                instrumentation=candidate_instrumentation,
             )
             if context is None:
                 application.set_draft_network_collection(None)
@@ -820,7 +835,9 @@ def create_application(
                 dynamic_models.replace(())
                 application.set_draft_network(DraftNetwork.empty(context.project_id if context is not None else "closed-project", generation))
                 application._study_cases = {}
+                application.instrumentation_collection = None
             else:
+                application.instrumentation_collection = candidate_instrumentation
                 configuration = (
                     loaded.protection_configuration
                     if loaded is not None and loaded.protection_configuration is not None
@@ -960,6 +977,11 @@ def create_application(
                         f"Dynamic model association {association.machine_id!r} has invalid persisted "
                         "activation provenance."
                     )
+            instrumentation = loaded.instrumentation
+            if instrumentation is not None:
+                if instrumentation.project_id != context.project_id:
+                    raise ValueError("Instrumentation collection project_id does not match the candidate project.")
+                validate_instrumentation_targets(instrumentation, candidate_network)
             configuration = loaded.protection_configuration
             if configuration is not None and configuration.project_id != context.project_id:
                 raise ValueError("Protection configuration project_id does not match the candidate project.")
@@ -1045,6 +1067,7 @@ def create_application(
             draft_network_collection=application.draft_network_collection,
             presentation_collection=presentation_collection,
             study_cases=application.study_cases,
+            instrumentation=application.instrumentation_collection,
             protection_presentation=(                application.protection_presentation.to_dict()
                 if callable(getattr(getattr(application, "protection_presentation", None), "to_dict", None))
                 else getattr(application, "protection_presentation", None)

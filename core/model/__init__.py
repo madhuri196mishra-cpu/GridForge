@@ -12,7 +12,7 @@ from .physical_conductor_construction import PhysicalConductorPath, PhysicalCond
 from .transformer_physical_conductor_construction import TransformerWindingConductorConstruction, TransformerPhysicalConductorConstruction
 from .line import Line
 from .cable import Cable
-from .transformer import ImpedanceBasis, TransformerCoreConstruction, TransformerWindingConnection, Transformer
+from .transformer import ImpedanceBasis, TransformerCoreConstruction, TransformerWindingConnection, TransformerWinding, Transformer
 from .transformer_zero_sequence_test_data import TransformerZeroSequenceTwoWindingTestData
 from .transformer_zero_sequence_multiport_evidence import TransformerZeroSequenceMultiportEvidence, TransformerDeltaLoopState, transformer_multiport_fingerprint, transformer_delta_loop_fingerprint
 from .transformer_zero_sequence_contracts import (
@@ -66,7 +66,7 @@ ElectricalObject.register(Relay)
 from .endpoint_reference import EndpointReference, EndpointReferenceKind, EquipmentType
 
 __all__ = (
-    "ElectricalObject", "Terminal", "Injection", "PhysicalConductorPath", "PhysicalConductorConstruction", "TransformerWindingConductorConstruction", "TransformerPhysicalConductorConstruction", "Bus", "Branch", "ConductorRole", "ConductorMaterial", "PhysicalConductor", "BranchConductorSystem", "Line", "Cable", "ImpedanceBasis", "TransformerCoreConstruction", "TransformerWindingConnection", "TransformerVectorGroupConnection", "TransformerWindingPolarity", "ZeroSequenceTestEnergizedWinding", "ZeroSequenceTestOtherWindingCondition", "TransformerVectorGroupConfiguration", "TransformerZeroSequenceTestConfiguration", "TransformerZeroSequenceTwoWindingTestData", "TransformerZeroSequenceMultiportEvidence", "TransformerDeltaLoopState", "transformer_multiport_fingerprint", "transformer_delta_loop_fingerprint", "validate_zero_sequence_test_applicability", "Transformer", "Switch",
+    "ElectricalObject", "Terminal", "Injection", "PhysicalConductorPath", "PhysicalConductorConstruction", "TransformerWindingConductorConstruction", "TransformerPhysicalConductorConstruction", "Bus", "Branch", "ConductorRole", "ConductorMaterial", "PhysicalConductor", "BranchConductorSystem", "Line", "Cable", "ImpedanceBasis", "TransformerCoreConstruction", "TransformerWindingConnection", "TransformerWinding", "TransformerVectorGroupConnection", "TransformerWindingPolarity", "ZeroSequenceTestEnergizedWinding", "ZeroSequenceTestOtherWindingCondition", "TransformerVectorGroupConfiguration", "TransformerZeroSequenceTestConfiguration", "TransformerZeroSequenceTwoWindingTestData", "TransformerZeroSequenceMultiportEvidence", "TransformerDeltaLoopState", "transformer_multiport_fingerprint", "transformer_delta_loop_fingerprint", "validate_zero_sequence_test_applicability", "Transformer", "Switch",
     "Breaker", "Disconnector", "Fuse", "Load", "Generator", "SynchronousMachine", "SyncMachine", "Motor",
     "Shunt", "Capacitor", "Reactor", "Solar", "Battery", "Grid", "CTPolarity", "CurrentTransformer", "PT",
     "PotentialTransformer", "CVT", "Relay", "EndpointReference", "EndpointReferenceKind", "EquipmentType",
