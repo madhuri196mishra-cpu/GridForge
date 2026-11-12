@@ -824,3 +824,68 @@ feedback against the committed checkpoint, retain partial-result provenance,
 and return a detached result payload compatible with StudyService and its
 configured StudyResult persister. The plugin does not implement a second
 scheduler, checkpoint store, integrator, event publisher or persistence path.
+
+
+### Host augmented-study execution contract and integration blocker
+
+A source-level reconciliation of the current branch confirms that the opt-in
+`augmented_dae` dispatch is a typed handoff only. The repository currently
+contains no concrete Application composition implementation of
+`generator_augmented_transient_solver.solve_generator_augmented_transient(...)`
+or `create_generator_augmented_adapter(...)`; the shared
+`ElectricalDynamicsComposition` protocol declares only the sampled generator
+capabilities. Consequently, selecting `execution_mode="augmented_dae"` in a
+production StudyRequest currently fails closed unless an external host supplies
+both capabilities. This is intentional and must not be represented as a
+working end-to-end study path.
+
+The existing ownership boundaries were checked before considering an
+implementation:
+- `core/application/study.py` owns handler dispatch, cancellation-token
+  linearization, terminal StudyResult construction, configured result
+  persistence and lifecycle events. It accepts one handler return value or
+  exception.partial_result; it is not a numerical step loop.
+- `core/solver/dynamics/dae_solver.py` exposes a machine-only one-step
+  `DAESolver.step` over its legacy state and derivative API. It does not
+  consume the composed state layout, fixed-point terminal-current coupling,
+  AVR/GGOV1 state blocks or the plugin augmented adapter.
+- `GeneratorAugmentedDAEAdapter.step` advances exactly one numerical interval
+  and exposes an accepted-step observer. It deliberately does not own time,
+  cancellation, sampled-controller checkpoint state, study result assembly
+  or persistence.
+- `GGOV1StepAttempt` is a detached accept/reject value object. It does not
+  own the committed checkpoint or coordinate it with numerical step acceptance.
+
+A concrete host implementation must therefore be added at the existing
+Application composition/solver boundary (not as a plugin-owned scheduler or
+second persistence service). Before it can be called complete, that host must:
+1. Build the per-study adapter from the immutable StudyRequest and detached
+   StudyExecutionContext, resolving the exact machine, equipment, topology
+   snapshot/revision, model parameters, operating point, component bindings,
+   terminal voltage projection, network solver and current bases from
+   Application-owned state.
+2. Validate the request's time interval, integration step policy, initial
+   composed state and model/controller configuration before the first step.
+3. Drive repeated one-step calls, checking StudyCancellationToken at every
+   accepted-step boundary; never publish RK/Newton trial evaluations as
+   accepted checkpoints.
+4. Keep the committed GGOV1 checkpoint in the host's study-local execution
+   state. Begin each candidate transaction from that checkpoint, evaluate
+   using the prior committed FSR feedback, and call accept only after the
+   numerical step and final algebraic stage have succeeded. Rejected steps
+   must retain the exact prior checkpoint.
+5. Return a detached, versioned primitive payload containing accepted states,
+   times, final algebraic/network quality, coupling residuals, controller
+   checkpoint history, provenance and an explicit completed/cancelled/failed
+   trajectory status. On an exception after an accepted step, attach the
+   latest payload as `partial_result` so StudyService can persist it.
+6. Leave terminal status, durable archive writes and lifecycle events to the
+   existing StudyService and its configured result persister. The host solver
+   must not write archives, publish duplicate lifecycle events or create a
+   second cancellation/result registry.
+
+Until this host boundary exists and is statically reconciled with the actual
+Application composition root and callers, augmented DAE remains an opt-in
+extension contract rather than a production-ready generator transient mode.
+No new Application service or speculative composition root is introduced by
+this documentation correction.
