@@ -78,6 +78,22 @@ class GeneratorDynamicStageResult:
                 raise GeneratorDynamicStageError("generator projection and coupled network solution differ")
             if self.coupled_network.request.simulation_time_s != self.network.simulation_time_s:
                 raise GeneratorDynamicStageError("coupled network stage time differs from generator stage time")
+            coupled_by_id = {
+                item.injection_id: item for item in self.coupled_network.terminal_injections
+            }
+            assembled_by_id = {
+                item.injection_id: item for item in self.derivative_assembly.terminal_injections
+            }
+            if coupled_by_id != assembled_by_id:
+                raise GeneratorDynamicStageError(
+                    "final derivative assembly terminal injections differ from the converged network-stage contributions"
+                )
+            if set(self.coupled_network.aggregated_terminal_currents_pu) != set(
+                self.coupled_network.request.terminal_current_injections_pu
+            ) and not self.coupled_network.aggregated_terminal_currents_pu:
+                raise GeneratorDynamicStageError(
+                    "converged network stage has no retained terminal-current aggregation"
+                )
 
 
 def evaluate_generator_dynamic_stage(
