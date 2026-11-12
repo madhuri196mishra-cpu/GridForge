@@ -18,6 +18,7 @@ from core.plugin_sdk import (
     validate_plugin_descriptor,
 )
 from .study_handler import GeneratorTransientStudyHandler
+from plugins.electrical_dynamics.composition import require_electrical_dynamics_composition
 
 GENERATOR_TRANSIENT_STUDY_TYPE = "generator_transient"
 
@@ -96,16 +97,16 @@ class GeneratorDynamicsPlugin(GridForgePlugin):
         )
 
         application = context.application
-        composition = services.get("generator_dynamics_composition")
+        composition = require_electrical_dynamics_composition(services)
         if composition is None:
             raise RuntimeError(
                 "Generator dynamics activation requires the Application-owned "
-                "'generator_dynamics_composition' service; no parallel service is created."
+                "'electrical_dynamics_composition' host object; no parallel service is created."
             )
         register_extension = getattr(composition, "register_generator_extension", None)
         if not callable(register_extension):
             raise TypeError(
-                "generator_dynamics_composition must expose register_generator_extension"
+                "electrical_dynamics_composition must expose register_generator_extension"
             )
 
         # Model-specific sampled adapters are created per StudyRequest, not
