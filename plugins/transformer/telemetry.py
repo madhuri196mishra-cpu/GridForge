@@ -10,6 +10,12 @@ class MeasurementQuality(str, Enum):
     GOOD="good"; UNCERTAIN="uncertain"; BAD="bad"; NOT_CONNECTED="not_connected"
     STALE="stale"; SUBSTITUTED="substituted"; OUT_OF_RANGE="out_of_range"
 
+
+def _require_canonical_text(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip() or value != value.strip():
+        raise ValueError(f"{field} must be a canonical non-empty string.")
+    return value
+
 class SignalKind(str, Enum):
     ANALOG="analog"; DIGITAL="digital"; COUNTER="counter"
     ESTIMATED="estimated"; DIAGNOSTIC="diagnostic"
@@ -61,16 +67,33 @@ class ChannelDefinition:
 
     def __post_init__(self) -> None:
         for field in ("channel_id", "equipment_id", "unit", "subsystem", "description"):
-            if not str(getattr(self, field)).strip():
-                raise ValueError(f"{field} cannot be blank.")
-        if self.phase is not None and self.phase.upper() not in {"A","B","C","N","AB","BC","CA"}:
-            raise ValueError(f"Unsupported phase designation: {self.phase!r}.")
-        if self.sample_period_ms is not None and self.sample_period_ms <= 0:
-            raise ValueError("sample_period_ms must be positive.")
+            _require_canonical_text(getattr(self, field), field)
+        if not isinstance(self.quantity, TransformerQuantity):
+            raise TypeError("quantity must be a TransformerQuantity.")
+        if not isinstance(self.signal_kind, SignalKind):
+            raise TypeError("signal_kind must be a SignalKind.")
+        if self.phase is not None:
+            if not isinstance(self.phase, str) or self.phase.upper() not in {"A","B","C","N","AB","BC","CA"}:
+                raise ValueError(f"Unsupported phase designation: {self.phase!r}.")
+        if self.winding_id is not None:
+            _require_canonical_text(self.winding_id, "winding_id")
+        if self.sensor_type is not None:
+            _require_canonical_text(self.sensor_type, "sensor_type")
+        if self.source_tag is not None:
+            _require_canonical_text(self.source_tag, "source_tag")
+        if self.sample_period_ms is not None and (
+            isinstance(self.sample_period_ms, bool)
+            or not isinstance(self.sample_period_ms, int)
+            or self.sample_period_ms <= 0
+        ):
+            raise ValueError("sample_period_ms must be a positive integer.")
         for name in ("minimum", "maximum"):
             value = getattr(self, name)
-            if value is not None and not isfinite(value):
-                raise ValueError(f"{name} must be finite.")
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                or not isfinite(value)
+            ):
+                raise ValueError(f"{name} must be a finite number.")
         if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
             raise ValueError("Channel minimum cannot exceed maximum.")
 
@@ -86,18 +109,28 @@ class TelemetrySample:
     unit: str = ""
 
     def __post_init__(self) -> None:
-        if not self.channel_id.strip() or not self.equipment_id.strip():
-            raise ValueError("Telemetry sample requires channel and equipment ids.")
+        _require_canonical_text(self.channel_id, "channel_id")
+        _require_canonical_text(self.equipment_id, "equipment_id")
+        _require_canonical_text(self.source, "source")
+        _require_canonical_text(self.unit, "unit")
+        if not isinstance(self.quality, MeasurementQuality):
+            raise TypeError("quality must be a MeasurementQuality.")
+        if not isinstance(self.timestamp, datetime):
+            raise TypeError("timestamp must be a datetime.")
         if self.timestamp.tzinfo is None or self.timestamp.utcoffset() is None:
             raise ValueError("Telemetry timestamps must be timezone-aware.")
         if not isinstance(self.value, bool) and (
-            not isinstance(self.value, (int, float)) or not isfinite(float(self.value))
+            isinstance(self.value, complex)
+            or not isinstance(self.value, (int, float))
+            or not isfinite(float(self.value))
         ):
             raise ValueError("Telemetry value must be a finite number or boolean.")
-        if self.sequence is not None and self.sequence < 0:
-            raise ValueError("Telemetry sequence cannot be negative.")
-        if not self.source.strip():
-            raise ValueError("Telemetry sample requires source provenance.")
+        if self.sequence is not None and (
+            isinstance(self.sequence, bool)
+            or not isinstance(self.sequence, int)
+            or self.sequence < 0
+        ):
+            raise ValueError("Telemetry sequence must be a non-negative integer.")
 
 @dataclass(frozen=True, slots=True)
 class TelemetrySnapshot:
@@ -106,11 +139,14 @@ class TelemetrySnapshot:
     samples: tuple[TelemetrySample, ...]
 
     def __post_init__(self) -> None:
-        if not self.equipment_id.strip():
-            raise ValueError("Telemetry snapshot requires an equipment id.")
+        _require_canonical_text(self.equipment_id, "equipment_id")
+        if not isinstance(self.captured_at, datetime):
+            raise TypeError("captured_at must be a datetime.")
         if self.captured_at.tzinfo is None or self.captured_at.utcoffset() is None:
             raise ValueError("Snapshot timestamp must be timezone-aware.")
         samples = tuple(self.samples)
+        if any(not isinstance(sample, TelemetrySample) for sample in samples):
+            raise TypeError("Snapshot samples must be TelemetrySample values.")
         if any(sample.equipment_id != self.equipment_id for sample in samples):
             raise ValueError("Snapshot cannot contain samples for another equipment id.")
         keys = [(s.channel_id, s.timestamp, s.sequence) for s in samples]
@@ -198,11 +234,12 @@ def build_transformer_channel_catalogue(
     include_partial_discharge: bool = True, include_bushing_monitoring: bool = True,
 ) -> tuple[ChannelDefinition, ...]:
     """Create stable channel definitions from explicitly declared winding ids."""
-    if not equipment_id.strip():
-        raise ValueError("equipment_id cannot be blank.")
-    windings = tuple(str(item).strip() for item in winding_ids)
-    if not windings or any(not item for item in windings):
+    _require_canonical_text(equipment_id, "equipment_id")
+    windings = tuple(winding_ids)
+    if not windings:
         raise ValueError("At least one non-empty winding id is required.")
+    for winding_id in windings:
+        _require_canonical_text(winding_id, "winding_id")
     if len(set(windings)) != len(windings):
         raise ValueError("Winding ids must be unique.")
     result: list[ChannelDefinition] = []
