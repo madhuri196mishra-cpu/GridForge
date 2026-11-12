@@ -3470,3 +3470,19 @@ Multi-terminal topology provenance — 12 November 2026:
   incorrect assumptions for multi-node branch equipment.
 - Verification: source fetch-back and static contract/call-path inspection
   only; no tests or numerical execution.
+
+
+
+Complete multi-terminal input/topology validation refinement — 12 November 2026:
+- DynamicComponentBinding now rejects duplicate terminal identities after
+  whitespace normalization in terminal_bus_ids and requires exact coverage
+  of the immutable terminal_ids set.
+- evaluate_dynamic_components validates resolved terminal-voltage inputs for
+  every bound terminal, not only the primary terminal. The composed
+  derivative path validates every mapped bus has a solved network voltage
+  and preserves host-resolved oriented branch voltages without equating them
+  to an individual bus potential.
+- This closes the source/return binding mismatch for paired ZIP branches
+  while retaining fail-closed terminal and topology provenance checks.
+- Verification: touched-file fetch-back and static contract checks only;
+  no tests, imports, runtime or numerical execution.
