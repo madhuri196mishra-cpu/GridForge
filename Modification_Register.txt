@@ -3175,3 +3175,13 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+## Instrumentation wiring and cable schedule — 2026-11-12 (implementation slice 1)
+
+- Created focused branch `instrumentation-wiring-cable-schedule-2026-11-12` from Madhuri main `7a9f5374d5f121dc4a81b3e1571f9d8cddbba263`.
+- Ported the authoritative upstream Core instrumentation wiring value model as `core/model/instrument_wiring.py`: stable wiring/cable/core/panel-wire/signal/hop identities, explicit carrier semantics, tag policy, immutable inventory, duplicate-ID/tag/channel checks, cable-core ownership and route-hop consistency.
+- Exported the canonical contracts from `core.model`; no Qt dependency and no use of the power-network `Cable` as instrumentation cable.
+- This is a foundational Core slice only. Application commands/service, terminal-block/marshalling inventory, cable-schedule read models, persistence, SLD projection, receiver endpoint reconciliation and cross-canvas refresh are NOT yet implemented on Madhuri. Dynamic accepted-step publication remains blocked by the separately documented incomplete host execution path and is not claimed.
+- Source provenance: `SubhenduMishra29/GridForge:main` at `c75b3a43ce4125d787dc9bd584313430d95d9691`, source model blob `b9bd00c5ac225ba05b8704a0b4bdc7e4c3a76775`. The upstream draft PR #1207 is not merged or copied wholesale.
+- Verification: source-level review of the imported immutable model and public export only. No tests, imports, CI, startup, GUI, save/reopen or numerical execution were run.
