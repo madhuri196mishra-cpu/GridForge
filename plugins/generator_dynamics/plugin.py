@@ -45,6 +45,8 @@ PLUGIN_DESCRIPTOR = PluginDescriptor(
         "ggov1_host_transient_solver_handoff",
         "ggov1_accepted_step_transaction",
         "ggov1_dynamic_state_layout",
+        "avr_dynamic_state_component", "stage_scoped_excitation_handoff",
+        "coordinated_generator_stage_evaluation",
         "ggov1_machine_identity_binding",
         "ggov1_system_base_mechanical_power_handoff",
         "ggov1_pid_tracking_input",
