@@ -3175,3 +3175,39 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+
+======================================================================
+GRIDFORGE V2 — INITIAL LOAD DYNAMICS PLUGIN FOUNDATION
+Date: 12 November 2026
+Implementation repository: madhuri196mishra-cpu/GridForge
+Implementation branch: load-dynamics-plugin
+Baseline: main at branch creation
+
+- Added plugins/load_dynamics with immutable load-family, connection,
+  nameplate, ZIP-demand, time-profile and induction-motor parameter contracts.
+- Added family-filtered logical instrumentation templates for phase/neutral
+  currents, phase/line voltages, P/Q/S/PF, frequency, energy, harmonics,
+  unbalance, flicker, status, motor thermal/mechanical, converter DC-link,
+  battery and selected process measurements.
+- Measurement templates do not fabricate physical CT/PT/CVT/transducer sources
+  or channel values. Physical source terminals, provenance, quality, freshness
+  and activation remain on the canonical measurement path.
+- Added capability-gated numerical workload selection through
+  core.numerics.backend. NPU eligibility is restricted to load forecast and
+  condition inference; it is not claimed as a physical transient solver.
+- Added a StudyService-compatible load transient adapter and explicit
+  engineering-plugin lifecycle descriptor. The host must supply
+  load_dynamics_composition with the actual solver and per-request sampled
+  adapter factory. No second scheduler, event bus, result store, or registry
+  is introduced.
+- Added docs/plugins/LOAD_DYNAMICS_PLUGIN_DESIGN.md with coverage, boundaries,
+  deferred integration gates and verification limits.
+- The existing Core Load remains authoritative; no Core model, topology,
+  project persistence, Application composition root, or UI path was changed.
+- Verification: source files and design document fetched back from the
+  dedicated branch. No tests, CI, imports, startup, GUI, numerical studies,
+  hardware probing, or commissioning were run. The plugin is not activated
+  by the application composition root and is not merged to main.
+======================================================================
