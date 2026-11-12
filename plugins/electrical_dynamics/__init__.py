@@ -1,4 +1,5 @@
 """Shared interoperability contracts for GridForge electrical dynamics plugins."""
+from .composition import ElectricalDynamicsComposition, require_electrical_dynamics_composition
 from .contracts import (
     DynamicsEquipmentBinding,
     DynamicsEquipmentKind,
@@ -13,6 +14,7 @@ from .contracts import (
 )
 
 __all__ = [
+    "ElectricalDynamicsComposition", "require_electrical_dynamics_composition",
     "DynamicsEquipmentBinding", "DynamicsEquipmentKind",
     "DynamicsModelCapability", "DynamicsModelReadiness", "DynamicsParticipant",
     "MeasurementPointContract", "equipment_binding_from_endpoint",
