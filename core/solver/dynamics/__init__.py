@@ -36,6 +36,7 @@ from .component_contract import (
     DynamicComponentContractError,
     DynamicComponentInputs,
     DynamicComponentEvaluation,
+    DynamicTerminalInjection,
     DynamicStateComponent,
     validate_dynamic_state_component,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "DynamicComponentContractError",
     "DynamicComponentInputs",
     "DynamicComponentEvaluation",
+    "DynamicTerminalInjection",
     "DynamicStateComponent",
     "validate_dynamic_state_component",
     "DynamicSystemLayoutError",
