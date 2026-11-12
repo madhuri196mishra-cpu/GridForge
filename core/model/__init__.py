@@ -71,3 +71,12 @@ __all__ = (
     "Shunt", "Capacitor", "Reactor", "Solar", "Battery", "Grid", "CTPolarity", "CurrentTransformer", "PT",
     "PotentialTransformer", "CVT", "Relay", "EndpointReference", "EndpointReferenceKind", "EquipmentType",
 )
+
+
+# Canonical instrumentation signal and physical wiring identities.
+from .instrument_wiring import (
+    WiringTerminalReference, WiringConductorRole, SignalKind, CarrierKind,
+    CableAssembly, CableCore, PanelWire, SignalDefinition,
+    SignalCarrierBinding, PhysicalConnectionHop, WiringTagSeries,
+    WiringTagPolicy, InstrumentationWiringInventory,
+)
