@@ -571,18 +571,29 @@ class MeasurementChannelService:
             ):
                 raise ValueError("Physical source installation does not match the configured source interface.")
             interface = source.interface(reference.interface_id)
-            if interface.quantity.endswith("_temperature"):
-                signal_type = MeasurementSignalType.TEMPERATURE
+            if interface.signal_kind == "analog":
+                if interface.quantity.endswith("_temperature"):
+                    signal_type = MeasurementSignalType.TEMPERATURE
+                else:
+                    signal_type = {
+                        "current": MeasurementSignalType.CURRENT,
+                        "voltage": MeasurementSignalType.VOLTAGE,
+                        "frequency": MeasurementSignalType.FREQUENCY,
+                        "phase_angle": MeasurementSignalType.PHASE_ANGLE,
+                        "power": MeasurementSignalType.POWER,
+                        "impedance": MeasurementSignalType.IMPEDANCE,
+                    }.get(interface.quantity, MeasurementSignalType.CUSTOM)
+            elif interface.signal_kind == "digital":
+                if interface.quantity.endswith("_temperature") or interface.quantity in {
+                    "current", "voltage", "frequency", "phase_angle", "power", "impedance"
+                }:
+                    raise ValueError("Digital physical interfaces cannot declare continuous analog quantities.")
+                signal_type = MeasurementSignalType.DIGITAL
             else:
-                signal_type = {
-                    "current": MeasurementSignalType.CURRENT,
-                    "voltage": MeasurementSignalType.VOLTAGE,
-                    "frequency": MeasurementSignalType.FREQUENCY,
-                    "phase_angle": MeasurementSignalType.PHASE_ANGLE,
-                    "power": MeasurementSignalType.POWER,
-                    "impedance": MeasurementSignalType.IMPEDANCE,
-                    "digital": MeasurementSignalType.DIGITAL,
-                }.get(interface.quantity, MeasurementSignalType.CUSTOM)
+                # Counter and diagnostic outputs have no dedicated Core
+                # scalar signal classification; preserve them as CUSTOM
+                # without pretending they are analog or digital states.
+                signal_type = MeasurementSignalType.CUSTOM
             if "signal_type" in definition:
                 declared_signal = self._enum_value(
                     MeasurementSignalType, definition["signal_type"], "signal_type"
