@@ -98,13 +98,14 @@ def evaluate_zip_terminal_injections(
 ) -> tuple[DynamicTerminalInjection, ...]:
     """Evaluate a ZIP load as phase-resolved network current injections.
 
-    The host supplies canonical terminal-to-branch mapping and explicit source/return
+    The host supplies canonical terminal-to-branch mapping, explicit source/return
     orientation and matching voltage/apparent-power bases. Shares allocate
     total load demand exactly once. Source-node current is negative and
     return-node current positive under the equipment-to-network injection
     convention. Each nodal per-unit current carries its own ampere base so
-    different terminal voltage bases are not silently conflated. This is a reduced ZIP representation, not a detailed motor,
-    converter, furnace or unbalanced device model.
+    different terminal voltage bases are not silently conflated. This is a
+    reduced ZIP representation, not a detailed motor, converter, furnace or
+    unbalanced device model.
     """
     if not isinstance(nameplate, LoadNameplate):
         raise TypeError("nameplate must be LoadNameplate")
