@@ -128,14 +128,15 @@ def evaluate_composed_dynamic_derivatives(
     for binding in bindings:
         if not isinstance(binding, DynamicComponentBinding):
             raise DynamicDerivativeAssemblyError("bindings must contain DynamicComponentBinding values")
-        if binding.machine_id not in machine_ids:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} references unknown machine {binding.machine_id!r}"
-            )
-        if machine_bus_ids[binding.machine_id] != binding.bus_id:
-            raise DynamicDerivativeAssemblyError(
-                f"component {binding.component_id!r} bus identity does not match its canonical machine"
-            )
+        if binding.machine_id is not None:
+            if binding.machine_id not in machine_ids:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} references unknown machine {binding.machine_id!r}"
+                )
+            if machine_bus_ids[binding.machine_id] != binding.bus_id:
+                raise DynamicDerivativeAssemblyError(
+                    f"component {binding.component_id!r} bus identity does not match its canonical machine"
+                )
         if binding.bus_id not in voltages:
             raise DynamicDerivativeAssemblyError(
                 f"component {binding.component_id!r} has no solved voltage for bus {binding.bus_id!r}"
