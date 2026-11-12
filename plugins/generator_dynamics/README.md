@@ -703,3 +703,97 @@ it independently for every actual stage state/time (including RK4 midpoint
 states); the host must pass the returned derivative vector to the integrator
 and retain its accepted/rejected-step policy. Discrete controller feedback,
 event commits and result persistence remain outside this pure stage call.
+
+
+### Opt-in augmented DAE integration adapter
+
+`GeneratorAugmentedDAEAdapter` is the explicit integration bridge for hosts
+that are ready to run the composed state vector. It accepts the canonical
+Core `MultiMachineSystem` and `Integrator`, the frozen
+`DynamicSystemStateLayout`, registered extension components and bindings,
+and the host's network/terminal-projection callbacks. Construction verifies
+that the machine prefix of the composed layout exactly matches the canonical
+machine identities and offsets.
+
+The caller creates the initial augmented vector with
+`DynamicSystemStateLayout.pack(machine_state, component_states)`. The
+adapter's `derivatives(state, time)` is directly compatible with the Core
+Integrator callback. Its `step(state, time, dt)` delegates to that same
+Integrator, so every RK4 intermediate state/time and every trapezoidal
+Newton evaluation gets a fresh generator stage evaluation. After the
+integrator accepts a state, the adapter evaluates the final-time algebraic
+stage and returns it with the accepted augmented state.
+
+The adapter reuses `MultiMachineSystem.electrical_powers()` and
+`MultiMachineSystem.derivatives()`, forwarding the same AVR field-voltage
+map through the canonical `field_voltages` keyword. It samples optional
+machine connection state at each derivative stage. It does not alter
+`DAESolver`, change legacy machine-only study behavior, own Core equipment,
+or commit discrete events/controller feedback. A production study host must
+explicitly select this augmented adapter and provide the authoritative
+terminal projection and network callback; this is not automatic transient
+runner wiring.
+
+
+### Augmented initial-state construction from the study operating point
+
+`GeneratorAugmentedDAEAdapter.initialize_state(machine_state,
+operating_point_inputs)` packs the canonical machine state with each
+registered component's own `initial_state(inputs)` result. The host must
+supply a solved and validated initial operating point: terminal voltages keyed
+by Core terminal IDs, electrical active powers keyed by canonical machine
+IDs, and the exact configured mechanical-power inputs on the study base.
+The adapter checks complete machine-power coverage and exact component/layout
+identity before packing. It does not invent controller states or solve an
+initial power flow.
+
+This is intentionally separate from the existing
+`GeneratorTransientStudyHandler`: that StudyService handler currently
+requires the host's `GGOV1SampledExecutionAdapter` and delegates to the
+host-owned `solve_generator_transient` capability. The augmented DAE adapter
+is not silently substituted into that sampled contract. Production use
+requires a host composition/solver implementation that explicitly accepts
+the augmented-state derivative/step contract and returns the usual
+provenance-bound study result.
+
+
+### Algebraic network convergence evidence
+
+The stage network callback may return either the legacy bus-voltage mapping
+or `GeneratorNetworkSolveResult`. The structured result carries
+`GeneratorNetworkConvergenceEvidence`: solver identity, iteration count,
+residual norm, declared tolerance and explicit convergence status. The stage
+solution retains this evidence, and the accepted augmented step exposes it
+through `final_stage.network.convergence`. An explicit non-converged result
+fails the stage closed. A legacy mapping remains accepted for compatibility,
+but its convergence evidence is `None`; the adapter does not fabricate a
+residual or claim convergence when the host solver has not supplied evidence.
+
+
+The augmented adapter accepts `require_network_convergence_evidence=True`. In strict mode, a legacy voltage-only mapping is rejected because it cannot substantiate algebraic convergence. The default remains `False` for compatibility with existing host callbacks; production transient-study composition should enable strict mode once its network solver reports structured evidence.
+
+### Per-step derivative-stage evidence
+
+Each successful `GeneratorAugmentedDAEAdapter.step()` now returns the immutable
+`derivative_stages` tuple on `GeneratorAugmentedStepResult`. It retains the
+network/excitation/component/derivative evidence for every derivative callback
+actually requested by Core's Integrator during that step, including RK4 trial
+stages and trapezoidal Newton/finite-difference evaluations. The separate
+`final_stage` is evaluated at the accepted state and end time.
+
+The derivative-stage tuple is diagnostic solver-evaluation evidence, not a
+trajectory of accepted states and not a checkpoint stream. It is collected in
+a step-local buffer, so the adapter has no shared mutable trace and concurrent
+step calls do not overwrite one another. Only the returned accepted state and
+its final algebraic stage are eligible for a host's accepted-step checkpoint;
+Application StudyService remains the owner of cancellation, terminal result
+persistence and lifecycle events. The current archive allowlist does not
+reconstruct plugin-specific stage-result dataclasses. For durable evidence,
+call `GeneratorAugmentedStepResult.to_archive_payload()` and place the returned
+versioned primitive mapping in the Application-owned `StudyResult.value` (or
+its result payload). This keeps Core's archive independent of plugin imports
+while retaining accepted state, final algebraic evidence, per-stage excitation,
+network convergence, terminal/power inputs and derivative contributions.
+The payload labels derivative entries as solver evaluations, not accepted
+trajectory points; hosts must persist accepted-step checkpoints separately and
+must not promote trial evaluations to committed states.
