@@ -1,10 +1,11 @@
 """Explicit binding contract between transformer points and Core channels.
 
 This module does not create or own MeasurementChannel objects. It validates
-an Application-supplied mapping from a transformer telemetry point to an
-already provisioned canonical Core MeasurementChannel. Source equipment,
-terminal identity, producer trust, persistence and publication remain owned
-by Core/Application.
+Application-supplied mappings to already provisioned Core channels. Electrical
+CT/PT/CVT points require canonical terminal-backed channels; winding-temperature
+points may bind to installed physical-source interfaces after the Application
+has validated project ownership, transformer identity and winding association.
+Producer trust, persistence and publication remain Core/Application-owned.
 """
 from __future__ import annotations
 
@@ -30,10 +31,10 @@ class TransformerMeasurementBinding:
                 raise ValueError(f"{name} must be a canonical non-empty string.")
 
 
-# Only direct instrument-transformer scalar outputs are currently safe to
-# associate. Derived power/energy, phasor, thermal, oil, DGA, insulation,
-# bushing, mechanical, OLTC and protection values need dedicated producer
-# models/adapters; a logical signal enum alone is not evidence of a source.
+# Electrical direct instrument-transformer outputs remain terminal-backed.
+# Winding temperature has a separate installed physical-sensor path below.
+# Derived power/energy, phasor, oil, DGA, insulation, bushing, mechanical,
+# OLTC and protection values still require dedicated producer models/adapters.
 _SIGNAL_COMPATIBILITY = {
     TransformerQuantity.VOLTAGE: (frozenset({"VOLTAGE"}), frozenset({"PT", "CVT"})),
     TransformerQuantity.CURRENT: (frozenset({"CURRENT"}), frozenset({"CT"})),
