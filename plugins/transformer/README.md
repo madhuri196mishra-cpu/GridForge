@@ -287,3 +287,36 @@ This is a software handoff, not a device driver or commissioning workflow.
 RTD/fiber-optic protocol acquisition, device certificate provisioning,
 calibration evidence, wiring inspection and site acceptance remain deployment
 responsibilities.
+
+## RTD producer and commissioning contract
+
+`plugins/transformer/rtd.py` adds a software-side Pt100/Pt1000 producer
+adapter. The acquisition driver supplies a compensated element resistance,
+timezone-aware source timestamp, monotonic producer sequence, quality and
+diagnostics. The adapter converts resistance to degC using the IEC 60751
+Callendar–Van Dusen coefficients and validates the declared range.
+
+The adapter requires an explicit `RTDConfiguration` bound to the existing
+Core source/interface/installation and transformer winding. The Core source
+must use the `rtd` source family, have a serial number and calibration
+reference, and be present in the active `ProjectInstrumentationCollection`.
+The existing interface must be analog winding temperature in degC and the
+installation must target the declared transformer winding. The adapter
+requires lead-resistance compensation to have been verified; it does not
+perform 2/3/4-wire electrical compensation itself.
+
+`RTDCommissioningEvidence` binds an external commissioning-record ID,
+verifier, calibration reference, source and installation, commissioning
+timestamp and calibration-valid-until timestamp. Each observation must fall
+inside that validity interval. The evidence object is a contract/reference,
+not a digital signature verifier or a substitute for controlled calibration
+records and site acceptance.
+
+`adapt_rtd_observation()` emits an ordinary immutable `TelemetrySample`.
+It does not create a producer identity or `MeasurementSampleAttestation`.
+The deployment's trusted producer adapter must authenticate the device and
+sign the exact Core channel/value/quality/availability/sequence/timestamp
+tuple before the existing Application publication bridge is called. No
+hardware protocol driver, device certificate enrollment, resistance
+measurement, lead compensation algorithm, or physical commissioning
+procedure is included.
