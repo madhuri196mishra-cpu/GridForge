@@ -10,6 +10,7 @@ from core.plugin_sdk import (
     PluginDescriptor, validate_plugin_descriptor,
 )
 from .study_handler import LoadTransientStudyHandler
+from plugins.electrical_dynamics.composition import require_electrical_dynamics_composition
 
 LOAD_TRANSIENT_STUDY_TYPE = "load_transient"
 
@@ -68,7 +69,7 @@ class LoadDynamicsPlugin(GridForgePlugin):
         study_service = getattr(application, "study_service", None)
         if not isinstance(study_service, StudyService):
             raise RuntimeError("Application.study_service must be the canonical StudyService")
-        composition = services.get("electrical_dynamics_composition")
+        composition = require_electrical_dynamics_composition(services)
         if composition is None:
             raise RuntimeError(
                 "Load dynamics activation requires the host-supplied "
