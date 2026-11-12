@@ -374,6 +374,8 @@ class MeasurementChannel:
         stale_after: Optional[float] = None,
         source_reference: Any = None,
         source_installation_id: Optional[str] = None,
+        source_minimum: Optional[float] = None,
+        source_maximum: Optional[float] = None,
     ) -> None:
 
         self._validate_id(id)
@@ -431,6 +433,12 @@ class MeasurementChannel:
         self.source_terminal = source_terminal
         self.source_reference = source_reference
         self.source_installation_id = source_installation_id
+        self.source_minimum = self._validate_source_bound(source_minimum, "source_minimum")
+        self.source_maximum = self._validate_source_bound(source_maximum, "source_maximum")
+        if self.source_minimum is not None and self.source_maximum is not None and self.source_minimum > self.source_maximum:
+            raise ValueError("source_minimum cannot exceed source_maximum.")
+        if source_reference is None and (self.source_minimum is not None or self.source_maximum is not None):
+            raise ValueError("Physical source bounds require a source_reference.")
 
         if not isinstance(unit, str):
             raise TypeError(
@@ -493,7 +501,7 @@ class MeasurementChannel:
     # A project-managed channel's physical source and engineering contract
     # must not be mutable through the channel object exposed to consumers.
     _CONFIGURATION_FIELDS = frozenset({
-        "id", "signal_type", "source", "source_terminal", "source_reference", "source_installation_id", "phase", "unit",
+        "id", "signal_type", "source", "source_terminal", "source_reference", "source_installation_id", "source_minimum", "source_maximum", "phase", "unit",
         "nominal_value", "scale", "polarity", "stale_after", "producer_id",
     })
 
@@ -521,6 +529,37 @@ class MeasurementChannel:
     # =================================================================
     # VALIDATION
     # =================================================================
+
+    @staticmethod
+    def _validate_source_bound(value: Optional[float], field: str) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            raise TypeError(f"{field} must be a finite number or None.")
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise TypeError(f"{field} must be a finite number or None.") from exc
+        if not isfinite(number):
+            raise ValueError(f"{field} must be finite.")
+        return number
+
+    def validate_source_value(self, value: float | complex) -> float | complex:
+        """Validate a sample against its immutable physical-interface range."""
+        validated = self._validate_value(value)
+        if self.source_reference is None:
+            return validated
+        if self.source_minimum is None and self.source_maximum is None:
+            return validated
+        if isinstance(validated, complex):
+            raise ValueError("Complex samples cannot be checked against scalar physical-interface bounds.")
+        if self.source_minimum is not None and validated < self.source_minimum:
+            raise ValueError(f"Measurement sample {validated!r} is below physical source minimum {self.source_minimum!r}.")
+        if self.source_maximum is not None and validated > self.source_maximum:
+            raise ValueError(f"Measurement sample {validated!r} exceeds physical source maximum {self.source_maximum!r}.")
+        return validated
+
+    # -----------------------------------------------------------------
 
     @staticmethod
     def _validate_id(
