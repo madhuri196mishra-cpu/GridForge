@@ -88,12 +88,6 @@ class GeneratorDynamicStageResult:
                 raise GeneratorDynamicStageError(
                     "final derivative assembly terminal injections differ from the converged network-stage contributions"
                 )
-            if set(self.coupled_network.aggregated_terminal_currents_pu) != set(
-                self.coupled_network.request.terminal_current_injections_pu
-            ) and not self.coupled_network.aggregated_terminal_currents_pu:
-                raise GeneratorDynamicStageError(
-                    "converged network stage has no retained terminal-current aggregation"
-                )
 
 
 def evaluate_generator_dynamic_stage(
