@@ -83,7 +83,7 @@ from .study import StudyRequest, StudyCancellationToken
 from .study_preparation import StudyPreparationService
 from .draft import DraftNetwork, DraftNetworkCollection, DraftCommandHandlers, CommitNetworkHandler
 from .creation_schema import creation_contracts_from_definitions
-from .services.motor_dynamics_service import MotorDynamicsComposition
+from .services.motor_dynamics_service import ElectricalDynamicsApplicationComposition
 from .recovery import ApplicationRecoveryComposition
 
 
@@ -677,9 +677,12 @@ def create_application(
     # composition boundary. The registry validates all definitions against
     # actual command constructor signatures before any draft can be committed.
     application.configure_creation_contracts(creation_contracts_from_definitions())
-    # Optional UI plugin consumes this adapter through PluginContext.services.
-    # No motor handlers are registered until that plugin is explicitly loaded.
-    application.motor_dynamics_composition = MotorDynamicsComposition(application)
+    # One Application-owned composition is shared by all electrical dynamics
+    # extensions. Legacy motor-only access remains an identity alias until all
+    # external callers have migrated; it never constructs a second object.
+    electrical_dynamics_composition = ElectricalDynamicsApplicationComposition(application)
+    application.electrical_dynamics_composition = electrical_dynamics_composition
+    application.motor_dynamics_composition = electrical_dynamics_composition
 
     application.set_draft_network(DraftNetwork.empty(initial_context.project_id, 1))
     application.protection_configuration_service = protection_configuration_service
