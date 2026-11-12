@@ -16,7 +16,7 @@ from collections.abc import Callable
 from typing import Any
 
 from core.application.application import Application
-from core.application.events import ApplicationEvent, ProjectClosed, ProjectLoaded
+from core.application.events import ApplicationEvent, ProjectClosed, ProjectLoaded, InstrumentationWiringChanged
 from core.application.control_events import (
     ControlComponentCreated,
     ControlComponentRemoved,
@@ -50,6 +50,7 @@ _CONTROL_EVENTS = (
     ControlExecutionFailed,
     ProjectLoaded,
     ProjectClosed,
+    InstrumentationWiringChanged,
 )
 
 
