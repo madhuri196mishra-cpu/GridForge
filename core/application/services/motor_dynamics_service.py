@@ -7,6 +7,7 @@ recorded in DraftNetwork and pass through the existing Application transaction.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from math import isfinite
 import re
 from typing import Any, Mapping
@@ -213,6 +214,21 @@ class MotorDynamicsComposition:
         return teardown
 
 
+@dataclass(frozen=True, slots=True)
+class ElectricalDynamicsCapability:
+    """Truthful host capability state; registration never implies execution."""
+
+    model_registered: bool
+    solver_adapter_available: bool
+    executable_study: bool
+    fully_coupled_network_execution: bool
+    measurement_point_normalization_available: bool
+    measurement_channel_access_available: bool
+    core_terminal_injection_contract_available: bool
+
+
+
+
 class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
     """Single Application-owned host composition shared by dynamics plugins.
 
@@ -268,17 +284,20 @@ class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
         return tuple(self.application.measurement_channel_service.channels)
 
     @property
-    def capability_report(self) -> Mapping[str, Mapping[str, Any]]:
-        """Report registration, adapter, study and coupling capabilities separately."""
+    def capability_report(self) -> Mapping[str, ElectricalDynamicsCapability]:
+        """Report host capabilities without equating catalogue registration to execution."""
         from types import MappingProxyType
 
-        def report(*, registered: bool, solver: bool, study: bool) -> Mapping[str, Any]:
-            return MappingProxyType({
-                "model_registration": registered,
-                "solver_adapter_available": solver,
-                "executable_study": study,
-                "fully_coupled_network_execution": False,
-            })
+        def report(*, registered: bool, solver: bool, study: bool) -> ElectricalDynamicsCapability:
+            return ElectricalDynamicsCapability(
+                model_registered=registered,
+                solver_adapter_available=solver,
+                executable_study=study,
+                fully_coupled_network_execution=False,
+                measurement_point_normalization_available=False,
+                measurement_channel_access_available=True,
+                core_terminal_injection_contract_available=False,
+            )
 
         return MappingProxyType({
             "generator": report(registered=False, solver=False, study=False),
@@ -293,4 +312,5 @@ __all__ = [
     "MotorDraftService",
     "MotorDynamicsComposition",
     "ElectricalDynamicsApplicationComposition",
+    "ElectricalDynamicsCapability",
 ]
