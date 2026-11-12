@@ -117,10 +117,33 @@ def evaluate_zip_terminal_injections(
     if abs(sum(item.power_share for item in phases) - 1.0) > 1e-9:
         raise ValueError("phase power shares must sum to 1.0 to avoid duplicate or omitted demand")
 
+    expected_branch_count = {
+        LoadConnection.SINGLE_PHASE_LN: 1,
+        LoadConnection.SINGLE_PHASE_LL: 1,
+        LoadConnection.THREE_PHASE_STAR: 3,
+        LoadConnection.THREE_PHASE_DELTA: 3,
+        LoadConnection.THREE_PHASE_GROUNDED_STAR: 3,
+        LoadConnection.DC_TWO_WIRE: 1,
+        LoadConnection.DC_THREE_WIRE: 2,
+    }[nameplate.connection]
+    if len(phases) != expected_branch_count:
+        raise ValueError(
+            f"{nameplate.connection.value} requires {expected_branch_count} phase/branch mappings"
+        )
+    paired_connections = {
+        LoadConnection.SINGLE_PHASE_LL,
+        LoadConnection.THREE_PHASE_DELTA,
+        LoadConnection.DC_TWO_WIRE,
+        LoadConnection.DC_THREE_WIRE,
+    }
+    if nameplate.connection in paired_connections and any(
+        item.return_terminal_id is None for item in phases
+    ):
+        raise ValueError(
+            f"{nameplate.connection.value} requires explicit source and return terminal mappings"
+        )
     p0_kw = nameplate.rated_active_power_kw
     is_dc = nameplate.connection in {LoadConnection.DC_TWO_WIRE, LoadConnection.DC_THREE_WIRE}
-    if is_dc and any(item.return_terminal_id is None for item in phases):
-        raise ValueError("DC load branches require explicit source and return terminal mappings")
     q0_kvar = 0.0 if is_dc else p0_kw * tan(acos(nameplate.rated_power_factor))
     active_multiplier, reactive_multiplier = (
         profile.multipliers(float(time_s)) if profile is not None else (1.0, 1.0)
@@ -138,7 +161,6 @@ def evaluate_zip_terminal_injections(
         p_va = p_kw * 1000.0 * active_multiplier * phase.power_share
         q_var = q_kvar * 1000.0 * reactive_multiplier * phase.power_share
         apparent_power_pu = complex(p_va, q_var) / phase.phase_power_base_va
-        current_injection_pu = -complex(apparent_power_pu / voltage_pu).conjugate()
         branch_current_pu = complex(apparent_power_pu / voltage_pu).conjugate()
         result.append(DynamicTerminalInjection(
             injection_id=phase.injection_id,
