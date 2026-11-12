@@ -3188,3 +3188,184 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
 
 - Added the root-main read-only `SLDInstrumentationWiringAdapter` and projection records. It consumes the detached Application wiring read model and maps stable carrier/core/signal identities to SLD endpoint/route presentation; it does not create electrical network connections.
 - Added semantic event publication for wiring and temperature inventory mutations and subscribed SLD, Control and Protection refresh coordinators to wiring changes. This provides refresh invalidation only; it does not yet create complete instrument/cable objects in all three canvas renderers or bidirectional trace navigation.
+
+
+GRIDFORGE V2 — DYNAMIC RESULTS / SHARED SIGNAL-MEASUREMENT INTEGRATION AUDIT
+Date: 12 November 2026
+Repository: madhuri196mishra-cpu/GridForge
+Integration authority: SubhenduMishra29/GridForge main
+Implementation branch: dynamic-results-shared-measurement-audit-2026-11-12
+
+BASELINE
+- Madhuri main fetched at 7a9f5374d5f121dc4a81b3e1571f9d8cddbba263.
+- Subhendu main fetched at c75b3a43ce4125d787dc9bd584313430d95d9691.
+- Madhuri open PRs at audit: #218 electrical dynamics, #219 engineering
+  batch reconciliation, #220 startup/regression repairs, #221 controlled
+  upstream synchronization, and #19 optional DWG. Subhendu main had no open
+  PRs. No existing PR or branch was merged or overwritten for this task.
+
+CANONICAL INFRASTRUCTURE ALREADY PRESENT ON MADHURI MAIN
+- core.measurement.measurement_channel.MeasurementChannel is the canonical
+  logical channel and retains channel ID, signal type, engineering unit,
+  phase, source equipment/terminal or physical source-interface reference,
+  scaling, quality, availability, timestamp domain, sequence, staleness and
+  validity.
+- core.application.services.measurement_channel_service.MeasurementChannelService
+  owns one project-scoped channel registry, provisioning, activation rollback,
+  and trusted physical sample ingress. publish_sample requires authenticated
+  MeasurementSampleAttestation, configured producer, matching project and
+  activation generation, trusted clock domain, monotonic timestamp/sequence,
+  source bounds, and explicit quality/availability.
+- core.measurement.measurement_source and
+  core.measurement.measurement_source_reference define physical instrument
+  source/interface/installation identities. ProjectInstrumentationCollection
+  persists source records and monitored-equipment/point associations.
+- core.application.control_signal_mapping defines persisted
+  ControlSignalSource/ControlSignalDestination/ControlSignalBinding mappings.
+  Measurement-domain Control inputs resolve by canonical MeasurementChannel ID
+  and carry value, unit, signal type, phase, quality, availability, timestamp,
+  sequence, freshness and producer metadata; resolution fails closed.
+- core.protection.relay_input.RelayInput retains the canonical channel object
+  and reads its live value/quality/availability rather than owning a copy.
+  ProtectionMeasurementBinding preserves instrument, source endpoint,
+  channel and RelayInput identities.
+- core.application.read_models contains detached StudyResult,
+  TransientSignalReadModel, TransientAlgebraicQualityReadModel and transient
+  presentation contracts. ProjectPersistenceService persists measurement
+  definitions, instrumentation, Control signal mappings and Protection
+  configuration in the existing .gridforge package. StudyResultArchive stores
+  detached execution artifacts outside project configuration.
+
+PR #218 / EXECUTION DEPENDENCY AUDIT
+- PR #218 remains open, draft=false, mergeable=false, head
+  da33eac3cc8b417c4b90fbc75e9067e1035ac15a, base main at the current baseline.
+  Its 39-file feature branch is not part of Madhuri main.
+- The PR's GeneratorAugmentedDAEAdapter.step accepts an optional
+  accepted_step_observer. The observer runs after a finite integrated state
+  and final algebraic stage evaluation. This is a step-level adapter hook,
+  not itself the Application host study loop.
+- GeneratorTransientStudyHandler delegates augmented execution to a supplied
+  host solve_generator_augmented_transient service. Generator plugin activation
+  requires that host service, an adapter factory, and the shared composition.
+  No such completed Application-owned host implementation/composition is
+  present on current main or established by PR #218's plugin adapters.
+- The fixed-point dynamic network stage coordinator is a Core/plugin contract
+  used by the generator stage adapter. It is not wired into the existing
+  core.solver.dynamics.TransientStabilitySolver/StudyService host loop.
+- MotorTransientStudyHandler currently returns a detached motor envelope;
+  MotorTransientResultPublisher listens for StudyCompleted and publishes a
+  completed motor trajectory into a motor-specific read model. It does not
+  publish each accepted step into MeasurementChannelService.
+- The PR's Load study handler similarly depends on host solver/adapters and
+  has no canonical MeasurementChannel publication path.
+- Consequently, accepted/converged dynamic results are not currently
+  connected to canonical MeasurementChannels. No simulated sample is
+  published by this audit.
+
+BLOCKERS / SAFE NON-IMPLEMENTATION DECISIONS
+- MeasurementChannelService.publish_sample is deliberately authenticated
+  physical-source ingress. Reusing it for simulated samples would fabricate
+  physical producer attestation or collapse acquisition provenance.
+- MeasurementChannel currently has no acquisition-source discriminator or
+  simulation-study provenance. Its physical provisioning paths represent
+  CT/PT/CVT secondary terminals or declared physical source interfaces; they
+  are not yet a general simulated/calculated channel provisioning contract.
+- MeasurementSourceInterface/PhysicalMeasurementSource persist source family,
+  interfaces, units, phase/winding, ranges, manufacturer/model/serial and
+  calibration reference. They do not persist an instrument tag, instrument
+  terminal identity, cable/core/terminal-block route or signal-wire topology.
+- ControlSignalMapping is the existing source-to-Control contract; no new
+  parallel SignalRegistry or per-canvas signal store was added.
+- No generic canonical Signal entity/tag authority or complete SLD instrument
+  to instrument-terminal/cable-core/marshalling/channel trace chain was found
+  in the inspected main modules. SimpleWire remains electrical topology and
+  must not be repurposed as an instrumentation cable.
+- Existing Protection RelayInput and Control signal mapping consume channels
+  through distinct application boundaries; no UI canvas-local measurement
+  publication path was introduced.
+- Do not add an untyped simulation publisher, mark physical channels as
+  simulated, infer channel wiring from symbol proximity, or publish solver
+  trial/rejected/unconverged states. Do not claim physical acquisition or
+  hardware actuation.
+
+IMPLEMENTATION STATUS
+- This branch records the verified source baseline and explicit dependency
+  boundary only. No source behavior was changed because a safe end-to-end
+  dynamic-to-channel publisher requires a real accepted-step host execution
+  service and a distinct, persisted simulated/calculated acquisition contract.
+- Next compatible implementation sequence:
+  1. Complete Application-owned shared electrical dynamics composition and
+     host transient execution with accepted/rejected step lifecycle.
+  2. Add typed simulated/calculated channel provenance and project persistence
+     without weakening authenticated physical acquisition.
+  3. Add an idempotent accepted-step publication adapter into the existing
+     MeasurementChannelService registry and event/read-model path.
+  4. Add persistent instrument tag/terminal/cable-core/marshalling contracts
+     only where not already represented, keeping instrumentation wiring
+     separate from electrical topology.
+  5. Bind Protection and Control to the same canonical channel/signal identity
+     and expose only read-only canvas projections.
+
+VERIFICATION
+- Inspected source and callers in MeasurementChannel, MeasurementChannelService,
+  MeasurementProvisioning, MeasurementSourceReference, ProjectInstrumentation-
+  Collection, ControlSignalMapping, RelayInput, ProtectionMeasurementBinding,
+  Application read models, ProjectPersistenceService, StudyResultArchive,
+  Application bootstrap/main startup, PR #218 Generator integrator/study
+  handler/network stage, and Motor/Load plugin study handlers.
+- Re-fetched current main and PR metadata before recording this audit.
+- Static source inspection only. No tests, imports, application startup, GUI,
+  CI, live acquisition, or numerical simulation were executed.
+======================================================================
+
+
+CANVAS PROJECTION REVIEW
+- ui.canvas.sld_canvas_projection.SLDCanvasProjection is a renderer-neutral
+  projection of SLD document nodes/connections plus selected Application
+  StudyResult annotations. It does not own MeasurementChannel state.
+- ui.canvas.control_canvas.ControlCanvas is a passive projection of the
+  Application Control read model; ControlWorkspace refreshes it from existing
+  Application events and disposes its subscriptions.
+- ui.protection.protection_workspace.ProtectionGraphicsSurface projects
+  configured Protection input channel IDs as channel/relay-input nodes and
+  connections. ProtectionPresentationDocument owns only canvas node positions
+  and connection routes, not measurement values.
+- These are distinct projections, consistent with the intended architecture,
+  but the inspected canvas projections do not yet expose a shared trace-from-
+  instrument/trace-to-consumer navigation contract or dynamic signal quality/
+  freshness details end-to-end. No new canvas-side signal registry was added.
+
+
+
+======================================================================
+RECONCILIATION REGISTER UPDATE — INSTRUMENTATION WIRING PORT
+Date: 12 November 2026
+Repository: madhuri196mishra-cpu/GridForge
+Branch: reconcile/root-instrumentation-wiring-into-madhuri-2026-11-12
+Base Madhuri main: 7a9f5374d5f121dc4a81b3e1571f9d8cddbba263
+Source Subhendu main: c75b3a43ce4125d787dc9bd584313430d95d9691
+
+Superseding implementation status:
+- The root-main instrumentation wiring and temperature-instrument source modules are now ported to this branch, including Core records, reversible commands, project-scoped Application services, receiver compatibility validation, derived cable/core/panel-wire/signal-loop schedules, serializers, and detached read models.
+- Application composition registers both command handlers, injects both services, binds temperature continuity validation and the existing MeasurementChannel provider, validates persisted receiver bindings after candidate Control/Protection/channel activation, and restores both service snapshots in the project activation rollback.
+- The initial active project explicitly activates both inventories at generation 1; this is not deferred until a future project transition.
+- Application exposes read-only wiring and schedule read APIs. The schedules are derived from canonical wiring inventory and do not duplicate cable identity.
+- Project schema advances from 6 to 9 with explicit 6→7, 7→8 and 8→9 migrations. Historical projects receive empty wiring/temperature inventories and null signal/channel relationships; no channel IDs are inferred. Existing Madhuri `instrumentation` collection remains intact.
+- Project save/load now serializes and restores wiring and temperature inventories, checks declared channel foreign keys, and retains the existing MeasurementChannel/physical-source serializer and provenance.
+- Semantic wiring/temperature inventory events are published on execute/undo/redo through the Application semantic event path. SLD, Control and Protection refresh coordinators subscribe to wiring changes.
+- Added the root-main read-only SLD instrumentation wiring projection adapter. It is a projection contract only; full renderer integration and cross-canvas trace navigation remain outstanding.
+- PR #222's Core model source is identical to root-main and is included here. The new branch preserves the original PR #222 and dynamic-results audit content; PR #222 remains open pending creation/review of this replacement integration PR.
+
+Still outstanding:
+- SLD adapter must be integrated into the actual SLD canvas rendering lifecycle; current event subscription triggers refresh but does not render complete instrument/cable/core overlays.
+- Control and Protection refresh subscriptions do not yet provide bidirectional trace navigation or complete instrumentation details/quality/freshness overlays.
+- Terminal-block/marshalling inventory, receiver terminal physical continuity, full CT/PT/RTD/thermocouple circuit acceptance, shield/drain/earth semantics and export/report workflows require further source reconciliation.
+- Root draft PR #1207 remains divergent and unmerged; its additional CT/PT/RTD/thermocouple work is not claimed as part of this root-main port.
+- Physical tray/duct/trench/conduit routing is excluded per user direction.
+- Dynamic accepted-step publication remains a separate incomplete dependency. The authenticated physical MeasurementChannel ingress was not weakened or reused for simulated values.
+
+Verification boundary:
+- GitHub source fetch-back and static contract/architecture inspection only.
+- No Python imports, tests, CI, application startup, GUI, project save/reopen or runtime activation checks were run.
+======================================================================
+
