@@ -3354,3 +3354,19 @@ Load ZIP network-injection adapter — 12 November 2026:
   this reduced representation or the Motor Dynamics model, never both.
 - Verification: source fetch-back and static formula/ownership review only.
   No tests, imports, numerical experiments, network solve or commissioning.
+
+
+
+Load branch terminal-pair safety refinement — 12 November 2026:
+- LoadPhaseTerminal now supports explicit source and return terminal/phase
+  identities with separate stable injection IDs. Branch current is emitted
+  with equal-and-opposite nodal contributions, avoiding a one-terminal
+  approximation for line-to-line, delta and DC two-/three-wire branches.
+- Enforced branch-count contracts for single-phase, three-phase and DC
+  connection forms. Single-phase line-line, three-phase delta and DC branch
+  mappings require explicit return terminals; DC reactive demand is zero.
+- The host must provide oriented branch voltage, voltage base and matching
+  per-branch apparent-power base. The adapter does not infer terminal wiring,
+  delta/star neutral behavior, grounding, or phase sequence.
+- Verification: source fetch-back and static topology/formula inspection only.
+  No tests or numerical execution were run.
