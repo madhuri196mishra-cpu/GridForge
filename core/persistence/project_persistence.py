@@ -224,7 +224,7 @@ class ProjectPersistenceService:
         self._validate_project_state(
             context, network, presentation, presentation_collection,
             dynamic_models, protection_configuration, control_configuration,
-            measurement_definitions, instrumentation,
+            measurement_definitions, instrumentation, instrumentation_wiring,
         )
         return LoadedProject(
             context=context,
@@ -387,6 +387,7 @@ class ProjectPersistenceService:
             tuple(dynamic_models), protection_configuration, control_configuration,
             measurement_definitions,
             instrumentation,
+            instrumentation_wiring,
         )
         document_ids = tuple(item["document_id"] for item in documents)
         if not document_ids:
@@ -859,7 +860,7 @@ class ProjectPersistenceService:
                 )
 
     @staticmethod
-    def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = (), instrumentation: ProjectInstrumentationCollection | None = None) -> None:
+    def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = (), instrumentation: ProjectInstrumentationCollection | None = None, instrumentation_wiring: InstrumentationWiringInventory | None = None) -> None:
         """Validate cross-domain project invariants at load/save boundaries."""
         channel_ids: set[str] = set()
         for definition in measurement_definitions:
@@ -870,6 +871,13 @@ class ProjectPersistenceService:
             if channel_id in channel_ids:
                 raise ProjectPersistenceError(f"Duplicate persisted measurement channel ID: {channel_id}")
             channel_ids.add(channel_id)
+        if instrumentation_wiring is not None:
+            for signal in instrumentation_wiring.signals:
+                channel_id = signal.measurement_channel_id
+                if channel_id is not None and channel_id not in channel_ids:
+                    raise ProjectPersistenceError(
+                        f"Instrumentation signal '{signal.id}' references missing MeasurementChannel '{channel_id}'."
+                    )
         if protection_configuration is not None:
             for configuration in protection_configuration.elements:
                 for input_name, channel_id in configuration.input_channel_ids.items():
