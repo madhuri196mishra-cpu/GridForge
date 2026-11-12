@@ -88,7 +88,7 @@ def evaluate_generator_dynamic_stage(
     components: Sequence[DynamicStateComponent],
     component_bindings: Sequence[DynamicComponentBinding],
     avr_components: Sequence[FirstOrderAVRStateComponent],
-    network_solver: GeneratorNetworkSolver,
+    network_solver: GeneratorNetworkSolver | None,
     terminal_voltage_projector: TerminalVoltageProjector,
     electrical_power_evaluator: ElectricalPowerEvaluator,
     machine_bus_ids: Mapping[str, str],
@@ -207,6 +207,8 @@ def evaluate_generator_dynamic_stage(
             component_ids_by_machine=snapshot.component_ids_by_machine,
         )
     else:
+        if network_solver is None:
+            raise GeneratorDynamicStageError("legacy generator network solver is required when coupled solver is absent")
         network = solve_generator_network_stage(
             GeneratorNetworkStageRequest(machine_state=machine_state, excitation=snapshot),
             network_solver,
