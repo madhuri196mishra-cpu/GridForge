@@ -221,7 +221,7 @@ class TransformerModelService(ModelServiceSupport):
             zero_sequence_resistance_ohm, zero_sequence_reactance_ohm,
             core_construction, zero_sequence_test_basis,
             vector_group_configuration, zero_sequence_test_configuration,
-            zero_sequence_two_winding_test_data, windings,
+            zero_sequence_two_winding_test_data, None if windings is ... else windings,
             phase_domain_terminal_admittance_siemens, zero_sequence_multiport_evidence,
             phase_domain_delta_loop_states, phase_domain_multiport_tap_ratio, phase_domain_multiport_phase_shift_rad,
         )
