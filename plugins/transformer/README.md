@@ -218,8 +218,9 @@ no declared bounds retain the existing finite-scalar/complex validation.
 
 The limits are interpreted in the physical interface's declared unit; this
 does not apply additional conversion or calibration. Instrument scaling,
-ratio correction, calibration uncertainty, alarm thresholds, and sensor
-diagnostics remain separate engineering responsibilities.
+ratio correction, calibration uncertainty and alarm thresholds remain separate engineering
+responsibilities; source diagnostic codes are carried on the canonical
+MeasurementChannel sample state as described below.
 
 ## Transformer quality and diagnostics on the canonical MeasurementChannel
 
