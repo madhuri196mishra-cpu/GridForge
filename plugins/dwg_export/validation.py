@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import date
 
 from .control_coordinate_transform import ControlCoordinateTransform
+from .coordinate_transform import SLDCoordinateTransform
 
 from .drawing_plan import DrawingPlan
 
@@ -135,6 +136,7 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
                 "source_units", "target_coordinate_system", "target_units",
                 "millimetres_per_source_unit", "world_origin_mm",
                 "rotation_degrees", "reviewer", "reviewed_on", "review_reference",
+                "mapping_fingerprint",
             }
             if not isinstance(provenance, Mapping) or set(provenance) != required_provenance:
                 raise DrawingPlanValidationError(
@@ -176,6 +178,17 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
                     f"SLD entity {entity.entity_id} has invalid coordinate mapping scale or rotation"
                 )
             _point(origin, "coordinate_transform.world_origin_mm", entity.entity_id)
+            fingerprint = provenance.get("mapping_fingerprint")
+            try:
+                calculated_fingerprint = SLDCoordinateTransform.fingerprint_from_provenance(provenance)
+            except (KeyError, TypeError, ValueError, IndexError) as exc:
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} has invalid coordinate mapping fingerprint inputs"
+                ) from exc
+            if not isinstance(fingerprint, str) or fingerprint != calculated_fingerprint:
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} coordinate mapping fingerprint mismatch"
+                )
             normalized_provenance = dict(provenance)
             if sld_mapping_provenance is None:
                 sld_mapping_provenance = normalized_provenance
