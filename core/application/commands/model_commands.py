@@ -272,6 +272,11 @@ class CreateTransformerCommand(Command):
                  phase_domain_multiport_tap_ratio: float | None = None,
                  phase_domain_multiport_phase_shift_rad: float | None = None,
                  presentation_x: float | None = None, presentation_y: float | None = None, command_id: UUID | None = None, correlation_id: UUID | None = None, causation_id: UUID | None = None) -> None:
+        if isinstance(windings, (str, bytes)):
+            raise TypeError("windings must be a collection of TransformerWinding records.")
+        windings = tuple(windings)
+        if any(not isinstance(item, TransformerWinding) for item in windings):
+            raise TypeError("windings must contain only TransformerWinding records.")
         _endpoint(endpoint_from, "endpoint_from")
         _endpoint(endpoint_to, "endpoint_to")
         try:
@@ -359,6 +364,12 @@ class UpdateTransformerCommand(Command):
                  replace_phase_domain_multiport_configuration: bool = False,
                  command_id: UUID | None = None,
                  correlation_id: UUID | None = None, causation_id: UUID | None = None) -> None:
+        if windings is not ...:
+            if isinstance(windings, (str, bytes)):
+                raise TypeError("windings must be a collection of TransformerWinding records.")
+            windings = tuple(windings)
+            if any(not isinstance(item, TransformerWinding) for item in windings):
+                raise TypeError("windings must contain only TransformerWinding records.")
         if not isinstance(replace_physical_conductor_configuration, bool):
             raise TypeError("replace_physical_conductor_configuration must be a bool.")
         physical_fields = (hv_neutral_earth_return_impedance_ohm, lv_neutral_earth_return_impedance_ohm, hv_neutral_terminal_role, lv_neutral_terminal_role, hv_phase_roles, lv_phase_roles)
