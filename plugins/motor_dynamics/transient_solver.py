@@ -55,6 +55,7 @@ class MotorParameters:
     resistance_temp_coefficient_per_k: float = 0.00393
     initial_speed_rad_s: float = 0.0
     initial_temperature_c: float = 25.0
+    external_rotor_resistance_ohm: float = 0.0
 
     def __post_init__(self) -> None:
         positive = (
@@ -69,6 +70,8 @@ class MotorParameters:
                 raise TypeError(f"{name} must be numeric")
             if not isfinite(float(value)) or float(value) <= 0.0:
                 raise ValueError(f"{name} must be finite and positive")
+        if not _is_numeric_scalar(self.external_rotor_resistance_ohm) or not isfinite(float(self.external_rotor_resistance_ohm)) or self.external_rotor_resistance_ohm < 0.0:
+            raise ValueError("external_rotor_resistance_ohm must be finite and non-negative")
         for name in (
             "friction_n_m_s", "thermal_conductance_w_k",
             "resistance_temp_coefficient_per_k", "ambient_temperature_c",
@@ -190,6 +193,9 @@ class MotorSimulationResult:
             "stator_current_q_a": iqs,
             "rotor_current_d_a": idr,
             "rotor_current_q_a": iqr,
+            "rotor_current_rms_a": np.hypot(idr, iqr),
+            "external_rotor_resistance_ohm": np.full(self.sample_count, parameters.external_rotor_resistance_ohm),
+            "rotor_copper_loss_w": 1.5 * (parameters.rotor_resistance_ohm + parameters.external_rotor_resistance_ohm) * (idr * idr + iqr * iqr),
             "electromagnetic_torque_nm": torque,
             "rotor_speed_rad_s": speed,
             "rotor_speed_rpm": speed * 60.0 / (2.0 * np.pi),
@@ -240,7 +246,7 @@ def _derivative(state: np.ndarray, p: MotorParameters, vds: float, vqs: float,
     idr, iqr = (ls * pr - lm * ps) / det, (ls * qr - lm * qs) / det
     temp_delta = temp - p.ambient_temperature_c
     rs = p.stator_resistance_ohm * max(0.05, 1.0 + p.resistance_temp_coefficient_per_k * temp_delta)
-    rr = p.rotor_resistance_ohm * max(0.05, 1.0 + p.resistance_temp_coefficient_per_k * temp_delta)
+    rr = (p.rotor_resistance_ohm + p.external_rotor_resistance_ohm) * max(0.05, 1.0 + p.resistance_temp_coefficient_per_k * temp_delta)
     omega_slip = omega_e - p.pole_pairs * omega_m
     torque = 1.5 * p.pole_pairs * (ps * iqs - qs * ids)
     copper_loss = 1.5 * (rs * (ids * ids + iqs * iqs) + rr * (idr * idr + iqr * iqr))
@@ -314,6 +320,8 @@ def solve_transient_cpu(
             "state_layout": "flat_motor_major_step_major_state_minor",
             "state_count": _STATE_COUNT,
             "model": "induction_motor_dq_electromechanical_lumped_thermal",
+            "rotor_circuit": "wound_rotor_with_external_resistance" if parameters.external_rotor_resistance_ohm > 0 else "squirrel_cage_equivalent",
+            "external_rotor_resistance_ohm": parameters.external_rotor_resistance_ohm,
             "electrical_frequency_hz": float(electrical_frequency_hz),
             "load_torque_nm": float(load_torque_nm),
             "voltage_profile": "zero_order_hold",
@@ -683,4 +691,2369 @@ def _solve_batch_cuda(
 __all__ = [
     "MotorParameters", "MotorSimulationResult", "solve_transient_cpu",
     "solve_transient_batch", "cuda_available",
+    "PMSMParameters", "PMSMSimulationResult", "solve_pmsm_transient_cpu",
+    "BLDCParameters", "BLDCSimulationResult", "solve_bldc_transient_cpu",
+    "SynRMParameters", "SynRMSimulationResult", "solve_synrm_transient_cpu",
+    "SRMParameters", "SRMSimulationResult", "solve_srm_transient_cpu",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Permanent-magnet synchronous motor (PMSM) reference transient model
+# ---------------------------------------------------------------------------
+
+_PMSM_STATE_COUNT = 5
+_PMSM_ID, _PMSM_IQ, _PMSM_OMEGA_M, _PMSM_THETA_E, _PMSM_TEMP_C = range(_PMSM_STATE_COUNT)
+_PMSM_STATE_NAMES = (
+    "stator_current_d_a",
+    "stator_current_q_a",
+    "rotor_speed_rad_s",
+    "electrical_position_rad",
+    "winding_temperature_c",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PMSMParameters:
+    """SI parameters for a sinusoidally modelled surface/interior PMSM.
+
+    Voltages and currents are rotor-flux-aligned dq quantities. The model
+    includes d/q inductance saliency, permanent-magnet flux, copper loss,
+    temperature-dependent stator resistance, mechanical inertia/friction,
+    and one lumped winding thermal node. It does not model PWM switching,
+    magnetic saturation, iron/magnet losses, demagnetisation, or inverter
+    current-loop dynamics.
+    """
+
+    stator_resistance_ohm: float
+    d_axis_inductance_h: float
+    q_axis_inductance_h: float
+    permanent_magnet_flux_wb: float
+    pole_pairs: int
+    inertia_kg_m2: float
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 12000.0
+    thermal_conductance_w_k: float = 35.0
+    ambient_temperature_c: float = 25.0
+    resistance_temp_coefficient_per_k: float = 0.00393
+    initial_speed_rad_s: float = 0.0
+    initial_electrical_position_rad: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self) -> None:
+        positive = (
+            "stator_resistance_ohm", "d_axis_inductance_h",
+            "q_axis_inductance_h", "permanent_magnet_flux_wb",
+            "inertia_kg_m2", "thermal_capacity_j_k",
+        )
+        for name in positive:
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value):
+                raise TypeError(f"{name} must be numeric")
+            if not isfinite(float(value)) or float(value) <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name in (
+            "friction_n_m_s", "thermal_conductance_w_k",
+            "resistance_temp_coefficient_per_k", "ambient_temperature_c",
+            "initial_speed_rad_s", "initial_electrical_position_rad",
+            "initial_temperature_c",
+        ):
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value):
+                raise TypeError(f"{name} must be numeric")
+            if not isfinite(float(value)):
+                raise ValueError(f"{name} must be finite")
+            if name in ("friction_n_m_s", "thermal_conductance_w_k") and value < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+        if (
+            isinstance(self.pole_pairs, (bool, np.bool_))
+            or not isinstance(self.pole_pairs, (int, np.integer))
+            or self.pole_pairs < 1
+        ):
+            raise ValueError("pole_pairs must be a positive integer")
+
+
+@dataclass(frozen=True)
+class PMSMSimulationResult:
+    """Immutable PMSM trajectory and its aligned dq input/load histories."""
+
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    voltage_d_v: np.ndarray
+    voltage_q_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.diagnostics, Mapping):
+            raise TypeError("diagnostics must be a mapping")
+        if not isinstance(self.motor_id, str) or not self.motor_id.strip():
+            raise ValueError("motor_id must be a non-empty string")
+        count = int(self.time_s.size)
+        if self.state_data.size != count * _PMSM_STATE_COUNT:
+            raise ValueError("PMSM state buffer does not match the time grid")
+        for name in ("time_s", "state_data", "voltage_d_v", "voltage_q_v", "load_torque_nm"):
+            value = np.asarray(getattr(self, name), dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(value).all():
+                raise ValueError(f"{name} must contain only finite values")
+            value.setflags(write=False)
+            object.__setattr__(self, name, value)
+        if any(getattr(self, name).size != count for name in ("voltage_d_v", "voltage_q_v", "load_torque_nm")):
+            raise ValueError("PMSM voltage and load profiles must align with the time grid")
+        object.__setattr__(self, "diagnostics", MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int:
+        return int(self.time_s.size)
+
+    @property
+    def state_names(self) -> tuple[str, ...]:
+        return _PMSM_STATE_NAMES
+
+    def state(self, name: str) -> np.ndarray:
+        try:
+            index = _PMSM_STATE_NAMES.index(name)
+        except ValueError as exc:
+            raise KeyError(name) from exc
+        view = self.state_data.reshape(self.sample_count, _PMSM_STATE_COUNT)[:, index].view()
+        view.setflags(write=False)
+        return view
+
+    def channels(self, parameters: PMSMParameters) -> dict[str, np.ndarray]:
+        """Derive electrical, mechanical, thermal and drive channels."""
+        if not isinstance(parameters, PMSMParameters):
+            raise TypeError("parameters must be PMSMParameters")
+        matrix = self.state_data.reshape(self.sample_count, _PMSM_STATE_COUNT)
+        ids, iqs, speed, theta, temp = (matrix[:, index] for index in range(_PMSM_STATE_COUNT))
+        resistance_factor = np.maximum(
+            0.05,
+            1.0 + parameters.resistance_temp_coefficient_per_k
+            * (temp - parameters.ambient_temperature_c),
+        )
+        resistance = parameters.stator_resistance_ohm * resistance_factor
+        torque = 1.5 * parameters.pole_pairs * (
+            parameters.permanent_magnet_flux_wb * iqs
+            + (parameters.d_axis_inductance_h - parameters.q_axis_inductance_h) * ids * iqs
+        )
+        values = {
+            "stator_current_a": np.hypot(ids, iqs),
+            "stator_current_d_a": ids,
+            "stator_current_q_a": iqs,
+            "electromagnetic_torque_nm": torque,
+            "rotor_speed_rad_s": speed,
+            "rotor_speed_rpm": speed * 60.0 / (2.0 * np.pi),
+            "electrical_position_rad": theta,
+            "electrical_speed_rad_s": parameters.pole_pairs * speed,
+            "electrical_frequency_hz": parameters.pole_pairs * speed / (2.0 * np.pi),
+            "winding_temperature_c": temp,
+            "load_torque_nm": self.load_torque_nm,
+            "electrical_input_power_w": 1.5 * (
+                self.voltage_d_v * ids + self.voltage_q_v * iqs
+            ),
+            "stator_copper_loss_w": 1.5 * resistance * (ids * ids + iqs * iqs),
+            "mechanical_output_power_w": torque * speed,
+        }
+        for value in values.values():
+            value.setflags(write=False)
+        return values
+
+    def publish_to(
+        self,
+        read_model_store: Any,
+        parameters: PMSMParameters,
+        *,
+        study_id: str | None = None,
+        study_order: int | None = None,
+    ) -> bool:
+        """Publish a completed trajectory snapshot; caller owns StudyCompleted."""
+        publish = getattr(read_model_store, "publish", None)
+        if not callable(publish):
+            raise TypeError("read_model_store must expose publish(...)")
+        return publish(
+            self.motor_id,
+            self.channels(parameters),
+            self.sample_period_s,
+            status="completed",
+            study_id=study_id,
+            study_order=study_order,
+            diagnostics=self.diagnostics,
+        )
+
+
+def _pmsm_derivative(
+    state: np.ndarray,
+    parameters: PMSMParameters,
+    voltage_d_v: float,
+    voltage_q_v: float,
+    load_torque_nm: float,
+) -> np.ndarray:
+    ids, iqs, omega_m, _theta_e, temperature = state
+    p = parameters
+    resistance = p.stator_resistance_ohm * max(
+        0.05,
+        1.0 + p.resistance_temp_coefficient_per_k
+        * (temperature - p.ambient_temperature_c),
+    )
+    omega_e = p.pole_pairs * omega_m
+    # Rotor dq convention:
+    # vd = R*id + Ld*did/dt - omega_e*Lq*iq
+    # vq = R*iq + Lq*diq/dt + omega_e*(Ld*id + psi_pm)
+    did = (voltage_d_v - resistance * ids + omega_e * p.q_axis_inductance_h * iqs) / p.d_axis_inductance_h
+    diq = (
+        voltage_q_v - resistance * iqs
+        - omega_e * (p.d_axis_inductance_h * ids + p.permanent_magnet_flux_wb)
+    ) / p.q_axis_inductance_h
+    torque = 1.5 * p.pole_pairs * (
+        p.permanent_magnet_flux_wb * iqs
+        + (p.d_axis_inductance_h - p.q_axis_inductance_h) * ids * iqs
+    )
+    copper_loss = 1.5 * resistance * (ids * ids + iqs * iqs)
+    return np.asarray(
+        (
+            did,
+            diq,
+            (torque - load_torque_nm - p.friction_n_m_s * omega_m) / p.inertia_kg_m2,
+            omega_e,
+            (copper_loss - p.thermal_conductance_w_k * (temperature - p.ambient_temperature_c))
+            / p.thermal_capacity_j_k,
+        ),
+        dtype=np.float64,
+    )
+
+
+def solve_pmsm_transient_cpu(
+    motor_id: str,
+    parameters: PMSMParameters,
+    duration_s: float,
+    step_s: float,
+    *,
+    stator_voltage_d_v: float | Sequence[float] | np.ndarray,
+    stator_voltage_q_v: float | Sequence[float] | np.ndarray,
+    load_torque_nm: float | Sequence[float] | np.ndarray = 0.0,
+) -> PMSMSimulationResult:
+    """Integrate a sinusoidal PMSM in rotor dq coordinates using shared RK4.
+
+    dq voltage and load profiles use zero-order hold and must be scalar or
+    contain exactly one value per output sample. The CPU implementation is
+    the reference; the induction CUDA kernel is intentionally not reused.
+    """
+    if not isinstance(motor_id, str) or not motor_id.strip():
+        raise ValueError("motor_id must be a non-empty string")
+    if not isinstance(parameters, PMSMParameters):
+        raise TypeError("parameters must be PMSMParameters")
+    count, times = _validate_time(duration_s, step_s)
+    vd = _voltage_profile(stator_voltage_d_v, count, "stator_voltage_d_v")
+    vq = _voltage_profile(stator_voltage_q_v, count, "stator_voltage_q_v")
+    load = _voltage_profile(load_torque_nm, count, "load_torque_nm")
+    initial = np.asarray(
+        (
+            0.0,
+            0.0,
+            parameters.initial_speed_rad_s,
+            parameters.initial_electrical_position_rad,
+            parameters.initial_temperature_c,
+        ),
+        dtype=np.float64,
+    )
+    problem = NumericalProblem(
+        problem_id=motor_id.strip(),
+        workload="pmsm_transient_single",
+        derivative=lambda state, inputs: _pmsm_derivative(
+            state, parameters, inputs[0], inputs[1], inputs[2]
+        ),
+        initial_state=initial,
+        duration_s=duration_s,
+        maximum_step_s=step_s,
+        input_at=lambda index, _time: (
+            float(vd[index]), float(vq[index]), float(load[index])
+        ),
+        precision="float64",
+    )
+    solution = solve_numerical_problem(problem)
+    if solution.sample_count != count:
+        raise RuntimeError("shared ODE engine returned an unexpected PMSM sample count")
+    return PMSMSimulationResult(
+        motor_id=motor_id.strip(),
+        time_s=solution.time_s,
+        state_data=solution.state_data,
+        voltage_d_v=vd,
+        voltage_q_v=vq,
+        load_torque_nm=load,
+        sample_period_s=solution.sample_period_s,
+        backend="cpu-rk4",
+        diagnostics={
+            "integrator": solution.integrator,
+            "precision": "float64",
+            "workload": "pmsm_transient_single",
+            "state_layout": "step_major_state_minor",
+            "state_count": _PMSM_STATE_COUNT,
+            "model": "pmsm_rotor_dq_electromechanical_lumped_thermal",
+            "model_fidelity": "linear_magnetic_parameters_no_pwm_or_iron_loss",
+            "voltage_profile": "zero_order_hold_rotor_dq",
+            "load_torque_profile": "zero_order_hold",
+            "requested_max_step_s": float(step_s),
+            "effective_step_s": solution.sample_period_s,
+            "integration_engine": "core.numerics.ode.solve_rk4",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Brushless DC motor (BLDC) three-phase trapezoidal phase-domain model
+# ---------------------------------------------------------------------------
+
+_BLDC_STATE_COUNT = 5
+_BLDC_IA, _BLDC_IB, _BLDC_OMEGA_M, _BLDC_THETA_M, _BLDC_TEMP_C = range(_BLDC_STATE_COUNT)
+_BLDC_STATE_NAMES = (
+    "phase_a_current_a", "phase_b_current_a", "rotor_speed_rad_s",
+    "mechanical_position_rad", "winding_temperature_c",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class BLDCParameters:
+    """Balanced three-phase BLDC parameters in SI units.
+
+    The phase back-EMF is a normalized 120-degree-flat trapezoid with
+    60-degree transitions. Torque and back-EMF constants are phase/peak
+    quantities and must use a consistent identification convention.
+    """
+
+    phase_resistance_ohm: float
+    phase_inductance_h: float
+    back_emf_constant_v_s_per_rad: float
+    torque_constant_nm_per_a: float
+    pole_pairs: int
+    inertia_kg_m2: float
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 12000.0
+    thermal_conductance_w_k: float = 35.0
+    ambient_temperature_c: float = 25.0
+    resistance_temp_coefficient_per_k: float = 0.00393
+    initial_speed_rad_s: float = 0.0
+    initial_mechanical_position_rad: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self) -> None:
+        positive = (
+            "phase_resistance_ohm", "phase_inductance_h",
+            "back_emf_constant_v_s_per_rad", "torque_constant_nm_per_a",
+            "inertia_kg_m2", "thermal_capacity_j_k",
+        )
+        for name in positive:
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value):
+                raise TypeError(f"{name} must be numeric")
+            if not isfinite(float(value)) or float(value) <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name in (
+            "friction_n_m_s", "thermal_conductance_w_k",
+            "resistance_temp_coefficient_per_k", "ambient_temperature_c",
+            "initial_speed_rad_s", "initial_mechanical_position_rad",
+            "initial_temperature_c",
+        ):
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value):
+                raise TypeError(f"{name} must be numeric")
+            if not isfinite(float(value)):
+                raise ValueError(f"{name} must be finite")
+            if name in ("friction_n_m_s", "thermal_conductance_w_k") and value < 0.0:
+                raise ValueError(f"{name} must be non-negative")
+        if (
+            isinstance(self.pole_pairs, (bool, np.bool_))
+            or not isinstance(self.pole_pairs, (int, np.integer))
+            or self.pole_pairs < 1
+        ):
+            raise ValueError("pole_pairs must be a positive integer")
+
+
+@dataclass(frozen=True, slots=True)
+class BLDCSimulationResult:
+    """Immutable BLDC trajectory and aligned averaged-inverter inputs."""
+
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    duty_a: np.ndarray
+    duty_b: np.ndarray
+    duty_c: np.ndarray
+    dc_bus_voltage_v: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.motor_id, str) or not self.motor_id.strip():
+            raise ValueError("motor_id must be a non-empty string")
+        if not isinstance(self.diagnostics, Mapping):
+            raise TypeError("diagnostics must be a mapping")
+        for name in ("time_s", "state_data", "duty_a", "duty_b", "duty_c", "dc_bus_voltage_v"):
+            value = np.asarray(getattr(self, name), dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(value).all():
+                raise ValueError(f"{name} must contain only finite values")
+            value.setflags(write=False)
+            object.__setattr__(self, name, value)
+        count = self.time_s.size
+        if self.state_data.size != count * _BLDC_STATE_COUNT:
+            raise ValueError("BLDC state buffer does not match the time grid")
+        if any(getattr(self, name).size != count for name in ("duty_a", "duty_b", "duty_c", "dc_bus_voltage_v")):
+            raise ValueError("BLDC inverter profiles must align with the time grid")
+        if any(np.any(np.abs(getattr(self, name)) > 1.0) for name in ("duty_a", "duty_b", "duty_c")):
+            raise ValueError("BLDC phase duties must be within [-1, 1]")
+        if np.any(self.dc_bus_voltage_v <= 0.0):
+            raise ValueError("dc_bus_voltage_v must be positive")
+        object.__setattr__(self, "diagnostics", MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int:
+        return int(self.time_s.size)
+
+    @property
+    def state_names(self) -> tuple[str, ...]:
+        return _BLDC_STATE_NAMES
+
+    def state(self, name: str) -> np.ndarray:
+        try:
+            index = _BLDC_STATE_NAMES.index(name)
+        except ValueError as exc:
+            raise KeyError(name) from exc
+        view = self.state_data.reshape(self.sample_count, _BLDC_STATE_COUNT)[:, index].view()
+        view.setflags(write=False)
+        return view
+
+    def channels(self, parameters: BLDCParameters) -> dict[str, np.ndarray]:
+        if not isinstance(parameters, BLDCParameters):
+            raise TypeError("parameters must be BLDCParameters")
+        matrix = self.state_data.reshape(self.sample_count, _BLDC_STATE_COUNT)
+        ia, ib, speed, theta_m, temp = (matrix[:, i] for i in range(_BLDC_STATE_COUNT))
+        ic = -ia - ib
+        theta_e = np.mod(parameters.pole_pairs * theta_m, 2.0 * np.pi)
+        fa = _bldc_trapezoid(theta_e)
+        fb = _bldc_trapezoid(theta_e - 2.0 * np.pi / 3.0)
+        fc = _bldc_trapezoid(theta_e + 2.0 * np.pi / 3.0)
+        torque = parameters.torque_constant_nm_per_a * (fa * ia + fb * ib + fc * ic)
+        resistance = parameters.phase_resistance_ohm * np.maximum(
+            0.05, 1.0 + parameters.resistance_temp_coefficient_per_k
+            * (temp - parameters.ambient_temperature_c)
+        )
+        ea = parameters.back_emf_constant_v_s_per_rad * speed * fa
+        eb = parameters.back_emf_constant_v_s_per_rad * speed * fb
+        ec = parameters.back_emf_constant_v_s_per_rad * speed * fc
+        values = {
+            "phase_a_current_a": ia, "phase_b_current_a": ib, "phase_c_current_a": ic,
+            "phase_current_rms_proxy_a": np.sqrt((ia * ia + ib * ib + ic * ic) / 3.0),
+            "phase_a_back_emf_v": ea, "phase_b_back_emf_v": eb, "phase_c_back_emf_v": ec,
+            "electromagnetic_torque_nm": torque,
+            "rotor_speed_rad_s": speed, "rotor_speed_rpm": speed * 60.0 / (2.0 * np.pi),
+            "mechanical_position_rad": theta_m,
+            "electrical_position_rad": parameters.pole_pairs * theta_m,
+            "electrical_frequency_hz": parameters.pole_pairs * speed / (2.0 * np.pi),
+            "hall_sector": np.floor(theta_e / (np.pi / 3.0)) + 1.0,
+            "winding_temperature_c": temp, "dc_bus_voltage_v": self.dc_bus_voltage_v,
+            "dc_bus_current_a": 0.5 * (self.duty_a * ia + self.duty_b * ib + self.duty_c * ic),
+            "stator_copper_loss_w": resistance * (ia * ia + ib * ib + ic * ic),
+            "mechanical_output_power_w": torque * speed,
+        }
+        for value in values.values():
+            value.setflags(write=False)
+        return values
+
+    def publish_to(
+        self, read_model_store: Any, parameters: BLDCParameters, *,
+        study_id: str | None = None, study_order: int | None = None,
+    ) -> bool:
+        publish = getattr(read_model_store, "publish", None)
+        if not callable(publish):
+            raise TypeError("read_model_store must expose publish(...)")
+        return publish(
+            self.motor_id, self.channels(parameters), self.sample_period_s,
+            status="completed", study_id=study_id, study_order=study_order,
+            diagnostics=self.diagnostics,
+        )
+
+
+def _bldc_trapezoid(angle_rad: float | np.ndarray) -> float | np.ndarray:
+    """Normalized trapezoidal BLDC phase back-EMF in [-1, 1]."""
+    angle = np.mod(np.asarray(angle_rad, dtype=np.float64), 2.0 * np.pi)
+    degrees = angle * (180.0 / np.pi)
+    result = np.empty_like(degrees)
+    rising = degrees < 60.0
+    positive = (degrees >= 60.0) & (degrees < 180.0)
+    falling = (degrees >= 180.0) & (degrees < 240.0)
+    negative = degrees >= 240.0
+    result[rising] = -1.0 + 2.0 * degrees[rising] / 60.0
+    result[positive] = 1.0
+    result[falling] = 1.0 - 2.0 * (degrees[falling] - 180.0) / 60.0
+    result[negative] = -1.0
+    if np.ndim(angle_rad) == 0:
+        return float(result)
+    return result
+
+
+def _bldc_profile(value: float | Sequence[float] | np.ndarray, count: int, name: str) -> np.ndarray:
+    return _voltage_profile(value, count, name)
+
+
+def _bldc_derivative(
+    state: np.ndarray, parameters: BLDCParameters,
+    duties: tuple[float, float, float], bus_v: float, load_torque_nm: float,
+) -> np.ndarray:
+    ia, ib, omega_m, theta_m, temperature = state
+    ic = -ia - ib
+    theta_e = parameters.pole_pairs * theta_m
+    fa = _bldc_trapezoid(theta_e)
+    fb = _bldc_trapezoid(theta_e - 2.0 * np.pi / 3.0)
+    fc = _bldc_trapezoid(theta_e + 2.0 * np.pi / 3.0)
+    ea = parameters.back_emf_constant_v_s_per_rad * omega_m * fa
+    eb = parameters.back_emf_constant_v_s_per_rad * omega_m * fb
+    ec = parameters.back_emf_constant_v_s_per_rad * omega_m * fc
+    resistance = parameters.phase_resistance_ohm * max(
+        0.05, 1.0 + parameters.resistance_temp_coefficient_per_k
+        * (temperature - parameters.ambient_temperature_c)
+    )
+    va, vb, vc = (duty * bus_v * 0.5 for duty in duties)
+    neutral = (
+        va - ea - resistance * ia
+        + vb - eb - resistance * ib
+        + vc - ec - resistance * ic
+    ) / 3.0
+    dia = (va - ea - resistance * ia - neutral) / parameters.phase_inductance_h
+    dib = (vb - eb - resistance * ib - neutral) / parameters.phase_inductance_h
+    torque = parameters.torque_constant_nm_per_a * (fa * ia + fb * ib + fc * ic)
+    copper_loss = resistance * (ia * ia + ib * ib + ic * ic)
+    return np.asarray((
+        dia, dib,
+        (torque - load_torque_nm - parameters.friction_n_m_s * omega_m) / parameters.inertia_kg_m2,
+        omega_m,
+        (copper_loss - parameters.thermal_conductance_w_k
+         * (temperature - parameters.ambient_temperature_c)) / parameters.thermal_capacity_j_k,
+    ), dtype=np.float64)
+
+
+def solve_bldc_transient_cpu(
+    motor_id: str, parameters: BLDCParameters, duration_s: float, step_s: float, *,
+    dc_bus_voltage_v: float | Sequence[float] | np.ndarray,
+    duty_a: float | Sequence[float] | np.ndarray,
+    duty_b: float | Sequence[float] | np.ndarray,
+    duty_c: float | Sequence[float] | np.ndarray,
+    load_torque_nm: float | Sequence[float] | np.ndarray = 0.0,
+) -> BLDCSimulationResult:
+    """Integrate BLDC trapezoidal phase dynamics using averaged six-step PWM duties.
+
+    Duty inputs are signed normalized phase pole-voltage commands in [-1, 1].
+    Scalar or sample-aligned zero-order-held profiles are accepted. PWM carrier
+    switching, dead time, device drops and closed-loop current control are not
+    modeled; caller supplies the commutation duty sequence.
+    """
+    if not isinstance(motor_id, str) or not motor_id.strip():
+        raise ValueError("motor_id must be a non-empty string")
+    if not isinstance(parameters, BLDCParameters):
+        raise TypeError("parameters must be BLDCParameters")
+    count, _times = _validate_time(duration_s, step_s)
+    bus = _bldc_profile(dc_bus_voltage_v, count, "dc_bus_voltage_v")
+    if np.any(bus <= 0.0):
+        raise ValueError("dc_bus_voltage_v must be positive")
+    duties = []
+    for name, value in (("duty_a", duty_a), ("duty_b", duty_b), ("duty_c", duty_c)):
+        profile = _bldc_profile(value, count, name)
+        if np.any(profile < -1.0) or np.any(profile > 1.0):
+            raise ValueError(f"{name} values must be within [-1, 1]")
+        duties.append(profile)
+    load = _bldc_profile(load_torque_nm, count, "load_torque_nm")
+    initial = np.asarray((
+        0.0, 0.0, parameters.initial_speed_rad_s,
+        parameters.initial_mechanical_position_rad, parameters.initial_temperature_c,
+    ), dtype=np.float64)
+    problem = NumericalProblem(
+        problem_id=motor_id.strip(),
+        workload="bldc_trapezoidal_transient_single",
+        derivative=lambda state, inputs: _bldc_derivative(
+            state, parameters, (inputs[0], inputs[1], inputs[2]), inputs[3], inputs[4]
+        ),
+        initial_state=initial, duration_s=duration_s, maximum_step_s=step_s,
+        input_at=lambda index, _time: (
+            float(duties[0][index]), float(duties[1][index]),
+            float(duties[2][index]), float(bus[index]), float(load[index]),
+        ),
+        precision="float64",
+    )
+    solution = solve_numerical_problem(problem)
+    if solution.sample_count != count:
+        raise RuntimeError("shared ODE engine returned an unexpected BLDC sample count")
+    return BLDCSimulationResult(
+        motor_id=motor_id.strip(), time_s=solution.time_s, state_data=solution.state_data,
+        duty_a=duties[0], duty_b=duties[1], duty_c=duties[2],
+        dc_bus_voltage_v=bus, sample_period_s=solution.sample_period_s,
+        backend="cpu-rk4",
+        diagnostics={
+            "integrator": solution.integrator, "precision": "float64",
+            "workload": "bldc_trapezoidal_transient_single",
+            "state_layout": "step_major_state_minor", "state_count": _BLDC_STATE_COUNT,
+            "model": "bldc_three_phase_trapezoidal_back_emf_floating_neutral",
+            "commutation": "six_step_120_degree_trapezoidal",
+            "inverter": "averaged_signed_pole_voltage_duty",
+            "phase_current_constraint": "ia_plus_ib_plus_ic_equals_zero",
+            "input_profile": "zero_order_hold",
+            "model_fidelity": "linear_phase_rl_no_pwm_switching_or_saturation",
+            "requested_max_step_s": float(step_s),
+            "effective_step_s": solution.sample_period_s,
+            "integration_engine": "core.numerics.ode.solve_rk4",
+        },
+    )
+
+
+_SYNRM_STATE_COUNT = 5
+_SYNRM_STATE_NAMES = ("stator_current_d_a","stator_current_q_a","rotor_speed_rad_s","electrical_position_rad","winding_temperature_c")
+
+
+@dataclass(frozen=True, slots=True)
+class SynRMParameters:
+    stator_resistance_ohm: float
+    d_axis_inductance_h: float
+    q_axis_inductance_h: float
+    pole_pairs: int
+    inertia_kg_m2: float
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 12000.0
+    thermal_conductance_w_k: float = 35.0
+    ambient_temperature_c: float = 25.0
+    resistance_temp_coefficient_per_k: float = 0.00393
+    initial_speed_rad_s: float = 0.0
+    initial_electrical_position_rad: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self):
+        for name in ("stator_resistance_ohm","d_axis_inductance_h","q_axis_inductance_h","inertia_kg_m2","thermal_capacity_j_k"):
+            value=getattr(self,name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name in ("friction_n_m_s","thermal_conductance_w_k","resistance_temp_coefficient_per_k","ambient_temperature_c","initial_speed_rad_s","initial_electrical_position_rad","initial_temperature_c"):
+            value=getattr(self,name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)):
+                raise ValueError(f"{name} must be finite and numeric")
+            if name in ("friction_n_m_s","thermal_conductance_w_k") and value < 0:
+                raise ValueError(f"{name} must be non-negative")
+        if self.d_axis_inductance_h <= self.q_axis_inductance_h:
+            raise ValueError("SynRM d-axis inductance must exceed q-axis inductance")
+        if isinstance(self.pole_pairs,(bool,np.bool_)) or not isinstance(self.pole_pairs,(int,np.integer)) or self.pole_pairs < 1:
+            raise ValueError("pole_pairs must be a positive integer")
+
+
+@dataclass(frozen=True, slots=True)
+class SynRMSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    voltage_d_v: np.ndarray
+    voltage_q_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip():
+            raise ValueError("motor_id must be a non-empty string")
+        for name in ("time_s","state_data","voltage_d_v","voltage_q_v","load_torque_nm"):
+            value=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(value).all(): raise ValueError(f"{name} must contain only finite values")
+            value.setflags(write=False); object.__setattr__(self,name,value)
+        n=self.time_s.size
+        if self.state_data.size != n*_SYNRM_STATE_COUNT: raise ValueError("SynRM state buffer does not match the time grid")
+        if any(getattr(self,nm).size != n for nm in ("voltage_d_v","voltage_q_v","load_torque_nm")): raise ValueError("SynRM input profiles must align with the time grid")
+        if not isinstance(self.diagnostics,Mapping): raise TypeError("diagnostics must be a mapping")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _SYNRM_STATE_NAMES
+    def state(self,name):
+        try: i=_SYNRM_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        out=self.state_data.reshape(self.sample_count,_SYNRM_STATE_COUNT)[:,i].view(); out.setflags(write=False); return out
+
+    def channels(self,p):
+        if not isinstance(p,SynRMParameters): raise TypeError("parameters must be SynRMParameters")
+        m=self.state_data.reshape(self.sample_count,_SYNRM_STATE_COUNT)
+        id_,iq,w,theta,temp=(m[:,i] for i in range(_SYNRM_STATE_COUNT))
+        torque=1.5*p.pole_pairs*(p.d_axis_inductance_h-p.q_axis_inductance_h)*id_*iq
+        r=p.stator_resistance_ohm*np.maximum(0.05,1+p.resistance_temp_coefficient_per_k*(temp-p.ambient_temperature_c))
+        values={
+            "stator_current_d_a":id_,"stator_current_q_a":iq,
+            "stator_current_rms_a":np.sqrt(0.5*(id_**2+iq**2)),
+            "electromagnetic_torque_nm":torque,"rotor_speed_rad_s":w,"rotor_speed_rpm":w*60/(2*np.pi),
+            "electrical_position_rad":theta,"electrical_frequency_hz":np.gradient(theta,self.time_s)/(2*np.pi),
+            "winding_temperature_c":temp,"stator_copper_loss_w":1.5*r*(id_**2+iq**2),
+            "electrical_input_power_w":1.5*(self.voltage_d_v*id_+self.voltage_q_v*iq),
+            "mechanical_output_power_w":torque*w,
+        }
+        for v in values.values(): v.setflags(write=False)
+        return values
+
+    def publish_to(self,store,p,*,study_id=None,study_order=None):
+        publish=getattr(store,"publish",None)
+        if not callable(publish): raise TypeError("read_model_store must expose publish(...)")
+        return publish(self.motor_id,self.channels(p),self.sample_period_s,status="completed",study_id=study_id,study_order=study_order,diagnostics=self.diagnostics)
+
+
+def _synrm_derivative(x,p,vd,vq,load):
+    id_,iq,w,_theta,temp=x; we=p.pole_pairs*w
+    r=p.stator_resistance_ohm*max(0.05,1+p.resistance_temp_coefficient_per_k*(temp-p.ambient_temperature_c))
+    did=(vd-r*id_+we*p.q_axis_inductance_h*iq)/p.d_axis_inductance_h
+    diq=(vq-r*iq-we*p.d_axis_inductance_h*id_)/p.q_axis_inductance_h
+    torque=1.5*p.pole_pairs*(p.d_axis_inductance_h-p.q_axis_inductance_h)*id_*iq
+    copper=1.5*r*(id_**2+iq**2)
+    return np.asarray((did,diq,(torque-load-p.friction_n_m_s*w)/p.inertia_kg_m2,we,(copper-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k),dtype=np.float64)
+
+
+def solve_synrm_transient_cpu(motor_id,parameters,duration_s,step_s,*,stator_voltage_d_v,stator_voltage_q_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be a non-empty string")
+    if not isinstance(parameters,SynRMParameters): raise TypeError("parameters must be SynRMParameters")
+    count,_=_validate_time(duration_s,step_s)
+    vd=_voltage_profile(stator_voltage_d_v,count,"stator_voltage_d_v"); vq=_voltage_profile(stator_voltage_q_v,count,"stator_voltage_q_v"); load=_voltage_profile(load_torque_nm,count,"load_torque_nm")
+    initial=np.asarray((0.,0.,parameters.initial_speed_rad_s,parameters.initial_electrical_position_rad,parameters.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="synrm_dq_transient_single",derivative=lambda x,u:_synrm_derivative(x,parameters,*u),initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,input_at=lambda i,_t:(float(vd[i]),float(vq[i]),float(load[i])),precision="float64")
+    sol=solve_numerical_problem(problem)
+    if sol.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected SynRM sample count")
+    return SynRMSimulationResult(motor_id.strip(),sol.time_s,sol.state_data,vd,vq,load,sol.sample_period_s,"cpu-rk4",{"integrator":sol.integrator,"precision":"float64","workload":"synrm_dq_transient_single","model":"linear_rotor_dq_synchronous_reluctance","torque_model":"1.5*pole_pairs*(Ld-Lq)*id*iq","model_fidelity":"linear_inductance_no_saturation_or_iron_loss","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+_SRM_STATE_COUNT=6
+_SRM_STATE_NAMES=("phase_a_current_a","phase_b_current_a","phase_c_current_a","rotor_speed_rad_s","mechanical_position_rad","winding_temperature_c")
+
+
+@dataclass(frozen=True, slots=True)
+class SRMParameters:
+    phase_resistance_ohm: float
+    unaligned_inductance_h: float
+    aligned_inductance_h: float
+    rotor_poles: int
+    inertia_kg_m2: float
+    saturation_current_a: float = 100.0
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 12000.0
+    thermal_conductance_w_k: float = 35.0
+    ambient_temperature_c: float = 25.0
+    resistance_temp_coefficient_per_k: float = 0.00393
+    initial_speed_rad_s: float = 0.0
+    initial_mechanical_position_rad: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self):
+        for name in ("phase_resistance_ohm","unaligned_inductance_h","aligned_inductance_h","inertia_kg_m2","saturation_current_a","thermal_capacity_j_k"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{name} must be finite and positive")
+        if self.aligned_inductance_h<=self.unaligned_inductance_h: raise ValueError("aligned_inductance_h must exceed unaligned_inductance_h")
+        if isinstance(self.rotor_poles,(bool,np.bool_)) or not isinstance(self.rotor_poles,(int,np.integer)) or self.rotor_poles<2: raise ValueError("rotor_poles must be an integer of at least two")
+        for name in ("friction_n_m_s","thermal_conductance_w_k","resistance_temp_coefficient_per_k","ambient_temperature_c","initial_speed_rad_s","initial_mechanical_position_rad","initial_temperature_c"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{name} must be finite and numeric")
+            if name in ("friction_n_m_s","thermal_conductance_w_k") and v<0: raise ValueError(f"{name} must be non-negative")
+
+
+@dataclass(frozen=True, slots=True)
+class SRMSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    phase_a_voltage_v: np.ndarray
+    phase_b_voltage_v: np.ndarray
+    phase_c_voltage_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be a non-empty string")
+        for name in ("time_s","state_data","phase_a_voltage_v","phase_b_voltage_v","phase_c_voltage_v","load_torque_nm"):
+            v=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{name} must contain only finite values")
+            v.setflags(write=False); object.__setattr__(self,name,v)
+        n=self.time_s.size
+        if self.state_data.size!=n*_SRM_STATE_COUNT: raise ValueError("SRM state buffer does not match the time grid")
+        if any(getattr(self,k).size!=n for k in ("phase_a_voltage_v","phase_b_voltage_v","phase_c_voltage_v","load_torque_nm")): raise ValueError("SRM profiles must align with the time grid")
+        if not isinstance(self.diagnostics,Mapping): raise TypeError("diagnostics must be a mapping")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _SRM_STATE_NAMES
+    def state(self,name):
+        try: i=_SRM_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        out=self.state_data.reshape(self.sample_count,_SRM_STATE_COUNT)[:,i].view(); out.setflags(write=False); return out
+
+    def channels(self,p):
+        if not isinstance(p,SRMParameters): raise TypeError("parameters must be SRMParameters")
+        m=self.state_data.reshape(self.sample_count,_SRM_STATE_COUNT)
+        currents=[m[:,i] for i in range(3)]; speed=m[:,3]; theta=m[:,4]; temp=m[:,5]
+        offsets=(0.,2*np.pi/3,4*np.pi/3); inductances=[]; torque=np.zeros(self.sample_count)
+        base=0.5*(p.aligned_inductance_h+p.unaligned_inductance_h); delta=0.5*(p.aligned_inductance_h-p.unaligned_inductance_h)
+        for current,offset in zip(currents,offsets):
+            angle=p.rotor_poles*theta-offset
+            ratio=current/p.saturation_current_a
+            sat=1+ratio**2
+            inductances.append(base+delta*np.cos(angle)/sat)
+            # Co-energy integral for lambda(i,theta)=i*(Lbase+delta*cos(angle)/(1+(i/Isat)^2)).
+            torque += -0.5*delta*p.rotor_poles*np.sin(angle)*p.saturation_current_a**2*np.log1p(ratio**2)
+        resistance=p.phase_resistance_ohm*np.maximum(0.05,1+p.resistance_temp_coefficient_per_k*(temp-p.ambient_temperature_c))
+        power=sum(v*i for v,i in zip((self.phase_a_voltage_v,self.phase_b_voltage_v,self.phase_c_voltage_v),currents))
+        values={"phase_a_current_a":currents[0],"phase_b_current_a":currents[1],"phase_c_current_a":currents[2],
+            "phase_a_voltage_v":self.phase_a_voltage_v,"phase_b_voltage_v":self.phase_b_voltage_v,"phase_c_voltage_v":self.phase_c_voltage_v,
+            "phase_a_inductance_h":inductances[0],"phase_b_inductance_h":inductances[1],"phase_c_inductance_h":inductances[2],
+            "electromagnetic_torque_nm":torque,"rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),
+            "mechanical_position_rad":theta,"rotor_position_electrical_rad":np.mod(p.rotor_poles*theta,2*np.pi),
+            "winding_temperature_c":temp,"stator_copper_loss_w":resistance*sum(i**2 for i in currents),
+            "phase_input_power_w":power,"mechanical_output_power_w":torque*speed}
+        for v in values.values(): v.setflags(write=False)
+        return values
+
+    def publish_to(self,store,p,*,study_id=None,study_order=None):
+        publish=getattr(store,"publish",None)
+        if not callable(publish): raise TypeError("read_model_store must expose publish(...)")
+        return publish(self.motor_id,self.channels(p),self.sample_period_s,status="completed",study_id=study_id,study_order=study_order,diagnostics=self.diagnostics)
+
+
+def _srm_phase_inductance(theta,current,p,offset):
+    base=0.5*(p.aligned_inductance_h+p.unaligned_inductance_h); delta=0.5*(p.aligned_inductance_h-p.unaligned_inductance_h)
+    angle=p.rotor_poles*theta-offset; sat=1+(current/p.saturation_current_a)**2
+    return base+delta*np.cos(angle)/sat, -delta*p.rotor_poles*np.sin(angle)/sat
+
+
+def _srm_derivative(x,p,voltages,load):
+    currents=x[:3]; omega,theta,temp=x[3],x[4],x[5]
+    r=p.phase_resistance_ohm*max(0.05,1+p.resistance_temp_coefficient_per_k*(temp-p.ambient_temperature_c))
+    did=[]; torque=0.; copper=0.
+    for current,voltage,offset in zip(currents,voltages,(0.,2*np.pi/3,4*np.pi/3)):
+        inductance,dldtheta=_srm_phase_inductance(theta,float(current),p,offset)
+        ratio=current/p.saturation_current_a
+        angle=p.rotor_poles*theta-offset
+        delta=0.5*(p.aligned_inductance_h-p.unaligned_inductance_h)
+        differential=0.5*(p.aligned_inductance_h+p.unaligned_inductance_h) + delta*np.cos(angle)*(1-ratio**2)/(1+ratio**2)**2
+        flux_angle=-current*delta*p.rotor_poles*np.sin(angle)/(1+ratio**2)
+        did.append((voltage-r*current-flux_angle*omega)/max(differential,1e-12))
+        torque += -0.5*delta*p.rotor_poles*np.sin(angle)*p.saturation_current_a**2*np.log1p(ratio**2)
+        copper += r*current**2
+    return np.asarray((*did,(torque-load-p.friction_n_m_s*omega)/p.inertia_kg_m2,omega,(copper-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k),dtype=np.float64)
+
+
+def solve_srm_transient_cpu(motor_id,parameters,duration_s,step_s,*,phase_a_voltage_v,phase_b_voltage_v,phase_c_voltage_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be a non-empty string")
+    if not isinstance(parameters,SRMParameters): raise TypeError("parameters must be SRMParameters")
+    count,_=_validate_time(duration_s,step_s)
+    va=_voltage_profile(phase_a_voltage_v,count,"phase_a_voltage_v"); vb=_voltage_profile(phase_b_voltage_v,count,"phase_b_voltage_v"); vc=_voltage_profile(phase_c_voltage_v,count,"phase_c_voltage_v"); load=_voltage_profile(load_torque_nm,count,"load_torque_nm")
+    initial=np.asarray((0.,0.,0.,parameters.initial_speed_rad_s,parameters.initial_mechanical_position_rad,parameters.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="srm_phase_inductance_transient_single",derivative=lambda x,u:_srm_derivative(x,parameters,(u[0],u[1],u[2]),u[3]),initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,input_at=lambda i,_t:(float(va[i]),float(vb[i]),float(vc[i]),float(load[i])),precision="float64")
+    sol=solve_numerical_problem(problem)
+    if sol.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected SRM sample count")
+    return SRMSimulationResult(motor_id.strip(),sol.time_s,sol.state_data,va,vb,vc,load,sol.sample_period_s,"cpu-rk4",{"integrator":sol.integrator,"precision":"float64","workload":"srm_phase_inductance_transient_single","model":"three_phase_position_dependent_inductance_srm","torque_model":"sum(0.5*i_phase^2*dL_phase/dtheta)","inductance_model":"cosine_alignment_with_current_saturation_approximation","converter":"averaged_phase_voltage_command","model_fidelity":"no_switching_bridge_current_chopping_or_flux_hysteresis","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+_DC_STATE_COUNT = 6
+_DC_STATE_NAMES = ("armature_current_a", "shunt_field_current_a", "rotor_speed_rad_s", "mechanical_position_rad", "armature_temperature_c", "field_temperature_c")
+
+
+@dataclass(frozen=True, slots=True)
+class DCMotorParameters:
+    armature_resistance_ohm: float
+    armature_inductance_h: float
+    inertia_kg_m2: float
+    excitation: str
+    pole_pairs: int = 1
+    field_resistance_ohm: float = 1.0
+    series_field_resistance_ohm: float = 0.1
+    field_inductance_h: float = 0.1
+    shunt_flux_wb_per_a: float = 0.05
+    series_flux_wb_per_a: float = 0.01
+    saturation_flux_wb: float = 0.8
+    permanent_magnet_flux_wb: float = 0.05
+    compound_connection: str = "cumulative"
+    friction_n_m_s: float = 0.0
+    armature_thermal_capacity_j_k: float = 5000.0
+    field_thermal_capacity_j_k: float = 3000.0
+    thermal_conductance_w_k: float = 20.0
+    ambient_temperature_c: float = 25.0
+    resistance_temp_coefficient_per_k: float = 0.00393
+    initial_speed_rad_s: float = 0.0
+    initial_armature_temperature_c: float = 25.0
+    initial_field_temperature_c: float = 25.0
+
+    def __post_init__(self):
+        for name in ("armature_resistance_ohm","armature_inductance_h","inertia_kg_m2","field_resistance_ohm","series_field_resistance_ohm","field_inductance_h","saturation_flux_wb","armature_thermal_capacity_j_k","field_thermal_capacity_j_k"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{name} must be finite and positive")
+        for name in ("shunt_flux_wb_per_a","series_flux_wb_per_a","permanent_magnet_flux_wb","friction_n_m_s","thermal_conductance_w_k","resistance_temp_coefficient_per_k","ambient_temperature_c","initial_speed_rad_s","initial_armature_temperature_c","initial_field_temperature_c"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{name} must be finite and numeric")
+            if name in ("shunt_flux_wb_per_a","series_flux_wb_per_a","permanent_magnet_flux_wb","friction_n_m_s","thermal_conductance_w_k") and v<0: raise ValueError(f"{name} must be non-negative")
+        if self.excitation not in {"separately_excited","shunt","series","compound","permanent_magnet"}: raise ValueError("unsupported DC excitation")
+        if self.compound_connection not in {"cumulative","differential"}: raise ValueError("compound_connection must be cumulative or differential")
+        if isinstance(self.pole_pairs,(bool,np.bool_)) or not isinstance(self.pole_pairs,(int,np.integer)) or self.pole_pairs<1: raise ValueError("pole_pairs must be a positive integer")
+        if self.excitation in {"separately_excited","shunt","compound"} and self.shunt_flux_wb_per_a<=0: raise ValueError("shunt_flux_wb_per_a must be positive")
+        if self.excitation in {"series","compound"} and self.series_flux_wb_per_a<=0: raise ValueError("series_flux_wb_per_a must be positive")
+        if self.excitation=="permanent_magnet" and self.permanent_magnet_flux_wb<=0: raise ValueError("permanent_magnet_flux_wb must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class DCMotorSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    armature_voltage_v: np.ndarray
+    field_voltage_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be a non-empty string")
+        for name in ("time_s","state_data","armature_voltage_v","field_voltage_v","load_torque_nm"):
+            v=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{name} must contain only finite values")
+            v.setflags(write=False); object.__setattr__(self,name,v)
+        n=self.time_s.size
+        if self.state_data.size!=n*_DC_STATE_COUNT: raise ValueError("DC motor state buffer does not match time grid")
+        if any(getattr(self,k).size!=n for k in ("armature_voltage_v","field_voltage_v","load_torque_nm")): raise ValueError("DC motor profiles must align with time grid")
+        if not isinstance(self.diagnostics,Mapping): raise TypeError("diagnostics must be a mapping")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _DC_STATE_NAMES
+    def state(self,name):
+        try: i=_DC_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,_DC_STATE_COUNT)[:,i].view(); v.setflags(write=False); return v
+
+    def channels(self,p):
+        if not isinstance(p,DCMotorParameters): raise TypeError("parameters must be DCMotorParameters")
+        m=self.state_data.reshape(self.sample_count,_DC_STATE_COUNT)
+        ia,field_i,speed,pos,ta,tf=(m[:,i] for i in range(_DC_STATE_COUNT))
+        if p.excitation=="permanent_magnet": flux=np.full(self.sample_count,p.permanent_magnet_flux_wb); fi=np.zeros(self.sample_count)
+        elif p.excitation=="series": fi=ia; flux=p.saturation_flux_wb*np.tanh(p.series_flux_wb_per_a*ia/p.saturation_flux_wb)
+        elif p.excitation=="compound":
+            sign=-1.0 if p.compound_connection=="differential" else 1.0
+            fi=field_i; flux=p.saturation_flux_wb*np.tanh((p.shunt_flux_wb_per_a*field_i+sign*p.series_flux_wb_per_a*ia)/p.saturation_flux_wb)
+        else: fi=field_i; flux=p.saturation_flux_wb*np.tanh(p.shunt_flux_wb_per_a*field_i/p.saturation_flux_wb)
+        ke=p.pole_pairs*flux; torque=ke*ia
+        ra=p.armature_resistance_ohm*np.maximum(.05,1+p.resistance_temp_coefficient_per_k*(ta-p.ambient_temperature_c))
+        rf=p.field_resistance_ohm*np.maximum(.05,1+p.resistance_temp_coefficient_per_k*(tf-p.ambient_temperature_c))
+        fv=np.zeros(self.sample_count) if p.excitation in {"series","permanent_magnet"} else self.field_voltage_v
+        values={"armature_current_a":ia,"armature_voltage_v":self.armature_voltage_v,"field_current_a":fi,"field_voltage_v":fv,
+            "series_field_current_a":ia if p.excitation in {"series","compound"} else np.zeros(self.sample_count),
+            "air_gap_flux_wb":flux,"back_emf_v":ke*speed,"electromagnetic_torque_nm":torque,
+            "rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),"mechanical_position_rad":pos,
+            "armature_temperature_c":ta,"field_temperature_c":tf,"winding_temperature_c":ta,
+            "armature_copper_loss_w":ra*ia**2,"field_copper_loss_w":(p.series_field_resistance_ohm*fi**2 if p.excitation in {"series","compound"} else rf*fi**2),
+            "electrical_input_power_w":self.armature_voltage_v*ia+fv*fi,"mechanical_output_power_w":torque*speed,
+            "load_torque_nm":self.load_torque_nm}
+        for v in values.values(): v.setflags(write=False)
+        return values
+
+    def publish_to(self,store,p,*,study_id=None,study_order=None):
+        publish=getattr(store,"publish",None)
+        if not callable(publish): raise TypeError("read_model_store must expose publish(...)")
+        return publish(self.motor_id,self.channels(p),self.sample_period_s,status="completed",study_id=study_id,study_order=study_order,diagnostics=self.diagnostics)
+
+
+def _dc_flux(p,ia,field_i):
+    if p.excitation=="permanent_magnet": return p.permanent_magnet_flux_wb
+    if p.excitation=="series": raw=p.series_flux_wb_per_a*ia
+    elif p.excitation=="compound": raw=p.shunt_flux_wb_per_a*field_i+(-1 if p.compound_connection=="differential" else 1)*p.series_flux_wb_per_a*ia
+    else: raw=p.shunt_flux_wb_per_a*field_i
+    return p.saturation_flux_wb*np.tanh(raw/p.saturation_flux_wb)
+
+
+def _dc_derivative(x,p,va,vf,load):
+    ia,ifield,w,_pos,ta,tf=x
+    ra=p.armature_resistance_ohm*max(.05,1+p.resistance_temp_coefficient_per_k*(ta-p.ambient_temperature_c))
+    rf=p.field_resistance_ohm*max(.05,1+p.resistance_temp_coefficient_per_k*(tf-p.ambient_temperature_c))
+    flux=_dc_flux(p,ia,ifield); ke=p.pole_pairs*flux
+    dia=(va-(ra+(p.series_field_resistance_ohm if p.excitation in {"series","compound"} else 0.0))*ia-ke*w)/p.armature_inductance_h
+    dif=0.0 if p.excitation in {"series","permanent_magnet"} else (vf-rf*ifield)/p.field_inductance_h
+    torque=ke*ia; arm_loss=ra*ia**2
+    field_loss=(p.series_field_resistance_ohm*ia**2 if p.excitation in {"series","compound"} else rf*ifield**2 if p.excitation not in {"permanent_magnet"} else 0.0)
+    return np.asarray((dia,dif,(torque-load-p.friction_n_m_s*w)/p.inertia_kg_m2,w,
+        (arm_loss-p.thermal_conductance_w_k*(ta-p.ambient_temperature_c))/p.armature_thermal_capacity_j_k,
+        (field_loss-p.thermal_conductance_w_k*(tf-p.ambient_temperature_c))/p.field_thermal_capacity_j_k),dtype=np.float64)
+
+
+def solve_dc_motor_transient_cpu(motor_id,parameters,duration_s,step_s,*,armature_voltage_v,field_voltage_v=0.0,load_torque_nm=0.0):
+    """Experimental averaged DC motor model with explicit excitation and compound polarity."""
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be a non-empty string")
+    if not isinstance(parameters,DCMotorParameters): raise TypeError("parameters must be DCMotorParameters")
+    count,_=_validate_time(duration_s,step_s)
+    va=_voltage_profile(armature_voltage_v,count,"armature_voltage_v")
+    vf=_voltage_profile(field_voltage_v,count,"field_voltage_v")
+    if parameters.excitation in {"shunt","compound"}:
+        vf=va.copy()  # shunt field is connected across the armature supply
+    load=_voltage_profile(load_torque_nm,count,"load_torque_nm")
+    if parameters.excitation in {"series","permanent_magnet"} and np.any(vf!=0): raise ValueError("field_voltage_v must be zero for series and permanent_magnet excitation")
+    initial=np.asarray((0.,0.,parameters.initial_speed_rad_s,0.,parameters.initial_armature_temperature_c,parameters.initial_field_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="dc_motor_excitation_transient_single",
+        derivative=lambda x,u:_dc_derivative(x,parameters,*u),initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+        input_at=lambda i,_t:(float(va[i]),float(vf[i]),float(load[i])),precision="float64")
+    sol=solve_numerical_problem(problem)
+    if sol.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected DC motor sample count")
+    return DCMotorSimulationResult(motor_id.strip(),sol.time_s,sol.state_data,va,vf,load,sol.sample_period_s,"cpu-rk4",
+        {"integrator":sol.integrator,"precision":"float64","workload":"dc_motor_excitation_transient_single",
+         "model":"brushed_dc_electromechanical_two_node_thermal","excitation":parameters.excitation,
+         "compound_connection":parameters.compound_connection if parameters.excitation=="compound" else None,
+         "flux_model":"saturating_tanh","input_profile":"zero_order_hold",
+         "model_fidelity":"averaged_armature_field_circuits_no_commutation_or_brush_arc",
+         "integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+_SINGLE_PHASE_STATE_NAMES = ("main_current_a", "auxiliary_current_a", "rotor_speed_rad_s", "rotor_position_rad", "winding_temperature_c")
+
+
+@dataclass(frozen=True, slots=True)
+class SinglePhaseMotorParameters:
+    """Reduced-order RMS-envelope parameters for single-phase induction families."""
+    family: str
+    main_resistance_ohm: float
+    main_inductance_h: float
+    auxiliary_resistance_ohm: float
+    auxiliary_inductance_h: float
+    inertia_kg_m2: float
+    torque_constant_nm_per_a2: float
+    frequency_hz: float = 50.0
+    auxiliary_capacitance_f: float = 0.0
+    auxiliary_cutout_speed_pu: float = 0.75
+    shaded_pole_torque_factor: float = 0.12
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 5000.0
+    thermal_conductance_w_k: float = 20.0
+    ambient_temperature_c: float = 25.0
+    initial_speed_rad_s: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self):
+        allowed={"split_phase","capacitor_start","permanent_split_capacitor","capacitor_start_run","shaded_pole"}
+        if self.family not in allowed: raise ValueError("unsupported single-phase motor family")
+        for name in ("main_resistance_ohm","main_inductance_h","auxiliary_resistance_ohm","auxiliary_inductance_h","inertia_kg_m2","torque_constant_nm_per_a2","thermal_capacity_j_k"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{name} must be finite and positive")
+        for name in ("frequency_hz","auxiliary_capacitance_f","auxiliary_cutout_speed_pu","shaded_pole_torque_factor","friction_n_m_s","thermal_conductance_w_k","ambient_temperature_c","initial_speed_rad_s","initial_temperature_c"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{name} must be finite and numeric")
+        if self.frequency_hz<=0 or self.auxiliary_capacitance_f<0 or self.friction_n_m_s<0 or self.thermal_conductance_w_k<0: raise ValueError("frequency must be positive and passive parameters non-negative")
+        if not 0<self.auxiliary_cutout_speed_pu<=1: raise ValueError("auxiliary_cutout_speed_pu must be in (0, 1]")
+        if not 0<=self.shaded_pole_torque_factor<=1: raise ValueError("shaded_pole_torque_factor must be in [0, 1]")
+        if self.family in {"capacitor_start","permanent_split_capacitor","capacitor_start_run"} and self.auxiliary_capacitance_f<=0: raise ValueError("capacitor motor families require auxiliary_capacitance_f > 0")
+
+
+@dataclass(frozen=True, slots=True)
+class SinglePhaseMotorSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    supply_voltage_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be non-empty")
+        for name in ("time_s","state_data","supply_voltage_v","load_torque_nm"):
+            v=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{name} must be finite")
+            v.setflags(write=False); object.__setattr__(self,name,v)
+        if self.state_data.size!=self.time_s.size*len(_SINGLE_PHASE_STATE_NAMES): raise ValueError("single-phase state buffer size mismatch")
+        if self.supply_voltage_v.size!=self.time_s.size or self.load_torque_nm.size!=self.time_s.size: raise ValueError("single-phase profiles must align to time grid")
+        if not isinstance(self.diagnostics,Mapping): raise TypeError("diagnostics must be a mapping")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _SINGLE_PHASE_STATE_NAMES
+    def state(self,name):
+        try: i=_SINGLE_PHASE_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,len(_SINGLE_PHASE_STATE_NAMES))[:,i].view(); v.setflags(write=False); return v
+
+    def channels(self,p):
+        if not isinstance(p,SinglePhaseMotorParameters): raise TypeError("parameters must be SinglePhaseMotorParameters")
+        m=self.state_data.reshape(self.sample_count,len(_SINGLE_PHASE_STATE_NAMES))
+        im,ia,w,pos,temp=(m[:,i] for i in range(len(_SINGLE_PHASE_STATE_NAMES)))
+        omega=2*np.pi*p.frequency_hz
+        xa=omega*p.auxiliary_inductance_h-(1/(omega*p.auxiliary_capacitance_f) if p.auxiliary_capacitance_f>0 else 0.0)
+        phase=np.arctan2(omega*p.main_inductance_h,p.main_resistance_ohm)-np.arctan2(xa,p.auxiliary_resistance_ohm)
+        torque=p.torque_constant_nm_per_a2*im*ia*np.sin(phase)
+        if p.family=="shaded_pole": torque*=p.shaded_pole_torque_factor
+        active=np.ones(self.sample_count)
+        if p.family in {"split_phase","capacitor_start"}: active=(w<p.auxiliary_cutout_speed_pu*omega).astype(float)
+        vals={"line_voltage_rms_v":self.supply_voltage_v,"line_current_rms_a":np.hypot(im,ia*active),
+              "main_winding_current_rms_a":im,"auxiliary_winding_current_rms_a":ia*active,
+              "main_winding_copper_loss_w":p.main_resistance_ohm*im**2,
+              "auxiliary_winding_copper_loss_w":p.auxiliary_resistance_ohm*ia**2*active,
+              "auxiliary_phase_displacement_rad":np.full(self.sample_count,phase),
+              "electromagnetic_torque_nm":torque,"rotor_speed_rad_s":w,"rotor_speed_rpm":w*60/(2*np.pi),
+              "rotor_position_rad":pos,"winding_temperature_c":temp,
+              "apparent_input_power_va":self.supply_voltage_v*np.hypot(im,ia*active),
+              "mechanical_output_power_w":torque*w,"load_torque_nm":self.load_torque_nm}
+        for v in vals.values(): v.setflags(write=False)
+        return vals
+
+
+def _single_phase_targets(p, voltage):
+    omega=2*np.pi*p.frequency_hz
+    zm=np.hypot(p.main_resistance_ohm,omega*p.main_inductance_h)
+    xa=omega*p.auxiliary_inductance_h-(1/(omega*p.auxiliary_capacitance_f) if p.auxiliary_capacitance_f>0 else 0.0)
+    za=np.hypot(p.auxiliary_resistance_ohm,xa)
+    phase=np.arctan2(omega*p.main_inductance_h,p.main_resistance_ohm)-np.arctan2(xa,p.auxiliary_resistance_ohm)
+    return abs(voltage)/zm,abs(voltage)/za,phase
+
+
+def solve_single_phase_motor_transient_cpu(motor_id,parameters,duration_s,step_s,*,supply_voltage_rms_v,load_torque_nm=0.0):
+    """Integrate a reduced-order single-phase motor RMS-envelope response."""
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,SinglePhaseMotorParameters): raise TypeError("parameters must be SinglePhaseMotorParameters")
+    if not _is_numeric_scalar(supply_voltage_rms_v) or not isfinite(float(supply_voltage_rms_v)) or supply_voltage_rms_v<0: raise ValueError("supply_voltage_rms_v must be finite and non-negative")
+    if not _is_numeric_scalar(load_torque_nm) or not isfinite(float(load_torque_nm)): raise ValueError("load_torque_nm must be finite and numeric")
+    count,_=_validate_time(duration_s,step_s)
+    voltage=np.full(count,float(supply_voltage_rms_v)); load=np.full(count,float(load_torque_nm))
+    im_target,ia_target,phase=_single_phase_targets(parameters,float(supply_voltage_rms_v))
+    tau_m=max(parameters.main_inductance_h/parameters.main_resistance_ohm,step_s)
+    tau_a=max(parameters.auxiliary_inductance_h/parameters.auxiliary_resistance_ohm,step_s)
+    omega=2*np.pi*parameters.frequency_hz
+    def derivative(x,u):
+        im,ia,w,_pos,temp=x
+        active=not (parameters.family in {"split_phase","capacitor_start"} and w>=parameters.auxiliary_cutout_speed_pu*omega)
+        dia=(ia_target-ia)/tau_a if active else -ia/tau_a
+        torque=parameters.torque_constant_nm_per_a2*im*ia*np.sin(phase)
+        if parameters.family=="shaded_pole": torque*=parameters.shaded_pole_torque_factor
+        loss=parameters.main_resistance_ohm*im**2+(parameters.auxiliary_resistance_ohm*ia**2 if active else 0.)
+        return np.asarray(((im_target-im)/tau_m,dia,(torque-u[0]-parameters.friction_n_m_s*w)/parameters.inertia_kg_m2,w,
+            (loss-parameters.thermal_conductance_w_k*(temp-parameters.ambient_temperature_c))/parameters.thermal_capacity_j_k),dtype=np.float64)
+    initial=np.asarray((0.,0.,parameters.initial_speed_rad_s,0.,parameters.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="single_phase_motor_rms_envelope_single",
+        derivative=derivative,initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+        input_at=lambda i,_t:(float(load[i]),),precision="float64")
+    result=solve_numerical_problem(problem)
+    if result.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected single-phase sample count")
+    return SinglePhaseMotorSimulationResult(motor_id.strip(),result.time_s,result.state_data,voltage,load,result.sample_period_s,"cpu-rk4",
+        {"integrator":result.integrator,"precision":"float64","workload":"single_phase_motor_rms_envelope_single",
+         "model":"single_phase_asymmetric_winding_rms_envelope","family":parameters.family,
+         "model_fidelity":"reduced_order_rms_envelope_not_cycle_resolved","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+_UNIVERSAL_STATE_NAMES = ("current_a", "speed_rad_s", "position_rad", "temperature_c")
+
+
+@dataclass(frozen=True)
+class UniversalMotorParameters:
+    armature_resistance_ohm: float
+    field_resistance_ohm: float
+    armature_inductance_h: float
+    field_inductance_h: float
+    inertia_kg_m2: float
+    torque_constant_nm_per_a_wb: float
+    back_emf_constant_v_s_per_rad_wb: float
+    field_flux_per_ampere_wb_a: float
+    saturation_current_a: float = 8.0
+    frequency_hz: float = 50.0
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 6000.0
+    thermal_conductance_w_k: float = 25.0
+    ambient_temperature_c: float = 25.0
+    initial_speed_rad_s: float = 0.0
+    initial_temperature_c: float = 25.0
+    supply_mode: str = "ac"
+
+    def __post_init__(self):
+        for name in ("armature_resistance_ohm","field_resistance_ohm","armature_inductance_h","field_inductance_h","inertia_kg_m2","torque_constant_nm_per_a_wb","back_emf_constant_v_s_per_rad_wb","field_flux_per_ampere_wb_a","saturation_current_a","thermal_capacity_j_k"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{name} must be finite and positive")
+        for name in ("frequency_hz","friction_n_m_s","thermal_conductance_w_k","ambient_temperature_c","initial_speed_rad_s","initial_temperature_c"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{name} must be finite and numeric")
+        if self.frequency_hz<=0 or self.friction_n_m_s<0 or self.thermal_conductance_w_k<0: raise ValueError("frequency must be positive and passive parameters non-negative")
+        if self.supply_mode not in {"ac","dc"}: raise ValueError("supply_mode must be 'ac' or 'dc'")
+
+
+@dataclass(frozen=True)
+class UniversalMotorSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    supply_voltage_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be non-empty")
+        for name in ("time_s","state_data","supply_voltage_v","load_torque_nm"):
+            v=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{name} must be finite")
+            v.setflags(write=False); object.__setattr__(self,name,v)
+        if self.state_data.size!=self.time_s.size*4 or self.supply_voltage_v.size!=self.time_s.size or self.load_torque_nm.size!=self.time_s.size: raise ValueError("universal motor result arrays must align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _UNIVERSAL_STATE_NAMES
+    def state(self,name):
+        try: i=_UNIVERSAL_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,4)[:,i].view(); v.setflags(write=False); return v
+    def channels(self,p):
+        m=self.state_data.reshape(self.sample_count,4); current,speed,position,temp=(m[:,i] for i in range(4))
+        flux=p.field_flux_per_ampere_wb_a*p.saturation_current_a*np.tanh(current/p.saturation_current_a)
+        torque=p.torque_constant_nm_per_a_wb*flux*current
+        values={"terminal_voltage_v":self.supply_voltage_v,"line_current_a":current,"armature_current_a":current,
+            "series_field_current_a":current,"field_flux_wb":flux,"electromagnetic_torque_nm":torque,
+            "rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),"rotor_position_rad":position,
+            "winding_temperature_c":temp,"armature_copper_loss_w":p.armature_resistance_ohm*current**2,
+            "field_copper_loss_w":p.field_resistance_ohm*current**2,"total_copper_loss_w":(p.armature_resistance_ohm+p.field_resistance_ohm)*current**2,
+            "mechanical_output_power_w":torque*speed,"load_torque_nm":self.load_torque_nm}
+        for v in values.values(): v.setflags(write=False)
+        return values
+
+
+def solve_universal_motor_transient_cpu(motor_id,parameters,duration_s,step_s,*,supply_voltage_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,UniversalMotorParameters): raise TypeError("parameters must be UniversalMotorParameters")
+    for name,value in (("supply_voltage_v",supply_voltage_v),("load_torque_nm",load_torque_nm)):
+        if not _is_numeric_scalar(value) or not isfinite(float(value)): raise ValueError(f"{name} must be finite and numeric")
+    if supply_voltage_v<0: raise ValueError("supply_voltage_v must be non-negative")
+    count,_=_validate_time(duration_s,step_s)
+    voltage=np.full(count,float(supply_voltage_v)); load=np.full(count,float(load_torque_nm))
+    resistance=parameters.armature_resistance_ohm+parameters.field_resistance_ohm
+    inductance=parameters.armature_inductance_h+parameters.field_inductance_h
+    tau=max(inductance/resistance,step_s)
+    drive=float(supply_voltage_v) if parameters.supply_mode=="dc" else float(supply_voltage_v)*2*np.sqrt(2)/np.pi
+    def derivative(x,u):
+        current,speed,_position,temp=x
+        flux=parameters.field_flux_per_ampere_wb_a*parameters.saturation_current_a*np.tanh(current/parameters.saturation_current_a)
+        torque=parameters.torque_constant_nm_per_a_wb*flux*current
+        emf=parameters.back_emf_constant_v_s_per_rad_wb*flux*speed
+        di=(drive-emf-resistance*current)/inductance
+        copper=resistance*current**2
+        return np.asarray((di,(torque-u[0]-parameters.friction_n_m_s*speed)/parameters.inertia_kg_m2,speed,
+            (copper-parameters.thermal_conductance_w_k*(temp-parameters.ambient_temperature_c))/parameters.thermal_capacity_j_k),dtype=np.float64)
+    initial=np.asarray((0.,parameters.initial_speed_rad_s,0.,parameters.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="universal_motor_series_field_single",derivative=derivative,
+        initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,input_at=lambda i,_t:(float(load[i]),),precision="float64")
+    result=solve_numerical_problem(problem)
+    if result.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected universal motor sample count")
+    return UniversalMotorSimulationResult(motor_id.strip(),result.time_s,result.state_data,voltage,load,result.sample_period_s,"cpu-rk4",
+        {"integrator":result.integrator,"precision":"float64","workload":"universal_motor_series_field_single",
+         "model":"series_commutator_motor_averaged_envelope","supply_mode":parameters.supply_mode,
+         "model_fidelity":"averaged_rectified_envelope_not_cycle_resolved","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+_WOUND_SYNC_STATE_NAMES = ("stator_d_current_a","stator_q_current_a","field_current_a","damper_d_current_a","damper_q_current_a","rotor_angle_rad","rotor_speed_rad_s","temperature_c")
+
+
+@dataclass(frozen=True)
+class WoundFieldSynchronousParameters:
+    stator_resistance_ohm: float
+    stator_d_inductance_h: float
+    stator_q_inductance_h: float
+    field_resistance_ohm: float
+    field_inductance_h: float
+    damper_d_resistance_ohm: float
+    damper_q_resistance_ohm: float
+    damper_d_inductance_h: float
+    damper_q_inductance_h: float
+    mutual_field_inductance_h: float
+    mutual_damper_d_inductance_h: float
+    mutual_damper_q_inductance_h: float
+    pole_pairs: int
+    inertia_kg_m2: float
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 12000.0
+    thermal_conductance_w_k: float = 40.0
+    ambient_temperature_c: float = 25.0
+    initial_speed_rad_s: float = 0.0
+    initial_temperature_c: float = 25.0
+    frequency_hz: float = 50.0
+
+    def __post_init__(self):
+        for n in ("stator_resistance_ohm","stator_d_inductance_h","stator_q_inductance_h","field_resistance_ohm","field_inductance_h","damper_d_resistance_ohm","damper_q_resistance_ohm","damper_d_inductance_h","damper_q_inductance_h","inertia_kg_m2","thermal_capacity_j_k","frequency_hz"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{n} must be finite and positive")
+        for n in ("mutual_field_inductance_h","mutual_damper_d_inductance_h","mutual_damper_q_inductance_h"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<0: raise ValueError(f"{n} must be finite and non-negative")
+        for n in ("friction_n_m_s","thermal_conductance_w_k","ambient_temperature_c","initial_speed_rad_s","initial_temperature_c"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        if self.friction_n_m_s<0 or self.thermal_conductance_w_k<0: raise ValueError("passive parameters must be non-negative")
+        if isinstance(self.pole_pairs,bool) or not isinstance(self.pole_pairs,int) or self.pole_pairs<1: raise ValueError("pole_pairs must be a positive integer")
+        if self.mutual_field_inductance_h**2>=self.stator_d_inductance_h*self.field_inductance_h: raise ValueError("field mutual inductance violates positive-energy bound")
+        if self.mutual_damper_d_inductance_h**2>=self.stator_d_inductance_h*self.damper_d_inductance_h: raise ValueError("d-axis damper mutual inductance violates positive-energy bound")
+        if self.mutual_damper_q_inductance_h**2>=self.stator_q_inductance_h*self.damper_q_inductance_h: raise ValueError("q-axis damper mutual inductance violates positive-energy bound")
+
+
+@dataclass(frozen=True)
+class WoundFieldSynchronousSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    stator_voltage_d_v: np.ndarray
+    stator_voltage_q_v: np.ndarray
+    field_voltage_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be non-empty")
+        for n in ("time_s","state_data","stator_voltage_d_v","stator_voltage_q_v","field_voltage_v","load_torque_nm"):
+            v=np.asarray(getattr(self,n),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{n} must be finite")
+            v.setflags(write=False); object.__setattr__(self,n,v)
+        n=self.time_s.size
+        if self.state_data.size!=n*8 or any(getattr(self,k).size!=n for k in ("stator_voltage_d_v","stator_voltage_q_v","field_voltage_v","load_torque_nm")): raise ValueError("synchronous result arrays must align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _WOUND_SYNC_STATE_NAMES
+    def state(self,name):
+        try: i=_WOUND_SYNC_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,8)[:,i].view(); v.setflags(write=False); return v
+    def channels(self,p):
+        x=self.state_data.reshape(self.sample_count,8); id_,iq,iff,ikd,ikq,angle,speed,temp=x.T
+        torque=1.5*p.pole_pairs*((p.stator_d_inductance_h-p.stator_q_inductance_h)*id_*iq+p.mutual_field_inductance_h*iff*iq)
+        vals={"stator_d_current_a":id_,"stator_q_current_a":iq,"field_current_a":iff,"damper_d_current_a":ikd,"damper_q_current_a":ikq,
+          "rotor_angle_rad":angle,"rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),
+          "synchronous_speed_error_rad_s":speed-2*np.pi*p.frequency_hz/p.pole_pairs,"electromagnetic_torque_nm":torque,
+          "winding_temperature_c":temp,"stator_copper_loss_w":1.5*p.stator_resistance_ohm*(id_**2+iq**2),
+          "field_copper_loss_w":p.field_resistance_ohm*iff**2,"damper_copper_loss_w":p.damper_d_resistance_ohm*ikd**2+p.damper_q_resistance_ohm*ikq**2,
+          "mechanical_output_power_w":torque*speed,"load_torque_nm":self.load_torque_nm,"field_voltage_v":self.field_voltage_v,
+          "stator_voltage_d_v":self.stator_voltage_d_v,"stator_voltage_q_v":self.stator_voltage_q_v}
+        for v in vals.values(): v.setflags(write=False)
+        return vals
+
+
+def solve_wound_field_synchronous_transient_cpu(motor_id,parameters,duration_s,step_s,*,stator_voltage_d_v,stator_voltage_q_v,field_voltage_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,WoundFieldSynchronousParameters): raise TypeError("parameters must be WoundFieldSynchronousParameters")
+    count,_=_validate_time(duration_s,step_s); p=parameters
+    profiles={}
+    for n,v in (("stator_voltage_d_v",stator_voltage_d_v),("stator_voltage_q_v",stator_voltage_q_v),("field_voltage_v",field_voltage_v),("load_torque_nm",load_torque_nm)):
+        if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        profiles[n]=np.full(count,float(v))
+    def deriv(x,u):
+        id_,iq,iff,ikd,ikq,angle,speed,temp=x
+        slip=speed-2*np.pi*p.frequency_hz/p.pole_pairs
+        psid=p.stator_d_inductance_h*id_+p.mutual_field_inductance_h*iff+p.mutual_damper_d_inductance_h*ikd
+        psiq=p.stator_q_inductance_h*iq+p.mutual_damper_q_inductance_h*ikq
+        did=(u[0]-p.stator_resistance_ohm*id_+slip*psiq)/p.stator_d_inductance_h
+        diq=(u[1]-p.stator_resistance_ohm*iq-slip*psid)/p.stator_q_inductance_h
+        diff=(u[2]-p.field_resistance_ohm*iff)/p.field_inductance_h
+        dikd=-p.damper_d_resistance_ohm*ikd/p.damper_d_inductance_h
+        dikq=-p.damper_q_resistance_ohm*ikq/p.damper_q_inductance_h
+        torque=1.5*p.pole_pairs*((p.stator_d_inductance_h-p.stator_q_inductance_h)*id_*iq+p.mutual_field_inductance_h*iff*iq)
+        loss=1.5*p.stator_resistance_ohm*(id_**2+iq**2)+p.field_resistance_ohm*iff**2+p.damper_d_resistance_ohm*ikd**2+p.damper_q_resistance_ohm*ikq**2
+        return np.asarray((did,diq,diff,dikd,dikq,speed,(torque-u[3]-p.friction_n_m_s*speed)/p.inertia_kg_m2,(loss-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k),dtype=np.float64)
+    initial=np.asarray((0.,0.,0.,0.,0.,0.,p.initial_speed_rad_s,p.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="wound_field_synchronous_damper_single",derivative=deriv,initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+      input_at=lambda i,_t:(profiles["stator_voltage_d_v"][i],profiles["stator_voltage_q_v"][i],profiles["field_voltage_v"][i],profiles["load_torque_nm"][i]),precision="float64")
+    r=solve_numerical_problem(problem)
+    if r.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected synchronous motor sample count")
+    return WoundFieldSynchronousSimulationResult(motor_id.strip(),r.time_s,r.state_data,profiles["stator_voltage_d_v"],profiles["stator_voltage_q_v"],profiles["field_voltage_v"],profiles["load_torque_nm"],r.sample_period_s,"cpu-rk4",
+      {"integrator":r.integrator,"precision":"float64","workload":"wound_field_synchronous_damper_single","model":"experimental_rotor_dq_wound_field_damper_envelope","model_fidelity":"damper_induced_emf_and_full_flux_matrix_not_resolved","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+@dataclass(frozen=True)
+class HysteresisMotorParameters:
+    """Averaged synchronous torque-angle approximation for a hysteresis motor."""
+    pole_pairs: int
+    rated_voltage_rms_v: float
+    frequency_hz: float
+    pullout_torque_nm: float
+    inertia_kg_m2: float
+    viscous_friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 8000.0
+    thermal_conductance_w_k: float = 25.0
+    rotor_loss_fraction: float = 0.08
+    ambient_temperature_c: float = 25.0
+    initial_speed_rad_s: float = 0.0
+    initial_load_angle_rad: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self):
+        if isinstance(self.pole_pairs,bool) or not isinstance(self.pole_pairs,int) or self.pole_pairs<1: raise ValueError("pole_pairs must be a positive integer")
+        for n in ("rated_voltage_rms_v","frequency_hz","pullout_torque_nm","inertia_kg_m2","thermal_capacity_j_k"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{n} must be finite and positive")
+        for n in ("viscous_friction_n_m_s","thermal_conductance_w_k","rotor_loss_fraction","ambient_temperature_c","initial_speed_rad_s","initial_load_angle_rad","initial_temperature_c"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        if self.viscous_friction_n_m_s<0 or self.thermal_conductance_w_k<0 or not 0<=self.rotor_loss_fraction<=1: raise ValueError("friction/conductance must be non-negative and rotor_loss_fraction must be in [0,1]")
+
+
+@dataclass(frozen=True)
+class HysteresisMotorSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    supply_voltage_rms_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be non-empty")
+        for n in ("time_s","state_data","supply_voltage_rms_v","load_torque_nm"):
+            v=np.asarray(getattr(self,n),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{n} must be finite")
+            v.setflags(write=False); object.__setattr__(self,n,v)
+        n=self.time_s.size
+        if self.state_data.size!=n*4 or self.supply_voltage_rms_v.size!=n or self.load_torque_nm.size!=n: raise ValueError("hysteresis result arrays must align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return ("rotor_speed_rad_s","rotor_electrical_angle_rad","load_angle_rad","rotor_temperature_c")
+    def state(self,name):
+        try: i=self.state_names.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,4)[:,i].view(); v.setflags(write=False); return v
+    def channels(self,p):
+        speed,rotor_angle,delta,temp=self.state_data.reshape(self.sample_count,4).T
+        voltage_ratio=self.supply_voltage_rms_v/p.rated_voltage_rms_v
+        torque=p.pullout_torque_nm*np.minimum(voltage_ratio**2,1.5)*np.sin(delta)
+        sync_speed=2*np.pi*p.frequency_hz/p.pole_pairs
+        margin=p.pullout_torque_nm*np.minimum(voltage_ratio**2,1.5)-np.abs(self.load_torque_nm)
+        vals={"rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),"rotor_electrical_angle_rad":rotor_angle,
+          "load_angle_rad":delta,"electromagnetic_torque_nm":torque,"synchronous_speed_error_rad_s":speed-sync_speed,
+          "pullout_torque_margin_nm":margin,"supply_voltage_rms_v":self.supply_voltage_rms_v,
+          "rotor_loss_w":p.rotor_loss_fraction*np.abs(torque*speed),"rotor_temperature_c":temp,
+          "load_torque_nm":self.load_torque_nm,"mechanical_output_power_w":torque*speed}
+        for v in vals.values(): v.setflags(write=False)
+        return vals
+
+
+def solve_hysteresis_motor_transient_cpu(motor_id,parameters,duration_s,step_s,*,supply_voltage_rms_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,HysteresisMotorParameters): raise TypeError("parameters must be HysteresisMotorParameters")
+    count,_=_validate_time(duration_s,step_s); p=parameters
+    profiles={}
+    for n,v in (("supply_voltage_rms_v",supply_voltage_rms_v),("load_torque_nm",load_torque_nm)):
+        if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        if n=="supply_voltage_rms_v" and v<0: raise ValueError("supply_voltage_rms_v must be non-negative")
+        profiles[n]=np.full(count,float(v))
+    sync=2*np.pi*p.frequency_hz/p.pole_pairs
+    def deriv(x,u):
+        speed,rotor_angle,delta,temp=x
+        ratio=min(u[0]/p.rated_voltage_rms_v,np.sqrt(1.5))
+        torque=p.pullout_torque_nm*ratio**2*np.sin(delta)
+        loss=p.rotor_loss_fraction*abs(torque*speed)
+        return np.asarray(((torque-u[1]-p.viscous_friction_n_m_s*speed)/p.inertia_kg_m2,
+          p.pole_pairs*speed,sync-p.pole_pairs*speed,
+          (loss-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k),dtype=np.float64)
+    initial=np.asarray((p.initial_speed_rad_s,p.pole_pairs*p.initial_speed_rad_s*0.0,p.initial_load_angle_rad,p.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="hysteresis_motor_torque_angle_single",derivative=deriv,
+      initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+      input_at=lambda i,_t:(profiles["supply_voltage_rms_v"][i],profiles["load_torque_nm"][i]),precision="float64")
+    r=solve_numerical_problem(problem)
+    if r.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected hysteresis motor sample count")
+    return HysteresisMotorSimulationResult(motor_id.strip(),r.time_s,r.state_data,profiles["supply_voltage_rms_v"],profiles["load_torque_nm"],r.sample_period_s,"cpu-rk4",
+      {"integrator":r.integrator,"precision":"float64","workload":"hysteresis_motor_torque_angle_single","model":"averaged_synchronous_torque_angle","model_fidelity":"not_a_material_hysteresis_or_asynchronous_pullin_model","synchronous_speed_rad_s":sync,"integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+# ---------------------------------------------------------------------------
+# Synchronous-PM AC servo: cascaded position/speed/current control envelope
+# ---------------------------------------------------------------------------
+_SERVO_STATE_COUNT = 9
+_SERVO_ID, _SERVO_IQ, _SERVO_SPEED, _SERVO_THETA_E, _SERVO_POSITION, _SERVO_TEMP, _SERVO_IQ_INT, _SERVO_ID_INT, _SERVO_SPEED_INT = range(_SERVO_STATE_COUNT)
+_SERVO_STATE_NAMES = ("stator_current_d_a","stator_current_q_a","rotor_speed_rad_s","electrical_position_rad","mechanical_position_rad","winding_temperature_c","q_current_integrator","d_current_integrator","speed_integrator")
+
+
+@dataclass(frozen=True, slots=True)
+class PMSMServoParameters:
+    machine: PMSMParameters
+    position_kp: float
+    speed_kp: float
+    speed_ki: float
+    current_kp: float
+    current_ki: float
+    maximum_speed_rad_s: float
+    maximum_current_a: float
+    maximum_voltage_v: float
+    encoder_counts_per_revolution: int = 65536
+    initial_mechanical_position_rad: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.machine, PMSMParameters):
+            raise TypeError("machine must be PMSMParameters")
+        for name in ("position_kp","speed_kp","speed_ki","current_kp","current_ki","maximum_speed_rad_s","maximum_current_a","maximum_voltage_v"):
+            value=getattr(self,name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if isinstance(self.encoder_counts_per_revolution,bool) or not isinstance(self.encoder_counts_per_revolution,int) or self.encoder_counts_per_revolution < 16:
+            raise ValueError("encoder_counts_per_revolution must be an integer >= 16")
+        if not _is_numeric_scalar(self.initial_mechanical_position_rad) or not isfinite(float(self.initial_mechanical_position_rad)):
+            raise ValueError("initial_mechanical_position_rad must be finite")
+
+
+@dataclass(frozen=True, slots=True)
+class PMSMServoSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    position_command_rad: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip():
+            raise ValueError("motor_id must be non-empty")
+        n=int(np.asarray(self.time_s).size)
+        for name in ("time_s","state_data","position_command_rad","load_torque_nm"):
+            a=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(a).all(): raise ValueError(f"{name} must be finite")
+            a.setflags(write=False); object.__setattr__(self,name,a)
+        if self.state_data.size != n*_SERVO_STATE_COUNT or self.position_command_rad.size != n or self.load_torque_nm.size != n:
+            raise ValueError("servo result arrays do not align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int: return int(self.time_s.size)
+
+    def channels(self, parameters: PMSMServoParameters) -> dict[str,np.ndarray]:
+        if not isinstance(parameters,PMSMServoParameters): raise TypeError("parameters must be PMSMServoParameters")
+        x=self.state_data.reshape(self.sample_count,_SERVO_STATE_COUNT); p=parameters
+        ids,iqs,speed,theta,pos,temp=x[:,:6].T
+        qref=np.clip(p.speed_kp*(np.clip(p.position_kp*(self.position_command_rad-pos),-p.maximum_speed_rad_s,p.maximum_speed_rad_s)-speed)+x[:,_SERVO_SPEED_INT],-p.maximum_current_a,p.maximum_current_a)
+        torque=1.5*p.machine.pole_pairs*(p.machine.permanent_magnet_flux_wb*iqs+(p.machine.d_axis_inductance_h-p.machine.q_axis_inductance_h)*ids*iqs)
+        enc_step=2*np.pi/p.encoder_counts_per_revolution
+        enc=np.round(pos/enc_step)*enc_step
+        vals={
+            "stator_current_d_a":ids,"stator_current_q_a":iqs,"stator_current_a":np.hypot(ids,iqs),
+            "electromagnetic_torque_nm":torque,"rotor_speed_rad_s":speed,"mechanical_position_rad":pos,
+            "encoder_position_rad":enc,"encoder_speed_rad_s":np.gradient(enc,self.sample_period_s),
+            "position_command_rad":self.position_command_rad,"position_error_rad":self.position_command_rad-enc,
+            "speed_reference_rad_s":np.clip(p.position_kp*(self.position_command_rad-pos),-p.maximum_speed_rad_s,p.maximum_speed_rad_s),
+            "q_axis_current_reference_a":qref,"d_axis_current_reference_a":np.zeros(self.sample_count),
+            "winding_temperature_c":temp,"load_torque_nm":self.load_torque_nm,
+            "stator_copper_loss_w":1.5*p.machine.stator_resistance_ohm*(ids*ids+iqs*iqs),
+            "mechanical_output_power_w":torque*speed,
+            "regenerative_power_w":np.maximum(0.0,-torque*speed),
+            "electrical_position_rad":theta,
+        }
+        for a in vals.values(): a.setflags(write=False)
+        return vals
+
+
+def solve_pmsm_servo_transient_cpu(motor_id: str, parameters: PMSMServoParameters,
+        duration_s: float, step_s: float, *, position_command_rad: float | Sequence[float] | np.ndarray,
+        load_torque_nm: float | Sequence[float] | np.ndarray = 0.0) -> PMSMServoSimulationResult:
+    """Integrate cascaded position, speed and dq-current PI control with encoder feedback.
+
+    This averaged CPU reference omits PWM, inverter dead-time, discrete sampling
+    delay, resolver dynamics, safety-rated STO and validated tuning procedures.
+    """
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,PMSMServoParameters): raise TypeError("parameters must be PMSMServoParameters")
+    count,times=_validate_time(duration_s,step_s)
+    posref=_voltage_profile(position_command_rad,count,"position_command_rad")
+    load=_voltage_profile(load_torque_nm,count,"load_torque_nm")
+    p=parameters; m=p.machine
+    initial=np.asarray((0.,0.,m.initial_speed_rad_s,m.initial_electrical_position_rad,p.initial_mechanical_position_rad,m.initial_temperature_c,0.,0.,0.),dtype=np.float64)
+    def derivative(x,u):
+        ids,iqs,wm,theta,pos,temp,iqint,idint,speedint=x
+        pos_error=u[0]-pos
+        speed_ref=float(np.clip(p.position_kp*pos_error,-p.maximum_speed_rad_s,p.maximum_speed_rad_s))
+        speed_error=speed_ref-wm
+        iq_ref=float(np.clip(p.speed_kp*speed_error+speedint,-p.maximum_current_a,p.maximum_current_a))
+        id_ref=0.0
+        rs=m.stator_resistance_ohm*max(.05,1+m.resistance_temp_coefficient_per_k*(temp-m.ambient_temperature_c))
+        vd_raw=p.current_kp*(id_ref-ids)+idint-wm*m.q_axis_inductance_h*iqs
+        vq_raw=p.current_kp*(iq_ref-iqs)+iqint+wm*(m.d_axis_inductance_h*ids+m.permanent_magnet_flux_wb)
+        vd=float(np.clip(vd_raw,-p.maximum_voltage_v,p.maximum_voltage_v))
+        vq=float(np.clip(vq_raw,-p.maximum_voltage_v,p.maximum_voltage_v))
+        torque=1.5*m.pole_pairs*(m.permanent_magnet_flux_wb*iqs+(m.d_axis_inductance_h-m.q_axis_inductance_h)*ids*iqs)
+        loss=1.5*rs*(ids*ids+iqs*iqs)
+        did=(vd-rs*ids+wm*m.pole_pairs*m.q_axis_inductance_h*iqs)/m.d_axis_inductance_h
+        diq=(vq-rs*iqs-wm*m.pole_pairs*(m.d_axis_inductance_h*ids+m.permanent_magnet_flux_wb))/m.q_axis_inductance_h
+        # Conditional integration limits wind-up while the corresponding output is saturated.
+        didint=p.current_ki*(id_ref-ids) if abs(vd_raw)<p.maximum_voltage_v or (vd_raw>p.maximum_voltage_v and id_ref<ids) or (vd_raw< -p.maximum_voltage_v and id_ref>ids) else 0.
+        diqint=p.current_ki*(iq_ref-iqs) if abs(vq_raw)<p.maximum_voltage_v or (vq_raw>p.maximum_voltage_v and iq_ref<iqs) or (vq_raw< -p.maximum_voltage_v and iq_ref>iqs) else 0.
+        dspeed=p.speed_ki*speed_error if abs(p.speed_kp*speed_error+speedint)<p.maximum_current_a else 0.
+        return np.asarray((did,diq,(torque-u[1]-m.friction_n_m_s*wm)/m.inertia_kg_m2,m.pole_pairs*wm,wm,(loss-m.thermal_conductance_w_k*(temp-m.ambient_temperature_c))/m.thermal_capacity_j_k,diqint,didint,dspeed),dtype=np.float64)
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="pmsm_servo_cascade_single",derivative=derivative,initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,input_at=lambda i,_t:(float(posref[i]),float(load[i])),precision="float64")
+    r=solve_numerical_problem(problem)
+    if r.sample_count!=count: raise RuntimeError("shared ODE engine returned unexpected servo sample count")
+    return PMSMServoSimulationResult(motor_id.strip(),r.time_s,r.state_data,posref,load,r.sample_period_s,"cpu-rk4",{"integrator":r.integrator,"precision":"float64","workload":"pmsm_servo_cascade_single","model":"pmsm_position_speed_current_cascade_with_encoder_quantisation","model_fidelity":"averaged dq PI loops; no PWM or safety-rated drive model","control_loops":["position P","speed PI","d/q current PI"],"encoder_counts_per_revolution":p.encoder_counts_per_revolution,"voltage_limit_v":p.maximum_voltage_v,"current_limit_a":p.maximum_current_a,"integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+__all__ += ["PMSMServoParameters", "PMSMServoSimulationResult", "solve_pmsm_servo_transient_cpu"]
+
+# Experimental rotor-flux-oriented induction servo cascade.
+_INDSERVO_STATE_NAMES = ("stator_current_d_a", "stator_current_q_a", "rotor_flux_d_wb", "rotor_speed_rad_s", "electrical_position_rad", "mechanical_position_rad", "winding_temperature_c", "q_current_integrator", "d_current_integrator", "speed_integrator")
+
+@dataclass(frozen=True, slots=True)
+class InductionServoParameters:
+    """Reduced-order induction machine and cascaded FOC drive parameters."""
+    machine: MotorParameters
+    rotor_time_constant_s: float
+    rotor_inductance_h: float
+    position_kp: float
+    speed_kp: float
+    speed_ki: float
+    current_kp: float
+    current_ki: float
+    flux_current_reference_a: float
+    maximum_speed_rad_s: float
+    maximum_current_a: float
+    maximum_voltage_v: float
+    encoder_counts_per_revolution: int = 65536
+    initial_mechanical_position_rad: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.machine, MotorParameters):
+            raise TypeError("machine must be MotorParameters")
+        for name in ("rotor_time_constant_s", "rotor_inductance_h", "position_kp", "speed_kp", "speed_ki", "current_kp", "current_ki", "flux_current_reference_a", "maximum_speed_rad_s", "maximum_current_a", "maximum_voltage_v"):
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+        if isinstance(self.encoder_counts_per_revolution, bool) or not isinstance(self.encoder_counts_per_revolution, int) or self.encoder_counts_per_revolution < 16:
+            raise ValueError("encoder_counts_per_revolution must be an integer >= 16")
+        if not _is_numeric_scalar(self.initial_mechanical_position_rad) or not isfinite(float(self.initial_mechanical_position_rad)):
+            raise ValueError("initial_mechanical_position_rad must be finite")
+        if self.rotor_inductance_h <= self.machine.magnetizing_inductance_h:
+            raise ValueError("rotor_inductance_h must exceed magnetizing_inductance_h")
+
+@dataclass(frozen=True, slots=True)
+class InductionServoSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    position_command_rad: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.motor_id, str) or not self.motor_id.strip():
+            raise ValueError("motor_id must be non-empty")
+        n = int(np.asarray(self.time_s).size)
+        for name in ("time_s", "state_data", "position_command_rad", "load_torque_nm"):
+            values = np.asarray(getattr(self, name), dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(values).all():
+                raise ValueError(f"{name} must be finite")
+            values.setflags(write=False)
+            object.__setattr__(self, name, values)
+        if self.state_data.size != n * len(_INDSERVO_STATE_NAMES) or self.position_command_rad.size != n or self.load_torque_nm.size != n:
+            raise ValueError("induction servo result arrays do not align")
+        object.__setattr__(self, "diagnostics", MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int:
+        return int(self.time_s.size)
+
+    @property
+    def state_names(self) -> tuple[str, ...]:
+        return _INDSERVO_STATE_NAMES
+
+    def state(self, name: str) -> np.ndarray:
+        try:
+            index = _INDSERVO_STATE_NAMES.index(name)
+        except ValueError as exc:
+            raise KeyError(name) from exc
+        view = self.state_data.reshape(self.sample_count, len(_INDSERVO_STATE_NAMES))[:, index].view()
+        view.setflags(write=False)
+        return view
+
+    def channels(self, parameters: InductionServoParameters) -> dict[str, np.ndarray]:
+        if not isinstance(parameters, InductionServoParameters):
+            raise TypeError("parameters must be InductionServoParameters")
+        x = self.state_data.reshape(self.sample_count, len(_INDSERVO_STATE_NAMES))
+        ids, iqs, flux, speed, theta, position, temp = x[:, :7].T
+        p, m = parameters, parameters.machine
+        ratio = m.magnetizing_inductance_h / p.rotor_inductance_h
+        torque = 1.5 * m.pole_pairs * ratio * flux * iqs
+        encoder_step = 2.0 * np.pi / p.encoder_counts_per_revolution
+        encoder = np.round(position / encoder_step) * encoder_step
+        speed_ref = np.clip(p.position_kp * (self.position_command_rad - position), -p.maximum_speed_rad_s, p.maximum_speed_rad_s)
+        flux_ref = ratio * p.flux_current_reference_a
+        iq_ref = np.clip(p.speed_kp * (speed_ref - speed) + x[:, 9], -p.maximum_current_a, p.maximum_current_a)
+        values = {
+            "stator_current_a": np.hypot(ids, iqs), "stator_current_d_a": ids,
+            "stator_current_q_a": iqs, "rotor_flux_d_wb": flux,
+            "rotor_flux_magnitude_wb": np.abs(flux), "rotor_flux_reference_wb": np.full(self.sample_count, flux_ref),
+            "rotor_speed_rad_s": speed, "mechanical_position_rad": position,
+            "electrical_position_rad": theta, "encoder_position_rad": encoder,
+            "encoder_speed_rad_s": np.gradient(encoder, self.sample_period_s),
+            "position_command_rad": self.position_command_rad,
+            "position_error_rad": self.position_command_rad - encoder,
+            "speed_reference_rad_s": speed_ref, "speed_error_rad_s": speed_ref - speed,
+            "electromagnetic_torque_nm": torque, "torque_command_nm": torque,
+            "q_axis_current_reference_a": iq_ref,
+            "d_axis_current_reference_a": np.full(self.sample_count, p.flux_current_reference_a),
+            "winding_temperature_c": temp, "load_torque_nm": self.load_torque_nm,
+            "stator_copper_loss_w": 1.5 * m.stator_resistance_ohm * (ids * ids + iqs * iqs),
+            "rotor_copper_loss_w": 1.5 * m.rotor_resistance_ohm * (((flux - m.magnetizing_inductance_h * ids) / p.rotor_inductance_h) ** 2 + ((m.magnetizing_inductance_h / p.rotor_inductance_h) * iqs) ** 2),
+            "mechanical_output_power_w": torque * speed,
+            "regenerative_power_w": np.maximum(0.0, -torque * speed),
+        }
+        for value in values.values():
+            value.setflags(write=False)
+        return values
+
+def solve_induction_servo_transient_cpu(motor_id: str, parameters: InductionServoParameters,
+        duration_s: float, step_s: float, *, position_command_rad: float | Sequence[float] | np.ndarray,
+        load_torque_nm: float | Sequence[float] | np.ndarray = 0.0) -> InductionServoSimulationResult:
+    """Solve rotor-flux-oriented induction servo position/speed/current control."""
+    if not isinstance(motor_id, str) or not motor_id.strip():
+        raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters, InductionServoParameters):
+        raise TypeError("parameters must be InductionServoParameters")
+    count, _times = _validate_time(duration_s, step_s)
+    position_ref = _voltage_profile(position_command_rad, count, "position_command_rad")
+    load = _voltage_profile(load_torque_nm, count, "load_torque_nm")
+    p, m = parameters, parameters.machine
+    lm, lr = m.magnetizing_inductance_h, parameters.rotor_inductance_h
+    leakage = m.stator_leakage_inductance_h + lm * (1.0 - lm / lr)
+    flux_ref = lm * p.flux_current_reference_a
+    initial = np.asarray((0.0, 0.0, 0.0, m.initial_speed_rad_s, 0.0,
+        p.initial_mechanical_position_rad, m.initial_temperature_c, 0.0, 0.0, 0.0), dtype=np.float64)
+
+    def derivative(state: np.ndarray, inputs: tuple[float, float]) -> np.ndarray:
+        ids, iqs, flux, speed, theta, position, temp, iq_int, id_int, speed_int = state
+        command, load_torque = inputs
+        speed_ref = float(np.clip(p.position_kp * (command - position), -p.maximum_speed_rad_s, p.maximum_speed_rad_s))
+        speed_error = speed_ref - speed
+        iq_raw = p.speed_kp * speed_error + speed_int
+        iq_ref = float(np.clip(iq_raw, -p.maximum_current_a, p.maximum_current_a))
+        id_ref = p.flux_current_reference_a
+        rs = m.stator_resistance_ohm * max(0.05, 1.0 + m.resistance_temp_coefficient_per_k * (temp - m.ambient_temperature_c))
+        flux_safe = max(abs(flux), max(flux_ref * 0.05, 1e-6))
+        slip = (lm / p.rotor_time_constant_s) * iqs / flux_safe
+        electrical_speed = m.pole_pairs * speed + slip
+        vd_raw = p.current_kp * (id_ref - ids) + id_int - electrical_speed * leakage * iqs
+        vq_raw = p.current_kp * (iq_ref - iqs) + iq_int + electrical_speed * (leakage * ids + (lm / lr) * flux)
+        voltage_magnitude = float(np.hypot(vd_raw, vq_raw))
+        scale = min(1.0, p.maximum_voltage_v / voltage_magnitude) if voltage_magnitude > 0.0 else 1.0
+        vd, vq = vd_raw * scale, vq_raw * scale
+        did = (vd - rs * ids + electrical_speed * leakage * iqs) / leakage
+        diq = (vq - rs * iqs - electrical_speed * (leakage * ids + (lm / lr) * flux)) / leakage
+        dflux = (lm * ids - flux) / p.rotor_time_constant_s
+        torque = 1.5 * m.pole_pairs * (lm / lr) * flux * iqs
+        rotor_id = (flux - lm * ids) / lr
+        rotor_iq = -(lm / lr) * iqs
+        losses = 1.5 * (rs * (ids * ids + iqs * iqs) + m.rotor_resistance_ohm * (rotor_id * rotor_id + rotor_iq * rotor_iq))
+        dtemp = (losses - m.thermal_conductance_w_k * (temp - m.ambient_temperature_c)) / m.thermal_capacity_j_k
+        saturated = voltage_magnitude > p.maximum_voltage_v
+        did_int = p.current_ki * (id_ref - ids) if not saturated or vd_raw * (id_ref - ids) < 0.0 else 0.0
+        diq_int = p.current_ki * (iq_ref - iqs) if not saturated or vq_raw * (iq_ref - iqs) < 0.0 else 0.0
+        dspeed = p.speed_ki * speed_error if abs(iq_raw) < p.maximum_current_a or iq_raw * speed_error < 0.0 else 0.0
+        return np.asarray((did, diq, dflux, (torque - load_torque - m.friction_n_m_s * speed) / m.inertia_kg_m2,
+            m.pole_pairs * speed + slip, speed, dtemp, diq_int, did_int, dspeed), dtype=np.float64)
+
+    problem = NumericalProblem(problem_id=motor_id.strip(), workload="induction_servo_foc_single",
+        derivative=derivative, initial_state=initial, duration_s=duration_s, maximum_step_s=step_s,
+        input_at=lambda i, _t: (float(position_ref[i]), float(load[i])), precision="float64")
+    solution = solve_numerical_problem(problem)
+    if solution.sample_count != count:
+        raise RuntimeError("shared ODE engine returned unexpected induction servo sample count")
+    return InductionServoSimulationResult(motor_id.strip(), solution.time_s, solution.state_data,
+        position_ref, load, solution.sample_period_s, "cpu-rk4", {
+            "integrator": solution.integrator, "precision": "float64", "workload": "induction_servo_foc_single",
+            "model": "rotor_flux_oriented_induction_position_speed_current_cascade",
+            "model_fidelity": "reduced-order rotor-flux envelope; averaged inverter; no PWM or safety-rated drive model",
+            "control_loops": ["position P", "speed PI", "d/q current PI", "rotor flux first-order state"],
+            "encoder_counts_per_revolution": p.encoder_counts_per_revolution,
+            "voltage_limit_v": p.maximum_voltage_v, "current_limit_a": p.maximum_current_a,
+            "integration_engine": "core.numerics.ode.solve_rk4"})
+
+__all__ += ["InductionServoParameters", "InductionServoSimulationResult", "solve_induction_servo_transient_cpu"]
+
+
+@dataclass(frozen=True, slots=True)
+class DCServoParameters:
+    machine: DCMotorParameters
+    position_kp: float
+    speed_kp: float
+    speed_ki: float
+    current_kp: float
+    current_ki: float
+    maximum_speed_rad_s: float
+    maximum_current_a: float
+    maximum_armature_voltage_v: float
+    field_voltage_v: float = 0.0
+
+    def __post_init__(self):
+        if not isinstance(self.machine, DCMotorParameters): raise TypeError("machine must be DCMotorParameters")
+        for name in ("position_kp","speed_kp","speed_ki","current_kp","current_ki","maximum_speed_rad_s","maximum_current_a","maximum_armature_voltage_v"):
+            v=getattr(self,name)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{name} must be finite and positive")
+        if not _is_numeric_scalar(self.field_voltage_v) or not isfinite(float(self.field_voltage_v)): raise ValueError("field_voltage_v must be finite")
+
+
+@dataclass(frozen=True, slots=True)
+class DCServoSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    position_command_rad: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        n=int(np.asarray(self.time_s).size)
+        for name in ("time_s","state_data","position_command_rad","load_torque_nm"):
+            v=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{name} must be finite")
+            v.setflags(write=False); object.__setattr__(self,name,v)
+        if self.state_data.size!=n*8 or self.position_command_rad.size!=n or self.load_torque_nm.size!=n: raise ValueError("DC servo result arrays do not align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self): return int(self.time_s.size)
+
+    def channels(self,p):
+        if not isinstance(p,DCServoParameters): raise TypeError("parameters must be DCServoParameters")
+        x=self.state_data.reshape(self.sample_count,8)
+        speed_ref=np.clip(p.position_kp*(self.position_command_rad-x[:,3]),-p.maximum_speed_rad_s,p.maximum_speed_rad_s)
+        current_ref=np.clip(p.speed_kp*(speed_ref-x[:,2])+x[:,7],-p.maximum_current_a,p.maximum_current_a)
+        voltage=np.clip(p.current_kp*(current_ref-x[:,0])+x[:,6],-p.maximum_armature_voltage_v,p.maximum_armature_voltage_v)
+        field=voltage if p.machine.excitation in {"shunt","compound"} else np.full(self.sample_count,p.field_voltage_v)
+        base=DCMotorSimulationResult(self.motor_id,self.time_s,x[:,:6].reshape(-1).copy(),voltage,field,self.load_torque_nm,self.sample_period_s,self.backend,self.diagnostics)
+        out=base.channels(p.machine)
+        out.update({"position_command_rad":self.position_command_rad,"position_error_rad":self.position_command_rad-x[:,3],
+            "speed_reference_rad_s":speed_ref,"speed_error_rad_s":speed_ref-x[:,2],"armature_current_reference_a":current_ref,
+            "armature_voltage_command_v":voltage})
+        for v in out.values(): v.setflags(write=False)
+        return out
+
+
+def solve_dc_servo_transient_cpu(motor_id,parameters,duration_s,step_s,*,position_command_rad,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,DCServoParameters): raise TypeError("parameters must be DCServoParameters")
+    n,_=_validate_time(duration_s,step_s); pos=_voltage_profile(position_command_rad,n,"position_command_rad"); load=_voltage_profile(load_torque_nm,n,"load_torque_nm")
+    p,m=parameters,parameters.machine
+    initial=np.asarray((0.,0.,m.initial_speed_rad_s,0.,m.initial_armature_temperature_c,m.initial_field_temperature_c,0.,0.))
+    def derivative(x,u):
+        ia,fi,w,angle,ta,tf,ii,si=x; cmd,tload=u
+        wr=float(np.clip(p.position_kp*(cmd-angle),-p.maximum_speed_rad_s,p.maximum_speed_rad_s)); ew=wr-w
+        iraw=p.speed_kp*ew+si; iref=float(np.clip(iraw,-p.maximum_current_a,p.maximum_current_a))
+        ei=iref-ia; vraw=p.current_kp*ei+ii; va=float(np.clip(vraw,-p.maximum_armature_voltage_v,p.maximum_armature_voltage_v))
+        vf=va if m.excitation in {"shunt","compound"} else p.field_voltage_v
+        dx=_dc_derivative(np.asarray((ia,fi,w,angle,ta,tf)),m,va,vf,tload)
+        di=p.current_ki*ei if abs(vraw)<=p.maximum_armature_voltage_v or vraw*ei<0 else 0.
+        ds=p.speed_ki*ew if abs(iraw)<=p.maximum_current_a or iraw*ew<0 else 0.
+        return np.concatenate((dx,np.asarray((di,ds))))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="dc_servo_position_speed_current_single",derivative=derivative,initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,input_at=lambda k,_t:(float(pos[k]),float(load[k])),precision="float64")
+    sol=solve_numerical_problem(problem)
+    if sol.sample_count!=n: raise RuntimeError("shared ODE engine returned unexpected DC servo sample count")
+    return DCServoSimulationResult(motor_id.strip(),sol.time_s,sol.state_data,pos,load,sol.sample_period_s,"cpu-rk4",{"integrator":sol.integrator,"precision":"float64","workload":"dc_servo_position_speed_current_single","model":"brushed_dc_position_speed_current_cascade","control_loops":["position P","speed PI","armature current PI"],"excitation":m.excitation,"current_limit_a":p.maximum_current_a,"armature_voltage_limit_v":p.maximum_armature_voltage_v,"model_fidelity":"experimental averaged DC drive; no PWM, brush commutation or safety-rated servo model","integration_engine":"core.numerics.ode.solve_rk4"})
+
+__all__ += ["DCServoParameters","DCServoSimulationResult","solve_dc_servo_transient_cpu"]
+
+
+# ---------------------------------------------------------------------------
+# Two-phase stepper family model
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class StepperParameters:
+    """Averaged two-phase stepper parameters in SI units."""
+    phase_resistance_ohm: float
+    phase_inductance_h: float
+    inertia_kg_m2: float
+    rotor_teeth: int
+    family: str = "hybrid"
+    torque_constant_nm_a: float = 0.12
+    inductance_gradient_h_per_rad: float = 0.001
+    phase_current_limit_a: float = 3.0
+    phase_voltage_limit_v: float = 48.0
+    current_controller_gain_v_per_a: float = 12.0
+    detent_torque_nm: float = 0.0
+    viscous_friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 250.0
+    thermal_conductance_w_k: float = 2.0
+    ambient_temperature_c: float = 25.0
+    initial_temperature_c: float = 25.0
+    initial_position_rad: float = 0.0
+    initial_speed_rad_s: float = 0.0
+
+    def __post_init__(self) -> None:
+        positive = ("phase_resistance_ohm", "phase_inductance_h", "inertia_kg_m2",
+                    "phase_current_limit_a", "phase_voltage_limit_v",
+                    "current_controller_gain_v_per_a", "thermal_capacity_j_k")
+        for name in positive:
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)) or float(value) <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name in ("torque_constant_nm_a", "inductance_gradient_h_per_rad",
+                     "detent_torque_nm", "viscous_friction_n_m_s",
+                     "thermal_conductance_w_k", "ambient_temperature_c",
+                     "initial_temperature_c", "initial_position_rad", "initial_speed_rad_s"):
+            value = getattr(self, name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)):
+                raise ValueError(f"{name} must be finite")
+            if name in {"torque_constant_nm_a", "inductance_gradient_h_per_rad",
+                        "detent_torque_nm", "viscous_friction_n_m_s", "thermal_conductance_w_k"} and float(value) < 0:
+                raise ValueError(f"{name} must be non-negative")
+        if isinstance(self.rotor_teeth, bool) or not isinstance(self.rotor_teeth, int) or self.rotor_teeth < 1:
+            raise ValueError("rotor_teeth must be a positive integer")
+        if self.family not in {"variable_reluctance", "permanent_magnet", "hybrid"}:
+            raise ValueError("family must be variable_reluctance, permanent_magnet or hybrid")
+        if self.family == "variable_reluctance" and self.inductance_gradient_h_per_rad <= 0:
+            raise ValueError("variable-reluctance stepper requires positive inductance_gradient_h_per_rad")
+        if self.family != "variable_reluctance" and self.torque_constant_nm_a <= 0:
+            raise ValueError("PM and hybrid steppers require positive torque_constant_nm_a")
+
+
+@dataclass(frozen=True)
+class StepperSimulationResult:
+    """Immutable stepper trajectory and aligned drive/load histories."""
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    position_command_rad: np.ndarray
+    load_torque_nm: np.ndarray
+    phase_a_voltage_v: np.ndarray
+    phase_b_voltage_v: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.diagnostics, Mapping):
+            raise TypeError("diagnostics must be a mapping")
+        if not isinstance(self.motor_id, str) or not self.motor_id.strip():
+            raise ValueError("motor_id must be a non-empty string")
+        count = int(np.asarray(self.time_s).size)
+        for name in ("time_s", "state_data", "position_command_rad", "load_torque_nm",
+                     "phase_a_voltage_v", "phase_b_voltage_v"):
+            value = np.asarray(getattr(self, name), dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(value).all():
+                raise ValueError(f"{name} must contain only finite values")
+            value.setflags(write=False)
+            object.__setattr__(self, name, value)
+        if self.state_data.size != count * 5 or any(
+            getattr(self, name).size != count for name in
+            ("position_command_rad", "load_torque_nm", "phase_a_voltage_v", "phase_b_voltage_v")
+        ):
+            raise ValueError("stepper result arrays must align with the time grid")
+        object.__setattr__(self, "diagnostics", MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int:
+        return int(self.time_s.size)
+
+    @property
+    def state_names(self) -> tuple[str, ...]:
+        return ("phase_a_current_a", "phase_b_current_a", "rotor_speed_rad_s",
+                "rotor_position_rad", "winding_temperature_c")
+
+    def channels(self, parameters: StepperParameters) -> dict[str, np.ndarray]:
+        if not isinstance(parameters, StepperParameters):
+            raise TypeError("parameters must be StepperParameters")
+        ia, ib, speed, angle, temperature = self.state_data.reshape(self.sample_count, 5).T
+        p = parameters
+        electrical_angle = p.rotor_teeth * angle
+        if p.family == "variable_reluctance":
+            torque = 0.5 * p.inductance_gradient_h_per_rad * p.rotor_teeth * (
+                ia * ia - ib * ib
+            ) * np.sin(2.0 * electrical_angle)
+        else:
+            torque = p.torque_constant_nm_a * (
+                ib * np.cos(electrical_angle) - ia * np.sin(electrical_angle)
+            )
+        detent = -p.detent_torque_nm * np.sin(2.0 * electrical_angle)
+        copper = p.phase_resistance_ohm * (ia * ia + ib * ib)
+        values = {
+            "phase_a_current_a": ia, "phase_b_current_a": ib,
+            "phase_a_voltage_v": self.phase_a_voltage_v, "phase_b_voltage_v": self.phase_b_voltage_v,
+            "phase_a_current_reference_a": p.phase_current_limit_a * np.cos(p.rotor_teeth * self.position_command_rad),
+            "phase_b_current_reference_a": p.phase_current_limit_a * np.sin(p.rotor_teeth * self.position_command_rad),
+            "rotor_speed_rad_s": speed, "rotor_position_rad": angle,
+            "position_command_rad": self.position_command_rad,
+            "position_following_error_rad": self.position_command_rad - angle,
+            "electromagnetic_torque_nm": torque, "detent_torque_nm": detent,
+            "load_torque_nm": self.load_torque_nm,
+            "mechanical_output_power_w": (torque + detent) * speed,
+            "phase_copper_loss_w": copper, "winding_temperature_c": temperature,
+        }
+        for value in values.values():
+            value.setflags(write=False)
+        return values
+
+
+def solve_stepper_transient_cpu(
+    motor_id: str, parameters: StepperParameters, duration_s: float, step_s: float, *,
+    position_command_rad: float | Sequence[float] | np.ndarray,
+    load_torque_nm: float | Sequence[float] | np.ndarray = 0.0,
+) -> StepperSimulationResult:
+    """Integrate averaged two-phase current control, stepper torque and mechanics."""
+    if not isinstance(motor_id, str) or not motor_id.strip():
+        raise ValueError("motor_id must be a non-empty string")
+    if not isinstance(parameters, StepperParameters):
+        raise TypeError("parameters must be StepperParameters")
+    count, _times = _validate_time(duration_s, step_s)
+    command = _voltage_profile(position_command_rad, count, "position_command_rad")
+    load = _voltage_profile(load_torque_nm, count, "load_torque_nm")
+    p = parameters
+    initial = np.asarray((0.0, 0.0, p.initial_speed_rad_s,
+                          p.initial_position_rad, p.initial_temperature_c), dtype=np.float64)
+
+    def derivative(state: np.ndarray, inputs: tuple[float, float]) -> np.ndarray:
+        ia, ib, speed, angle, temperature = state
+        commanded_position, load_torque = inputs
+        target_angle = p.rotor_teeth * commanded_position
+        ref_a = float(np.clip(p.phase_current_limit_a * np.cos(target_angle),
+                              -p.phase_current_limit_a, p.phase_current_limit_a))
+        ref_b = float(np.clip(p.phase_current_limit_a * np.sin(target_angle),
+                              -p.phase_current_limit_a, p.phase_current_limit_a))
+        voltage_a = float(np.clip(p.current_controller_gain_v_per_a * (ref_a - ia),
+                                  -p.phase_voltage_limit_v, p.phase_voltage_limit_v))
+        voltage_b = float(np.clip(p.current_controller_gain_v_per_a * (ref_b - ib),
+                                  -p.phase_voltage_limit_v, p.phase_voltage_limit_v))
+        dia = (voltage_a - p.phase_resistance_ohm * ia) / p.phase_inductance_h
+        dib = (voltage_b - p.phase_resistance_ohm * ib) / p.phase_inductance_h
+        electrical_angle = p.rotor_teeth * angle
+        if p.family == "variable_reluctance":
+            torque = 0.5 * p.inductance_gradient_h_per_rad * p.rotor_teeth * (
+                ia * ia - ib * ib
+            ) * np.sin(2.0 * electrical_angle)
+        else:
+            torque = p.torque_constant_nm_a * (
+                ib * np.cos(electrical_angle) - ia * np.sin(electrical_angle)
+            )
+        torque -= p.detent_torque_nm * np.sin(2.0 * electrical_angle)
+        copper_loss = p.phase_resistance_ohm * (ia * ia + ib * ib)
+        temperature_rate = (
+            copper_loss - p.thermal_conductance_w_k * (temperature - p.ambient_temperature_c)
+        ) / p.thermal_capacity_j_k
+        acceleration = (
+            torque - load_torque - p.viscous_friction_n_m_s * speed
+        ) / p.inertia_kg_m2
+        return np.asarray((dia, dib, acceleration, speed, temperature_rate), dtype=np.float64)
+
+    problem = NumericalProblem(
+        problem_id=motor_id.strip(), workload="stepper_two_phase_current_control_single",
+        derivative=derivative, initial_state=initial, duration_s=duration_s,
+        maximum_step_s=step_s,
+        input_at=lambda index, _time: (float(command[index]), float(load[index])),
+        precision="float64",
+    )
+    solution = solve_numerical_problem(problem)
+    if solution.sample_count != count:
+        raise RuntimeError("shared ODE engine returned an unexpected stepper sample count")
+    state = solution.state_data.reshape(count, 5)
+    ref_a = p.phase_current_limit_a * np.cos(p.rotor_teeth * command)
+    ref_b = p.phase_current_limit_a * np.sin(p.rotor_teeth * command)
+    voltage_a = np.clip(p.current_controller_gain_v_per_a * (ref_a - state[:, 0]),
+                        -p.phase_voltage_limit_v, p.phase_voltage_limit_v)
+    voltage_b = np.clip(p.current_controller_gain_v_per_a * (ref_b - state[:, 1]),
+                        -p.phase_voltage_limit_v, p.phase_voltage_limit_v)
+    return StepperSimulationResult(
+        motor_id.strip(), solution.time_s, solution.state_data, command, load,
+        voltage_a, voltage_b, solution.sample_period_s, "cpu-rk4",
+        {"integrator": solution.integrator, "precision": "float64",
+         "workload": "stepper_two_phase_current_control_single",
+         "model": "averaged_two_phase_stepper", "family": p.family,
+         "commutation": "sinusoidal_microstep_envelope",
+         "model_fidelity": "experimental reduced-order; no PWM, nonlinear tooth flux maps, resonance or certified missed-step prediction",
+         "integration_engine": "core.numerics.ode.solve_rk4"},
+    )
+
+
+__all__ += ["StepperParameters", "StepperSimulationResult", "solve_stepper_transient_cpu"]
+
+
+@dataclass(frozen=True, slots=True)
+class LinearInductionParameters:
+    stator_resistance_ohm: float
+    secondary_resistance_ohm: float
+    stator_leakage_inductance_h: float
+    secondary_leakage_inductance_h: float
+    magnetizing_inductance_h: float
+    pole_pitch_m: float
+    translator_mass_kg: float
+    viscous_friction_n_s_m: float = 0.0
+    thermal_capacity_j_k: float = 1200.0
+    thermal_conductance_w_k: float = 8.0
+    ambient_temperature_c: float = 25.0
+
+    def __post_init__(self) -> None:
+        for n in ("stator_resistance_ohm","secondary_resistance_ohm","stator_leakage_inductance_h",
+                  "secondary_leakage_inductance_h","magnetizing_inductance_h","pole_pitch_m",
+                  "translator_mass_kg","thermal_capacity_j_k"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or float(v)<=0:
+                raise ValueError(f"{n} must be finite and positive")
+        for n in ("viscous_friction_n_s_m","thermal_conductance_w_k","ambient_temperature_c"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or (n!="ambient_temperature_c" and float(v)<0):
+                raise ValueError(f"{n} must be finite and non-negative")
+
+
+@dataclass(frozen=True, slots=True)
+class LinearSynchronousParameters:
+    phase_resistance_ohm: float
+    d_axis_inductance_h: float
+    q_axis_inductance_h: float
+    permanent_magnet_flux_wb: float
+    pole_pitch_m: float
+    translator_mass_kg: float
+    viscous_friction_n_s_m: float = 0.0
+    thermal_capacity_j_k: float = 1200.0
+    thermal_conductance_w_k: float = 8.0
+    ambient_temperature_c: float = 25.0
+
+    def __post_init__(self) -> None:
+        for n in ("phase_resistance_ohm","d_axis_inductance_h","q_axis_inductance_h",
+                  "permanent_magnet_flux_wb","pole_pitch_m","translator_mass_kg","thermal_capacity_j_k"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or float(v)<=0:
+                raise ValueError(f"{n} must be finite and positive")
+        for n in ("viscous_friction_n_s_m","thermal_conductance_w_k","ambient_temperature_c"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or (n!="ambient_temperature_c" and float(v)<0):
+                raise ValueError(f"{n} must be finite and non-negative")
+
+
+@dataclass(frozen=True)
+class LinearMotorSimulationResult:
+    motor_id: str
+    model: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    d_axis_voltage_v: np.ndarray
+    q_axis_voltage_v: np.ndarray
+    electrical_frequency_rad_s: np.ndarray
+    load_force_n: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.diagnostics, Mapping) or not self.motor_id:
+            raise ValueError("linear motor result requires diagnostics and motor_id")
+        count=int(np.asarray(self.time_s).size)
+        for n in ("time_s","state_data","d_axis_voltage_v","q_axis_voltage_v","electrical_frequency_rad_s","load_force_n"):
+            a=np.asarray(getattr(self,n),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(a).all(): raise ValueError(f"{n} must be finite")
+            a.setflags(write=False); object.__setattr__(self,n,a)
+        if count<1 or self.state_data.size%count or any(getattr(self,n).size!=count for n in
+            ("d_axis_voltage_v","q_axis_voltage_v","electrical_frequency_rad_s","load_force_n")):
+            raise ValueError("linear motor result arrays must align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int: return int(self.time_s.size)
+
+    def channels(self, parameters: LinearInductionParameters | LinearSynchronousParameters) -> dict[str,np.ndarray]:
+        if self.model=="linear_induction_dq" and isinstance(parameters,LinearInductionParameters):
+            ps,qs,pr,qr,vel,pos,temp=self.state_data.reshape(self.sample_count,7).T
+            p=parameters; lm=p.magnetizing_inductance_h
+            ls=p.stator_leakage_inductance_h+lm; lr=p.secondary_leakage_inductance_h+lm; det=ls*lr-lm*lm
+            ids=(lr*ps-lm*pr)/det; iqs=(lr*qs-lm*qr)/det
+            idr=(ls*pr-lm*ps)/det; iqr=(ls*qr-lm*qs)/det
+            force=1.5*np.pi/p.pole_pitch_m*(ps*iqs-qs*ids)
+            loss=1.5*(p.stator_resistance_ohm*(ids**2+iqs**2)+p.secondary_resistance_ohm*(idr**2+iqr**2))
+            return {"stator_d_current_a":ids,"stator_q_current_a":iqs,"secondary_d_current_a":idr,
+                "secondary_q_current_a":iqr,"translator_velocity_m_s":vel,"translator_position_m":pos,
+                "thrust_force_n":force,"load_force_n":self.load_force_n,"copper_loss_w":loss,"winding_temperature_c":temp}
+        if self.model=="linear_synchronous_dq" and isinstance(parameters,LinearSynchronousParameters):
+            id_,iq,vel,pos,temp=self.state_data.reshape(self.sample_count,5).T; p=parameters
+            force=1.5*np.pi/p.pole_pitch_m*(p.permanent_magnet_flux_wb*iq+(p.d_axis_inductance_h-p.q_axis_inductance_h)*id_*iq)
+            loss=1.5*p.phase_resistance_ohm*(id_**2+iq**2)
+            return {"d_axis_current_a":id_,"q_axis_current_a":iq,"translator_velocity_m_s":vel,
+                "translator_position_m":pos,"thrust_force_n":force,"load_force_n":self.load_force_n,
+                "stator_copper_loss_w":loss,"winding_temperature_c":temp}
+        raise TypeError("linear motor result and parameter family do not match")
+
+
+def solve_linear_induction_transient_cpu(motor_id: str, parameters: LinearInductionParameters,
+    duration_s: float, step_s: float, *, d_axis_voltage_v: float|Sequence[float]|np.ndarray,
+    q_axis_voltage_v: float|Sequence[float]|np.ndarray, electrical_frequency_rad_s: float|Sequence[float]|np.ndarray,
+    load_force_n: float|Sequence[float]|np.ndarray=0.0) -> LinearMotorSimulationResult:
+    if not isinstance(parameters,LinearInductionParameters): raise TypeError("invalid linear induction parameters")
+    count,_=_validate_time(duration_s,step_s); vd=_voltage_profile(d_axis_voltage_v,count,"d_axis_voltage_v")
+    vq=_voltage_profile(q_axis_voltage_v,count,"q_axis_voltage_v"); we=_voltage_profile(electrical_frequency_rad_s,count,"electrical_frequency_rad_s")
+    load=_voltage_profile(load_force_n,count,"load_force_n"); p=parameters
+    lm=p.magnetizing_inductance_h; ls=p.stator_leakage_inductance_h+lm; lr=p.secondary_leakage_inductance_h+lm
+    det=ls*lr-lm*lm; k=np.pi/p.pole_pitch_m
+    initial=np.asarray((0.,0.,0.,0.,0.,0.,p.ambient_temperature_c))
+    def derivative(y:np.ndarray,u:tuple[float,float,float,float])->np.ndarray:
+        ps,qs,pr,qr,vel,_pos,temp=y; vds,vqs,omega,fl=u
+        ids=(lr*ps-lm*pr)/det; iqs=(lr*qs-lm*qr)/det
+        idr=(ls*pr-lm*ps)/det; iqr=(ls*qr-lm*qs)/det
+        slip=omega-k*vel; force=1.5*k*(ps*iqs-qs*ids)
+        dps=vds-p.stator_resistance_ohm*ids+omega*qs; dqs=vqs-p.stator_resistance_ohm*iqs-omega*ps
+        dpr=-p.secondary_resistance_ohm*idr+slip*qr; dqr=-p.secondary_resistance_ohm*iqr-slip*pr
+        loss=1.5*(p.stator_resistance_ohm*(ids**2+iqs**2)+p.secondary_resistance_ohm*(idr**2+iqr**2))
+        dt=(loss-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k
+        acc=(force-fl-p.viscous_friction_n_s_m*vel)/p.translator_mass_kg
+        return np.asarray((dps,dqs,dpr,dqr,acc,vel,dt),dtype=np.float64)
+    problem=NumericalProblem(problem_id=motor_id,workload="linear_induction_dq_single",derivative=derivative,
+        initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+        input_at=lambda i,_t:(float(vd[i]),float(vq[i]),float(we[i]),float(load[i])),precision="float64")
+    sol=solve_numerical_problem(problem)
+    return LinearMotorSimulationResult(motor_id,"linear_induction_dq",sol.time_s,sol.state_data,vd,vq,we,load,
+        sol.sample_period_s,"cpu-rk4",{"integrator":sol.integrator,"fidelity":"experimental; end effects, saturation and deep-bar skin effect omitted"})
+
+
+def solve_linear_synchronous_transient_cpu(motor_id: str, parameters: LinearSynchronousParameters,
+    duration_s: float, step_s: float, *, d_axis_voltage_v: float|Sequence[float]|np.ndarray,
+    q_axis_voltage_v: float|Sequence[float]|np.ndarray, load_force_n: float|Sequence[float]|np.ndarray=0.0) -> LinearMotorSimulationResult:
+    if not isinstance(parameters,LinearSynchronousParameters): raise TypeError("invalid linear synchronous parameters")
+    count,_=_validate_time(duration_s,step_s); vd=_voltage_profile(d_axis_voltage_v,count,"d_axis_voltage_v")
+    vq=_voltage_profile(q_axis_voltage_v,count,"q_axis_voltage_v"); load=_voltage_profile(load_force_n,count,"load_force_n")
+    p=parameters; k=np.pi/p.pole_pitch_m; initial=np.asarray((0.,0.,0.,0.,p.ambient_temperature_c))
+    def derivative(y:np.ndarray,u:tuple[float,float,float])->np.ndarray:
+        id_,iq,vel,pos,temp=y; vds,vqs,fl=u; omega=k*vel
+        did=(vds-p.phase_resistance_ohm*id_+omega*p.q_axis_inductance_h*iq)/p.d_axis_inductance_h
+        diq=(vqs-p.phase_resistance_ohm*iq-omega*(p.d_axis_inductance_h*id_+p.permanent_magnet_flux_wb))/p.q_axis_inductance_h
+        force=1.5*k*(p.permanent_magnet_flux_wb*iq+(p.d_axis_inductance_h-p.q_axis_inductance_h)*id_*iq)
+        loss=1.5*p.phase_resistance_ohm*(id_**2+iq**2)
+        dt=(loss-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k
+        acc=(force-fl-p.viscous_friction_n_s_m*vel)/p.translator_mass_kg
+        return np.asarray((did,diq,acc,vel,dt),dtype=np.float64)
+    problem=NumericalProblem(problem_id=motor_id,workload="linear_synchronous_dq_single",derivative=derivative,
+        initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+        input_at=lambda i,_t:(float(vd[i]),float(vq[i]),float(load[i])),precision="float64")
+    sol=solve_numerical_problem(problem); omega=k*sol.state_data.reshape(count,5)[:,2]
+    return LinearMotorSimulationResult(motor_id,"linear_synchronous_dq",sol.time_s,sol.state_data,vd,vq,omega,load,
+        sol.sample_period_s,"cpu-rk4",{"integrator":sol.integrator,"fidelity":"experimental PM dq; end effects, PWM and magnet segmentation omitted"})
+
+
+__all__ += ["LinearInductionParameters","LinearSynchronousParameters","LinearMotorSimulationResult",
+            "solve_linear_induction_transient_cpu","solve_linear_synchronous_transient_cpu"]
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceCoilParameters:
+    coil_resistance_ohm: float
+    coil_inductance_h: float
+    force_constant_n_per_a: float
+    back_emf_constant_v_s_per_m: float
+    moving_mass_kg: float
+    suspension_stiffness_n_per_m: float
+    viscous_damping_n_s_per_m: float
+    maximum_stroke_m: float
+    end_stop_stiffness_n_per_m: float = 0.0
+    thermal_capacity_j_k: float = 250.0
+    thermal_conductance_w_k: float = 2.0
+    ambient_temperature_c: float = 25.0
+
+    def __post_init__(self) -> None:
+        positive=("coil_resistance_ohm","coil_inductance_h","force_constant_n_per_a",
+                  "back_emf_constant_v_s_per_m","moving_mass_kg","maximum_stroke_m","thermal_capacity_j_k")
+        nonnegative=("suspension_stiffness_n_per_m","viscous_damping_n_s_per_m",
+                     "end_stop_stiffness_n_per_m","thermal_conductance_w_k")
+        for name in positive:
+            value=getattr(self,name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)) or float(value)<=0:
+                raise ValueError(f"{name} must be finite and positive")
+        for name in nonnegative:
+            value=getattr(self,name)
+            if not _is_numeric_scalar(value) or not isfinite(float(value)) or float(value)<0:
+                raise ValueError(f"{name} must be finite and non-negative")
+        if not _is_numeric_scalar(self.ambient_temperature_c) or not isfinite(float(self.ambient_temperature_c)):
+            raise ValueError("ambient_temperature_c must be finite")
+
+
+@dataclass(frozen=True)
+class VoiceCoilSimulationResult:
+    actuator_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    drive_voltage_v: np.ndarray
+    external_load_force_n: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.actuator_id,str) or not self.actuator_id.strip():
+            raise ValueError("actuator_id must be non-empty")
+        if not isinstance(self.diagnostics,Mapping):
+            raise TypeError("diagnostics must be a mapping")
+        count=int(np.asarray(self.time_s).size)
+        for name in ("time_s","state_data","drive_voltage_v","external_load_force_n"):
+            value=np.asarray(getattr(self,name),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(value).all(): raise ValueError(f"{name} must be finite")
+            value.setflags(write=False); object.__setattr__(self,name,value)
+        if count<1 or self.state_data.size!=count*4 or self.drive_voltage_v.size!=count or self.external_load_force_n.size!=count:
+            raise ValueError("voice-coil result arrays must align to four states per sample")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+
+    @property
+    def sample_count(self) -> int: return int(self.time_s.size)
+
+    def channels(self, parameters: VoiceCoilParameters) -> dict[str,np.ndarray]:
+        if not isinstance(parameters,VoiceCoilParameters):
+            raise TypeError("parameters must be VoiceCoilParameters")
+        current,position,velocity,temperature=self.state_data.reshape(self.sample_count,4).T
+        p=parameters
+        back_emf=p.back_emf_constant_v_s_per_m*velocity
+        motor_force=p.force_constant_n_per_a*current
+        end_stop=np.maximum(0.0,np.abs(position)-p.maximum_stroke_m)*p.end_stop_stiffness_n_per_m*np.sign(position)
+        return {"coil_current_a":current,"translator_position_m":position,"translator_velocity_m_s":velocity,
+                "winding_temperature_c":temperature,"back_emf_v":back_emf,"motor_force_n":motor_force,
+                "end_stop_force_n":end_stop,"copper_loss_w":p.coil_resistance_ohm*current**2,
+                "stroke_utilization_pu":np.abs(position)/p.maximum_stroke_m,
+                "drive_voltage_v":self.drive_voltage_v,"external_load_force_n":self.external_load_force_n}
+
+
+def solve_voice_coil_transient_cpu(actuator_id: str, parameters: VoiceCoilParameters,
+    duration_s: float, step_s: float, *, drive_voltage_v: float|Sequence[float]|np.ndarray,
+    external_load_force_n: float|Sequence[float]|np.ndarray=0.0,
+    initial_position_m: float=0.0, initial_velocity_m_s: float=0.0,
+    initial_current_a: float=0.0, initial_temperature_c: float|None=None) -> VoiceCoilSimulationResult:
+    if not isinstance(actuator_id,str) or not actuator_id.strip(): raise ValueError("actuator_id must be non-empty")
+    if not isinstance(parameters,VoiceCoilParameters): raise TypeError("invalid voice-coil parameters")
+    for name,value in (("initial_position_m",initial_position_m),("initial_velocity_m_s",initial_velocity_m_s),("initial_current_a",initial_current_a)):
+        if not _is_numeric_scalar(value) or not isfinite(float(value)): raise ValueError(f"{name} must be finite")
+    temp=parameters.ambient_temperature_c if initial_temperature_c is None else initial_temperature_c
+    if not _is_numeric_scalar(temp) or not isfinite(float(temp)): raise ValueError("initial_temperature_c must be finite")
+    if abs(float(initial_position_m))>parameters.maximum_stroke_m:
+        raise ValueError("initial_position_m must be within the actuator stroke")
+    count,_=_validate_time(duration_s,step_s)
+    voltage=_voltage_profile(drive_voltage_v,count,"drive_voltage_v")
+    load=_voltage_profile(external_load_force_n,count,"external_load_force_n")
+    p=parameters
+    initial=np.asarray((float(initial_current_a),float(initial_position_m),float(initial_velocity_m_s),float(temp)))
+    def derivative(y:np.ndarray,u:tuple[float,float])->np.ndarray:
+        current,position,velocity,temperature=y; terminal,external=u
+        back_emf=p.back_emf_constant_v_s_per_m*velocity
+        motor_force=p.force_constant_n_per_a*current
+        end_stop=max(0.0,abs(position)-p.maximum_stroke_m)*p.end_stop_stiffness_n_per_m*np.sign(position)
+        di=(terminal-p.coil_resistance_ohm*current-back_emf)/p.coil_inductance_h
+        acceleration=(motor_force-external-p.suspension_stiffness_n_per_m*position-
+            p.viscous_damping_n_s_per_m*velocity-end_stop)/p.moving_mass_kg
+        copper=p.coil_resistance_ohm*current*current
+        dt=(copper-p.thermal_conductance_w_k*(temperature-p.ambient_temperature_c))/p.thermal_capacity_j_k
+        return np.asarray((di,velocity,acceleration,dt),dtype=np.float64)
+    problem=NumericalProblem(problem_id=actuator_id.strip(),workload="voice_coil_actuator_single",
+        derivative=derivative,initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+        input_at=lambda i,_t:(float(voltage[i]),float(load[i])),precision="float64")
+    solution=solve_numerical_problem(problem)
+    return VoiceCoilSimulationResult(actuator_id.strip(),solution.time_s,solution.state_data,voltage,load,
+        solution.sample_period_s,"cpu-rk4",{"integrator":solution.integrator,
+        "model_fidelity":"experimental lumped electromechanical actuator; no magnetic saturation, eddy-current, flexure or detailed thermal network"})
+
+__all__ += ["VoiceCoilParameters","VoiceCoilSimulationResult","solve_voice_coil_transient_cpu"]

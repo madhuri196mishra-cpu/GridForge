@@ -15,6 +15,30 @@ from .machine_models import (
     MachineElectricalOutput,
 )
 from .multimachine import MultiMachineSystem
+from .derivative_assembly import (
+    DynamicDerivativeAssemblyError,
+    DynamicSystemDerivativeAssembly,
+    MachineDerivativeEvaluator,
+    evaluate_composed_dynamic_derivatives,
+)
+from .component_assembly import (
+    DynamicComponentAssemblyError,
+    DynamicComponentBinding,
+    DynamicComponentBatchEvaluation,
+    evaluate_dynamic_components,
+)
+from .dynamic_state_layout import (
+    DynamicSystemLayoutError,
+    DynamicStateBlockSlice,
+    DynamicSystemStateLayout,
+)
+from .component_contract import (
+    DynamicComponentContractError,
+    DynamicComponentInputs,
+    DynamicComponentEvaluation,
+    DynamicStateComponent,
+    validate_dynamic_state_component,
+)
 from .events import EventBatchConflictError, EventExecution, EventManager, EventOperation, EventTransition, SimulationEvent
 from .dae_solver import (
     AlgebraicNetworkSolution,
@@ -42,6 +66,22 @@ __all__ = [
     "ClassicalSynchronousMachine",
     "MachineElectricalOutput",
     "MultiMachineSystem",
+    "DynamicComponentContractError",
+    "DynamicComponentInputs",
+    "DynamicComponentEvaluation",
+    "DynamicStateComponent",
+    "validate_dynamic_state_component",
+    "DynamicSystemLayoutError",
+    "DynamicStateBlockSlice",
+    "DynamicSystemStateLayout",
+    "DynamicComponentAssemblyError",
+    "DynamicComponentBinding",
+    "DynamicComponentBatchEvaluation",
+    "evaluate_dynamic_components",
+    "DynamicDerivativeAssemblyError",
+    "DynamicSystemDerivativeAssembly",
+    "MachineDerivativeEvaluator",
+    "evaluate_composed_dynamic_derivatives",
     "SimulationEvent",
     "EventOperation",
     "EventBatchConflictError",

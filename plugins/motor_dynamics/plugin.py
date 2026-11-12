@@ -36,13 +36,15 @@ PLUGIN_DESCRIPTOR = PluginDescriptor(
     api_version=SUPPORTED_PLUGIN_API_VERSION,
     display_name="Multi-Physics Dynamic Motor Extension",
     capabilities=frozenset({
-        "commands",
-        "sld_graphics",
-        "study_dashboard",
-        "persistence",
-        "transient_solver",
-        "cpu_transient_simulation",
-        "optional_cuda_batch_simulation",
+        "commands", "sld_graphics", "study_dashboard", "persistence",
+        "transient_solver", "cpu_transient_simulation", "optional_cuda_batch_simulation",
+        "motor_family_catalog", "motor_nameplate_validation", "family_specific_instrumentation",
+        "canonical_measurement_channel_provisioning", "pmsm_dq_cpu_transient",
+        "bldc_trapezoidal_cpu_transient", "synrm_dq_cpu_transient",
+        "srm_phase_inductance_cpu_transient", "dc_excitation_cpu_transient",
+        "single_phase_rms_envelope_cpu_transient", "universal_series_commutator_cpu_transient",
+        "wound_field_synchronous_damper_cpu_transient",
+        "hysteresis_torque_angle_cpu_transient", "pmsm_servo_cascade_cpu_transient", "induction_servo_foc_cpu_transient", "dc_servo_cascade_cpu_transient", "stepper_two_phase_current_control_cpu_transient", "linear_induction_dq_cpu_transient", "linear_synchronous_dq_cpu_transient", "voice_coil_actuator_cpu_transient",
     }),
 )
 

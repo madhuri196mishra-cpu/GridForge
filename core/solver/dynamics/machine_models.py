@@ -540,6 +540,8 @@ class ClassicalSynchronousMachine:
     def internal_emf(
         self,
         state: np.ndarray,
+        *,
+        field_voltage: float | None = None,
     ) -> complex:
         """
         Calculate internal emf behind transient reactance.
@@ -552,9 +554,18 @@ class ClassicalSynchronousMachine:
         )
 
         delta = state[0]
+        if field_voltage is not None and (
+            isinstance(field_voltage, bool)
+            or not isinstance(field_voltage, (int, float))
+        ):
+            raise MachineModelError("field_voltage must be a real numeric value")
+        efd = self.Efd if field_voltage is None else float(field_voltage)
+        self._validate_scalar(efd, "field_voltage")
+        if efd < 0.0:
+            raise MachineModelError("field_voltage must be non-negative")
 
         return complex(
-            self.Efd
+            efd
             * np.exp(
                 1j * delta
             )
@@ -569,6 +580,7 @@ class ClassicalSynchronousMachine:
         state: np.ndarray,
         terminal_voltage: complex,
         *,
+        field_voltage: float | None = None,
         time: float = 0.0,
     ) -> complex:
         """
@@ -597,7 +609,8 @@ class ClassicalSynchronousMachine:
 
         emf = (
             self.internal_emf(
-                state
+                state,
+                field_voltage=field_voltage,
             )
         )
 
@@ -616,6 +629,7 @@ class ClassicalSynchronousMachine:
         state: np.ndarray,
         terminal_voltage: complex,
         *,
+        field_voltage: float | None = None,
         time: float = 0.0,
     ) -> MachineElectricalOutput:
         """
@@ -634,6 +648,7 @@ class ClassicalSynchronousMachine:
             self.current_injection(
                 state=state,
                 terminal_voltage=voltage,
+                field_voltage=field_voltage,
             )
         )
 
@@ -646,7 +661,8 @@ class ClassicalSynchronousMachine:
 
         emf = (
             self.internal_emf(
-                state
+                state,
+                field_voltage=field_voltage,
             )
         )
 
@@ -667,6 +683,7 @@ class ClassicalSynchronousMachine:
         state: np.ndarray,
         terminal_voltage: complex,
         *,
+        field_voltage: float | None = None,
         time: float = 0.0,
     ) -> float:
         """
@@ -677,6 +694,7 @@ class ClassicalSynchronousMachine:
             self.electrical_output(
                 state=state,
                 terminal_voltage=terminal_voltage,
+                field_voltage=field_voltage,
                 time=time,
             )
         )
@@ -694,6 +712,7 @@ class ClassicalSynchronousMachine:
         mechanical_power: float,
         *,
         electrical_power: float | None = None,
+        field_voltage: float | None = None,
         time: float = 0.0,
     ) -> np.ndarray:
         """
@@ -747,6 +766,7 @@ class ClassicalSynchronousMachine:
                 terminal_voltage=(
                     terminal_voltage
                 ),
+                field_voltage=field_voltage,
                 time=time,
             )
 
