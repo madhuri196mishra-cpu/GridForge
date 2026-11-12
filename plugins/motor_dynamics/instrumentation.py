@@ -227,6 +227,31 @@ def motor_measurement_points(family: MotorFamily) -> tuple[MotorMeasurementPoint
             _p("machine.phase_b_back_emf", "Phase-B back-EMF", V, B, "V", ("analysis","diagnostics")),
             _p("machine.phase_c_back_emf", "Phase-C back-EMF", V, CPH, "V", ("analysis","diagnostics")),
         ]
+    if family == MotorFamily.AC_SERVO:
+        # Drive feedback is kept distinct from motor terminal metering. The
+        # host provisions only signals actually exposed by its servo drive.
+        pts += [
+            _p("drive.dc_link_voltage", "Servo DC-link voltage", V, N, "V", ("control","diagnostics")),
+            _p("machine.rotor_flux_magnitude", "Induction servo rotor flux magnitude", X, N, "Wb", ("control","diagnostics")),
+            _p("drive.rotor_flux_reference", "Induction servo rotor flux reference", X, N, "Wb", ("control","diagnostics")),
+            _p("drive.voltage_saturation", "Servo voltage vector saturation", D, N, "state", ("control","protection")),
+            _p("drive.current_saturation", "Servo current limit active", D, N, "state", ("control","protection")),
+            _p("drive.dc_link_current", "Servo DC-link current", C, N, "A", ("control","diagnostics")),
+            _p("drive.d_axis_current_reference", "Servo d-axis current reference", C, N, "A", ("control","diagnostics")),
+            _p("drive.q_axis_current_reference", "Servo q-axis current reference", C, N, "A", ("control","diagnostics")),
+            _p("drive.d_axis_current_feedback", "Servo d-axis current feedback", C, N, "A", ("control","diagnostics")),
+            _p("drive.q_axis_current_feedback", "Servo q-axis current feedback", C, N, "A", ("control","diagnostics")),
+            _p("feedback.encoder_position", "Servo encoder position", X, N, "rad", ("control","monitoring")),
+            _p("feedback.encoder_speed", "Servo encoder speed", X, N, "rad/s", ("control","monitoring")),
+            _p("feedback.position_command", "Servo position command", X, N, "rad", ("control","diagnostics")),
+            _p("feedback.position_error", "Servo position following error", X, N, "rad", ("control","protection")),
+            _p("feedback.speed_command", "Servo speed command", X, N, "rad/s", ("control","diagnostics")),
+            _p("feedback.torque_command", "Servo torque command", X, N, "N·m", ("control","diagnostics")),
+            _p("drive.inverter_temperature", "Servo inverter temperature", X, N, "°C", ("monitoring","protection")),
+            _p("drive.brake_state", "Servo holding-brake state", D, N, "state", ("control","protection")),
+            _p("drive.ready_state", "Servo drive ready state", D, N, "state", ("control","protection")),
+            _p("drive.fault_state", "Servo drive fault state", D, N, "state", ("control","protection")),
+        ]
     if family in {MotorFamily.LINEAR_INDUCTION, MotorFamily.LINEAR_SYNCHRONOUS}:
         pts += [_p("linear.thrust_force", "Linear motor thrust force", X, N, "N", ("control","analysis")),
                 _p("linear.air_gap", "Primary-secondary air gap", X, N, "mm", ("monitoring","maintenance")),
