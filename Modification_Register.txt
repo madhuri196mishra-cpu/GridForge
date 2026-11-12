@@ -3233,3 +3233,22 @@ Motor instrumentation interoperability correction — 12 November 2026:
   shared adapter rather than silently collapsed.
 - Verification: source fetch-back and duplicate-definition inspection only;
   no tests or runtime execution.
+
+
+
+Follow-up source reconciliation — 12 November 2026:
+- Re-fetched the generator-dynamics branch after additional concurrent commits
+  and ported its latest machine_models.py, multimachine.py, motor family
+  catalogue, motor instrumentation, motor transient solver, plugin README
+  files, and motor family coverage test source into this integration branch.
+- The motor measurement normalizer exposed duplicate wound-rotor
+  rotor.external_resistance point definitions. Consolidated them into one
+  canonical point with combined consumer applicability; retained slip-ring,
+  brush, rotor-current and rotor-copper-loss points.
+- Generator, motor and load plugin initialization paths use the shared
+  electrical_dynamics_composition key. Legacy generator_dynamics_composition,
+  motor_dynamics_composition and load_dynamics_composition dependencies are
+  not retained.
+- Verification: GitHub source fetch-back, shared-key inspection and static
+  duplicate point inspection only. No tests, imports, runtime, GUI or
+  numerical execution were performed.
