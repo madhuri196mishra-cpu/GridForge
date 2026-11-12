@@ -193,6 +193,7 @@ class MeasurementSignalType(Enum):
     PHASE_ANGLE = "PHASE_ANGLE"
     IMPEDANCE = "IMPEDANCE"
     DIGITAL = "DIGITAL"
+    TEMPERATURE = "TEMPERATURE"
     CUSTOM = "CUSTOM"
 
 
@@ -359,6 +360,8 @@ class MeasurementChannel:
         name: str = "",
         source: Any = None,
         source_terminal: Any = None,
+        source_reference: Any = None,
+        source_installation_id: Optional[str] = None,
         phase: MeasurementPhase = MeasurementPhase.NONE,
         unit: str = "",
         nominal_value: float = 0.0,
@@ -409,9 +412,25 @@ class MeasurementChannel:
         if source_terminal is not None:
             if not isinstance(source_terminal, EndpointReference) or not source_terminal.is_terminal:
                 raise TypeError("source_terminal must be a canonical terminal EndpointReference.")
+        if source_reference is not None:
+            from core.measurement.measurement_source_reference import MeasurementSourceReference
+            if not isinstance(source_reference, MeasurementSourceReference):
+                raise TypeError("source_reference must be a MeasurementSourceReference.")
+            if source_terminal is not None:
+                raise ValueError("A channel cannot use both an electrical terminal and a physical source interface.")
+            if source is None or getattr(source, "source_id", None) != source_reference.source_id:
+                raise ValueError("Physical source reference identity must match the supplied source.")
+            if getattr(source, "source_family", None) != source_reference.source_family:
+                raise ValueError("Physical source family must match the supplied source reference.")
+            if not isinstance(source_installation_id, str) or not source_installation_id.strip() or source_installation_id != source_installation_id.strip():
+                raise ValueError("Physical source channels require a canonical source_installation_id.")
+        elif source_installation_id is not None:
+            raise ValueError("source_installation_id requires a physical source_reference.")
 
         self.source = source
         self.source_terminal = source_terminal
+        self.source_reference = source_reference
+        self.source_installation_id = source_installation_id
 
         if not isinstance(unit, str):
             raise TypeError(
@@ -474,7 +493,7 @@ class MeasurementChannel:
     # A project-managed channel's physical source and engineering contract
     # must not be mutable through the channel object exposed to consumers.
     _CONFIGURATION_FIELDS = frozenset({
-        "id", "signal_type", "source", "source_terminal", "phase", "unit",
+        "id", "signal_type", "source", "source_terminal", "source_reference", "source_installation_id", "phase", "unit",
         "nominal_value", "scale", "polarity", "stale_after", "producer_id",
     })
 
@@ -1055,7 +1074,7 @@ class MeasurementChannel:
         if self.source is None:
             return None
 
-        return self.source.id
+        return getattr(self.source, "id", getattr(self.source, "source_id", None))
 
     # -----------------------------------------------------------------
 
