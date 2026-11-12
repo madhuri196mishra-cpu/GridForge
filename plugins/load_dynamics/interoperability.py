@@ -25,7 +25,7 @@ class LoadPhaseTerminal:
 
     terminal_voltage_v and phase_voltage_base_v use the same branch voltage
     definition. For a two-terminal branch, terminal_voltage_v is the oriented
-    source-to-return voltage and the optional return fields identify the
+    source-to-return voltage and the return fields identify the
     opposite nodal current injection. return_current_base_a is the return node's
     own current base. phase_power_base_va is the matching per-branch apparent-
     power base. power_share allocates total demand.
@@ -98,7 +98,7 @@ def evaluate_zip_terminal_injections(
 ) -> tuple[DynamicTerminalInjection, ...]:
     """Evaluate a ZIP load as phase-resolved network current injections.
 
-    The host supplies canonical terminal-to-branch mapping, source/return
+    The host supplies canonical terminal-to-branch mapping and explicit source/return
     orientation and matching voltage/apparent-power bases. Shares allocate
     total load demand exactly once. Source-node current is negative and
     return-node current positive under the equipment-to-network injection
@@ -140,17 +140,10 @@ def evaluate_zip_terminal_injections(
         raise ValueError(
             f"{nameplate.connection.value} requires {expected_branch_count} phase/branch mappings"
         )
-    paired_connections = {
-        LoadConnection.SINGLE_PHASE_LL,
-        LoadConnection.THREE_PHASE_DELTA,
-        LoadConnection.DC_TWO_WIRE,
-        LoadConnection.DC_THREE_WIRE,
-    }
-    if nameplate.connection in paired_connections and any(
-        item.return_terminal_id is None for item in phases
-    ):
+    if any(item.return_terminal_id is None for item in phases):
         raise ValueError(
-            f"{nameplate.connection.value} requires explicit source and return terminal mappings"
+            "every ZIP branch requires explicit source and return terminal mappings "
+            "so both nodal current contributions satisfy KCL"
         )
     p0_kw = nameplate.rated_active_power_kw
     is_dc = nameplate.connection in {LoadConnection.DC_TWO_WIRE, LoadConnection.DC_THREE_WIRE}
