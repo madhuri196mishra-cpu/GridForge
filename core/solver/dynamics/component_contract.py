@@ -1,9 +1,9 @@
 """Side-effect-free contract for solver-owned dynamic state components.
 
-The contract separates dynamic state from electrical-machine identity. A
-component may contribute controller states and mechanical-power inputs while
-the canonical machine remains responsible for electrical equations, terminal
-identity and network coupling.
+The contract separates extension-owned dynamic state from canonical Core equipment
+identity. Generator controller components may hand off mechanical power;
+motor/load components may contribute phase-resolved terminal current while
+Core remains responsible for equipment, terminals and network topology.
 
 This module defines the boundary only. MultiMachineSystem and DAESolver do
 not yet consume it; wiring requires a coordinated global-state and
@@ -93,11 +93,57 @@ class DynamicComponentInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class DynamicTerminalInjection:
+    """One phase-resolved current contribution into the solved network.
+
+    current_injection_pu is expressed on the explicit current_base_a carried by
+    this contribution. The network-injection sign convention is positive from
+    equipment into the network. phase_id is a canonical host-supplied label;
+    this DTO does not infer phase mapping.
+    """
+
+    injection_id: str
+    terminal_id: str
+    phase_id: str
+    current_injection_pu: complex
+    current_base_a: float
+
+    def __post_init__(self) -> None:
+        for name in ("injection_id", "terminal_id", "phase_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise DynamicComponentContractError(f"{name} must be a non-empty stable identity")
+            object.__setattr__(self, name, value.strip())
+        if isinstance(self.current_injection_pu, bool) or not isinstance(
+            self.current_injection_pu, (int, float, complex)
+        ):
+            raise DynamicComponentContractError(
+                "current_injection_pu must be numeric complex data"
+            )
+        try:
+            current = complex(self.current_injection_pu)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise DynamicComponentContractError(
+                "current_injection_pu must be a finite complex value"
+            ) from exc
+        if not math.isfinite(current.real) or not math.isfinite(current.imag):
+            raise DynamicComponentContractError(
+                "current_injection_pu must be a finite complex value"
+            )
+        object.__setattr__(self, "current_injection_pu", current)
+        base = _finite_number(self.current_base_a, "current_base_a")
+        if base <= 0.0:
+            raise DynamicComponentContractError("current_base_a must be positive")
+        object.__setattr__(self, "current_base_a", base)
+
+
+@dataclass(frozen=True, slots=True)
 class DynamicComponentEvaluation:
-    """Pure derivative contribution and optional machine power handoff."""
+    """Pure derivative, optional machine handoff and terminal injections."""
 
     state_derivative: tuple[float, ...]
     mechanical_power_outputs_pu: Mapping[str, float]
+    terminal_injections: tuple[DynamicTerminalInjection, ...] = ()
 
     def __post_init__(self) -> None:
         derivative = _finite_vector(self.state_derivative, "state_derivative")
@@ -108,8 +154,17 @@ class DynamicComponentEvaluation:
                     "mechanical_power_outputs_pu keys must be non-empty machine identities"
                 )
             outputs[machine_id] = _finite_number(value, f"mechanical_power_outputs_pu[{machine_id}]")
+        injections = tuple(self.terminal_injections)
+        if any(not isinstance(item, DynamicTerminalInjection) for item in injections):
+            raise DynamicComponentContractError(
+                "terminal_injections must contain DynamicTerminalInjection values"
+            )
+        injection_ids = [item.injection_id for item in injections]
+        if len(injection_ids) != len(set(injection_ids)):
+            raise DynamicComponentContractError("terminal injection identities must be unique per component")
         object.__setattr__(self, "state_derivative", derivative)
         object.__setattr__(self, "mechanical_power_outputs_pu", MappingProxyType(outputs))
+        object.__setattr__(self, "terminal_injections", injections)
 
 
 def validate_dynamic_state_component(component: object) -> tuple[str, int]:
@@ -129,7 +184,7 @@ def validate_dynamic_state_component(component: object) -> tuple[str, int]:
 
 @runtime_checkable
 class DynamicStateComponent(Protocol):
-    """Structural protocol for solver-owned non-electrical dynamic components.
+    """Structural protocol for solver-owned equipment/control dynamic components.
 
     Implementations must be referentially transparent: initial_state and
     evaluate may not advance clocks, mutate component state, dispatch events,
@@ -159,6 +214,7 @@ class DynamicStateComponent(Protocol):
 __all__ = [
     "DynamicComponentContractError",
     "DynamicComponentInputs",
+    "DynamicTerminalInjection",
     "DynamicComponentEvaluation",
     "DynamicStateComponent",
     "validate_dynamic_state_component",
