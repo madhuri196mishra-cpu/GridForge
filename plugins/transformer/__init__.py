@@ -18,7 +18,8 @@ from .measurement_binding import (
 from .telemetry import (
     ChannelDefinition, MeasurementQuality, SignalKind, TelemetrySample,
     TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
-    build_transformer_channel_catalogue_for_core, validate_transformer_snapshot,
+    build_transformer_channel_catalogue_for_core,
+    build_transformer_measurement_source_interfaces, validate_transformer_snapshot,
 )
 
 __all__ = [
@@ -26,7 +27,7 @@ __all__ = [
     "TransformerEquivalent", "TransformerProfile", "TransformerFamily",
     "InsulationSystem", "CoolingMethod", "validate_transformer_profile_windings", "ChannelDefinition",
     "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
-    "TransformerQuantity", "build_transformer_channel_catalogue", "build_transformer_channel_catalogue_for_core",
+    "TransformerQuantity", "build_transformer_channel_catalogue", "build_transformer_channel_catalogue_for_core", "build_transformer_measurement_source_interfaces",
     "validate_transformer_snapshot",
     "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
