@@ -79,6 +79,8 @@ def resolve_transformer_measurement_bindings(
         channel = measurement_channels.get(binding.measurement_channel_id)
         if channel is None:
             raise KeyError(f"Core MeasurementChannel not found: {binding.measurement_channel_id}")
+        if getattr(channel, "id", None) != binding.measurement_channel_id:
+            raise ValueError("Measurement channel mapping key does not match the canonical Core channel identity.")
         signal_type = getattr(getattr(channel, "signal_type", None), "value", None)
         if point.quantity is TransformerQuantity.WINDING_TEMPERATURE:
             if point.signal_kind.value != "analog" or point.sensor_type is None:
