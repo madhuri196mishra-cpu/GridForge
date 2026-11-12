@@ -199,7 +199,7 @@ def _build_application_impl(
     engineering_plugin_host.activate(
         motor_dynamics_plugin,
         services={
-            "motor_dynamics_composition": gridforge_application.motor_dynamics_composition,
+            "electrical_dynamics_composition": gridforge_application.electrical_dynamics_composition,
         },
     )
     startup_splash.status("Initializing SLD presentation…")
@@ -1685,7 +1685,7 @@ def _build_application_impl(
     )
     workspace_surface_host.refresh_sld_document_tabs()
     sld_canvas_snapshot = sld_canvas_projection.project(sld_document.model)
-    context = PluginContext(main_window=window, parent=window, application=gridforge_application, root_widget=root_widget, controller=controller, action_router=action_router, equipment_registry=equipment_registry, symbol_registry=presentation_bootstrap.symbol_registry, sld_document=sld_document, sld_canvas_projection=sld_canvas_projection, sld_canvas_render_system=sld_canvas_render_system, tool_manager=tool_manager, services={"motor_dynamics_composition": getattr(gridforge_application, "motor_dynamics_composition", None)}, metadata={"sld_canvas_snapshot": sld_canvas_snapshot, "engineering_context_store": engineering_context, "project_id": project_context.project_id, "project_workspace_adapter": project_workspace_adapter, "panel_presentation_bridge": panel_presentation_bridge, "workspace_controller": workspace_controller, "selection_manager": canvas_composition.selection_manager, "graphics_view": canvas_composition.view})
+    context = PluginContext(main_window=window, parent=window, application=gridforge_application, root_widget=root_widget, controller=controller, action_router=action_router, equipment_registry=equipment_registry, symbol_registry=presentation_bootstrap.symbol_registry, sld_document=sld_document, sld_canvas_projection=sld_canvas_projection, sld_canvas_render_system=sld_canvas_render_system, tool_manager=tool_manager, services={"electrical_dynamics_composition": getattr(gridforge_application, "electrical_dynamics_composition", None)}, metadata={"sld_canvas_snapshot": sld_canvas_snapshot, "engineering_context_store": engineering_context, "project_id": project_context.project_id, "project_workspace_adapter": project_workspace_adapter, "panel_presentation_bridge": panel_presentation_bridge, "workspace_controller": workspace_controller, "selection_manager": canvas_composition.selection_manager, "graphics_view": canvas_composition.view})
     contexts = {plugin_id: context for plugin_id in plugin_manager.plugin_ids}; plugin_manager.set_contexts(contexts); plugin_manager.initialize_all()
     # Menu and toolbar enabled states are projections of the canonical action
     # router. Refresh them whenever selection, workspace, project, or tool
