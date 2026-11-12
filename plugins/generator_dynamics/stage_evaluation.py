@@ -168,7 +168,7 @@ def evaluate_generator_dynamic_stage(
     def evaluate_machine_derivatives(**kwargs):
         return machine_derivative_evaluator(
             **kwargs,
-            field_voltages_pu=network.field_voltages_pu,
+            field_voltages=network.field_voltages_pu,
         )
 
     assembly = evaluate_composed_dynamic_derivatives(
