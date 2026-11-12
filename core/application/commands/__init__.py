@@ -108,3 +108,6 @@ from .draft_commands import (
 )
 
 __all__ = [name for name in globals() if not name.startswith("_")]
+
+from .instrumentation_wiring_commands import SET_INSTRUMENTATION_WIRING_INVENTORY, SetInstrumentationWiringInventoryCommand
+from .temperature_instrument_commands import SET_TEMPERATURE_INSTRUMENT_INVENTORY, SetTemperatureInstrumentInventoryCommand
