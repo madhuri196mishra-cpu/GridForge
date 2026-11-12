@@ -339,6 +339,7 @@ class PhysicalCableRoutingInventory:
         if route is None:
             raise KeyError(route_id)
         findings: list[CableRoutingFinding] = []
+        route_by_id = {item.id: item for item in self.routes}
         if not route.segments:
             findings.append(CableRoutingFinding("ROUTE_NO_SEGMENTS", ValidationSeverity.INCOMPLETE, "Route has no installation segments.", route.id))
         for segment in route.segments:
