@@ -3221,3 +3221,15 @@ Core component, state-layout, component and derivative assembly
   probing or commissioning were run. No merge to main and no changes to
   SubhenduMishra29/GridForge.
 ======================================================================
+
+
+
+Motor instrumentation interoperability correction — 12 November 2026:
+- Reconciled the family-aware motor point catalogue with the shared
+  measurement-point normalizer. The wound-rotor induction family had two
+  definitions for rotor.external_resistance; retained one canonical point
+  and combined its consumer applicability, while preserving slip-ring and
+  brush condition points. Duplicate point identifiers are rejected by the
+  shared adapter rather than silently collapsed.
+- Verification: source fetch-back and duplicate-definition inspection only;
+  no tests or runtime execution.
