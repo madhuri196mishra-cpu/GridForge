@@ -229,6 +229,38 @@ class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
         self.generator_transient_solver = None
         self.generator_augmented_transient_solver = None
         self.load_transient_solver = None
+        from core.application.events import ProjectClosed, ProjectLoaded
+
+        self._project_events = (ProjectLoaded, ProjectClosed)
+        self._project_event_callback = self._on_project_transition
+        self._closed = False
+        for event_type in self._project_events:
+            application.event_bus.subscribe(event_type, self._project_event_callback)
+
+    def _on_project_transition(self, _event: Any) -> None:
+        """Invalidate project-scoped projections only after a committed transition."""
+        if not self._closed:
+            self.motor_read_models.clear()
+
+    def close(self) -> None:
+        """Release Application-owned lifecycle subscriptions at Application shutdown."""
+        if self._closed:
+            return
+        errors: list[BaseException] = []
+        for event_type in reversed(self._project_events):
+            try:
+                self.application.event_bus.unsubscribe(
+                    event_type, self._project_event_callback
+                )
+            except BaseException as exc:
+                errors.append(exc)
+        if errors:
+            raise RuntimeError(
+                "Electrical dynamics composition shutdown incomplete: "
+                + "; ".join(f"{type(error).__name__}: {error}" for error in errors)
+            ) from errors[0]
+        self.motor_read_models.clear()
+        self._closed = True
 
     @property
     def measurement_channels(self) -> tuple[Any, ...]:
