@@ -10,6 +10,7 @@ from .instrumentation import (
 )
 from .compute import GENERATOR_WORKLOADS, NPU_INFERENCE_WORKLOADS, select_generator_backend
 from .plugin import GeneratorDynamicsPlugin, PLUGIN_DESCRIPTOR
+from .interoperability import generator_measurement_contracts, generator_model_capability
 from .controllers import (
     FirstOrderAVRParameters, FirstOrderAVR, TGOV1Governor,
     PSSParameters, WashoutLeadLagPSS, TGOV1Parameters, TGOV1SteamGovernor,
@@ -38,7 +39,8 @@ from .ggov1_step_transaction import (
     GGOV1AcceptedStepCheckpoint, GGOV1StepAttempt, begin_ggov1_step_attempt,
 )
 from .study_handler import GeneratorTransientStudyHandler
-from .plugin import GENERATOR_TRANSIENT_STUDY_TYPE\n
+from .plugin import GENERATOR_TRANSIENT_STUDY_TYPE
+
 __all__ = [
     "GeneratorFamily", "GeneratorNameplate", "GeneratorOperatingMode",
     "SynchronousMachineDynamics", "ExcitationParameters", "GovernorParameters",
@@ -60,4 +62,5 @@ __all__ = [
     "GGOV1AcceptedStepCheckpoint", "GGOV1StepAttempt", "begin_ggov1_step_attempt",
     "GGOV1StateSlice", "GGOV1DynamicStateLayout",
     "GGOV1BindingError", "GGOV1GeneratorBinding", "GGOV1MechanicalPowerHandoff",
+    "generator_measurement_contracts", "generator_model_capability",
 ]
