@@ -75,12 +75,12 @@ def _optional_positive(value: Optional[float], name: str) -> Optional[float]:
     return numeric
 
 
-def _optional_nonnegative(value: Optional[float], name: str) -> Optional[float]:
+def _optional_finite(value: Optional[float], name: str) -> Optional[float]:
     if value is None:
         return None
     numeric = float(value)
-    if not isfinite(numeric) or numeric < 0:
-        raise ValueError(f"{name} must be finite and non-negative when supplied.")
+    if not isfinite(numeric):
+        raise ValueError(f"{name} must be finite when supplied.")
     return numeric
 
 
@@ -100,7 +100,7 @@ class InstallationPoint:
             raise TypeError("point_kind must be InstallationSystemKind.")
         if self.location_reference is not None:
             _required(self.location_reference, "location_reference")
-        _optional_nonnegative(self.elevation_m, "elevation_m")
+        _optional_finite(self.elevation_m, "elevation_m")
         if self.installation_level is not None:
             _required(self.installation_level, "installation_level")
 
@@ -171,7 +171,7 @@ class InstallationRouteSegment:
             raise ValueError("A supplied length requires explicit provenance.")
         if self.elevation_change_m is not None and not isfinite(float(self.elevation_change_m)):
             raise ValueError("elevation_change_m must be finite.")
-        if self.bend_count is not None and (isinstance(self.bend_count, bool) or self.bend_count < 0):
+        if self.bend_count is not None and (isinstance(self.bend_count, bool) or not isinstance(self.bend_count, int) or self.bend_count < 0):
             raise ValueError("bend_count must be a non-negative integer.")
         _optional_positive(self.minimum_bend_radius_mm, "minimum_bend_radius_mm")
 
@@ -233,6 +233,8 @@ class CableRouteAssignment:
     termination_allowance_m: Optional[float] = None
     procurement_rule_id: Optional[str] = None
     approved_procurement_length_m: Optional[float] = None
+    cable_outer_diameter_mm: Optional[float] = None
+    installation_allowance_factor: Optional[float] = None
 
     def __post_init__(self) -> None:
         for name in ("id", "cable_id", "route_id"):
@@ -249,6 +251,11 @@ class CableRouteAssignment:
         _optional_nonnegative(self.slack_allowance_m, "slack_allowance_m")
         _optional_nonnegative(self.termination_allowance_m, "termination_allowance_m")
         _optional_nonnegative(self.approved_procurement_length_m, "approved_procurement_length_m")
+        _optional_positive(self.cable_outer_diameter_mm, "cable_outer_diameter_mm")
+        if self.installation_allowance_factor is not None:
+            factor = float(self.installation_allowance_factor)
+            if not isfinite(factor) or factor < 1.0:
+                raise ValueError("installation_allowance_factor must be finite and at least 1.0.")
         if self.procurement_rule_id is not None:
             _required(self.procurement_rule_id, "procurement_rule_id")
         if self.approved_procurement_length_m is not None and self.procurement_rule_id is None:
@@ -338,12 +345,28 @@ class PhysicalCableRoutingInventory:
             if segment.length_m is None:
                 findings.append(CableRoutingFinding("SEGMENT_LENGTH_UNKNOWN", ValidationSeverity.INCOMPLETE, f"Length is not defined for segment {segment.id}.", segment.id))
             system = next(item for item in self.systems if item.id == segment.installation_system_id)
-            assigned = [a for a in self.assignments if a.route_id == route.id]
-            for assignment in assigned:
+            # Capacity is shared by every cable assigned to any route that
+            # traverses this installation system, not just this route.
+            system_cables: dict[str, CableRouteAssignment] = {}
+            for assignment in self.assignments:
+                assigned_route = route_by_id[assignment.route_id]
+                if any(item.installation_system_id == system.id for item in assigned_route.segments):
+                    system_cables[assignment.cable_id] = assignment
+            for assignment in system_cables.values():
                 if system.segregation_classes and assignment.service_class not in system.segregation_classes:
                     findings.append(CableRoutingFinding("SEGREGATION_NOT_PERMITTED", ValidationSeverity.ERROR, f"Installation system {system.tag} does not permit {assignment.service_class.value}.", segment.id))
-                if system.usable_area_mm2 is None or system.fill_limit_ratio is None:
-                    findings.append(CableRoutingFinding("CAPACITY_DATA_INCOMPLETE", ValidationSeverity.INCOMPLETE, f"Capacity cannot be evaluated for {system.tag}; usable area and fill limit are required.", system.id))
+            if system.usable_area_mm2 is None or system.fill_limit_ratio is None:
+                findings.append(CableRoutingFinding("CAPACITY_DATA_INCOMPLETE", ValidationSeverity.INCOMPLETE, f"Capacity cannot be evaluated for {system.tag}; usable area and fill limit are required.", system.id))
+            elif any(item.cable_outer_diameter_mm is None for item in system_cables.values()):
+                findings.append(CableRoutingFinding("CABLE_DIAMETER_INCOMPLETE", ValidationSeverity.INCOMPLETE, f"Capacity cannot be evaluated for {system.tag}; one or more assigned cables lack an outer diameter.", system.id))
+            else:
+                from math import pi
+                occupied = sum(
+                    pi * (item.cable_outer_diameter_mm / 2.0) ** 2 * (item.installation_allowance_factor or 1.0)
+                    for item in system_cables.values()
+                )
+                if occupied > system.usable_area_mm2 * system.fill_limit_ratio:
+                    findings.append(CableRoutingFinding("TRAY_CAPACITY_EXCEEDED", ValidationSeverity.ERROR, f"Assigned cable occupancy exceeds the configured usable fill area for {system.tag}.", system.id))
         if route.route_length_m is None:
             findings.append(CableRoutingFinding("ROUTE_LENGTH_NOT_AUTHORITATIVE", ValidationSeverity.INCOMPLETE, "A route-derived length is unavailable because one or more segments lack approved geometric lengths.", route.id))
         return tuple(findings)
