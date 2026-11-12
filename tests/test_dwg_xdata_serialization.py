@@ -228,13 +228,17 @@ def test_export_manifest_binds_plan_registry_and_single_coordinate_mapping(tmp_p
     executable.write_text("placeholder", encoding="utf-8")
     executable.chmod(0o700)
     backend = ODAFileConverterBackend(executable)
-    transform = SLDCoordinateTransform(
+    mapping_values = dict(
         mapping_id="site-map", mapping_version="2.1.0",
         source_coordinate_system="sld-document-local", source_units="sld-unit",
         millimetres_per_source_unit=2.0, world_origin_x_mm=100.0,
         world_origin_y_mm=200.0, rotation_degrees=30.0,
         reviewer="reviewer", reviewed_on="2026-11-04",
         review_reference="review:site-map",
+    )
+    transform = SLDCoordinateTransform(
+        **mapping_values,
+        reviewed_mapping_fingerprint=SLDCoordinateTransform.calculate_fingerprint(**mapping_values),
     )
     source = DrawingEntity(
         "sld-connection:c1", "LWPOLYLINE", "WIRE",
