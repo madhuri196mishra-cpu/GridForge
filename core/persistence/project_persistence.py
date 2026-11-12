@@ -20,6 +20,7 @@ from typing import Any, Mapping, Sequence
 
 from core.analysis.dynamic_model_association import DynamicMachineModelAssociation
 from core.application.project import ProjectContext
+from core.application.instrumentation import ProjectInstrumentationCollection
 from core.application.revision import ProjectRevision
 from core.application.study import StudyCaseDefinition
 from core.analysis.power_flow_configuration import PowerFlowStudyConfiguration
@@ -65,6 +66,7 @@ class LoadedProject:
     protection_presentation: Mapping[str, Any] | None = None
     control_signal_mapping: ControlSignalMapping | None = None
     study_cases: tuple[StudyCaseDefinition, ...] = ()
+    instrumentation: ProjectInstrumentationCollection | None = None
 
 
 class ProjectPersistenceError(RuntimeError):
@@ -131,6 +133,15 @@ class ProjectPersistenceService:
             raise ProjectPersistenceError(f"Invalid dynamic machine model association: {exc}") from exc
 
         measurement_definitions = project["measurement"]["channels"]
+        instrumentation_data = project.get("instrumentation")
+        try:
+            instrumentation = (
+                ProjectInstrumentationCollection.from_mapping(instrumentation_data, project_id=project_id)
+                if instrumentation_data is not None
+                else ProjectInstrumentationCollection(project_id=project_id)
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProjectPersistenceError(f"Invalid project instrumentation collection: {exc}") from exc
         document_ids = tuple(
             str(item.get("document_id", "")).strip()
             for item in presentation_collection.get("documents", ())
@@ -201,7 +212,7 @@ class ProjectPersistenceService:
         self._validate_project_state(
             context, network, presentation, presentation_collection,
             dynamic_models, protection_configuration, control_configuration,
-            measurement_definitions,
+            measurement_definitions, instrumentation,
         )
         return LoadedProject(
             context=context,
@@ -217,6 +228,7 @@ class ProjectPersistenceService:
             draft_network_collection=draft_network_collection,
             protection_presentation=protection_presentation,
             study_cases=study_cases,
+            instrumentation=instrumentation,
         )
 
     def save(self, context: ProjectContext, network: Network,
@@ -231,7 +243,8 @@ class ProjectPersistenceService:
              draft_network_collection: DraftNetworkCollection | None = None,
              protection_presentation: Mapping[str, Any] | None = None,
              presentation_collection: Mapping[str, Any] | None = None,
-             study_cases: Sequence[StudyCaseDefinition] = ()) -> None:
+             study_cases: Sequence[StudyCaseDefinition] = (),
+             instrumentation: ProjectInstrumentationCollection | None = None) -> None:
         if path is None:
             path = presentation
             presentation = None
@@ -291,6 +304,12 @@ class ProjectPersistenceService:
             control_configuration.validate()
         if control_signal_mapping is not None and not isinstance(control_signal_mapping, ControlSignalMapping):
             raise TypeError("control_signal_mapping must be ControlSignalMapping or None.")
+        if instrumentation is None:
+            instrumentation = ProjectInstrumentationCollection(project_id=context.project_id)
+        if not isinstance(instrumentation, ProjectInstrumentationCollection):
+            raise TypeError("instrumentation must be ProjectInstrumentationCollection or None.")
+        if instrumentation.project_id != context.project_id:
+            raise ProjectPersistenceError("Instrumentation collection project_id does not match the project.")
         if not isinstance(study_cases, Sequence) or any(
             not isinstance(item, StudyCaseDefinition) for item in study_cases
         ):
@@ -342,6 +361,7 @@ class ProjectPersistenceService:
             context, network, active_presentation, canonical_collection,
             tuple(dynamic_models), protection_configuration, control_configuration,
             measurement_definitions,
+            instrumentation,
         )
         document_ids = tuple(item["document_id"] for item in documents)
         if not document_ids:
@@ -374,6 +394,7 @@ class ProjectPersistenceService:
             "dynamic_models": [item.to_dict() for item in dynamic_models],
             "measurement": {"channels": [dict(item) for item in measurement_definitions]},
             "study_cases": [self._serialize_study_case(item) for item in study_cases],
+            "instrumentation": instrumentation.to_mapping(),
         }
         if protection_snapshot is not None:
             project["protection"] = protection_snapshot.to_dict()
@@ -780,7 +801,7 @@ class ProjectPersistenceService:
             raise ProjectPersistenceError("Canonical study_cases must be an array of objects.")
 
     @staticmethod
-    def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = ()) -> None:
+    def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = (), instrumentation: ProjectInstrumentationCollection | None = None) -> None:
         """Validate cross-domain project invariants at load/save boundaries."""
         channel_ids: set[str] = set()
         for definition in measurement_definitions:
@@ -814,6 +835,20 @@ class ProjectPersistenceService:
                         )
         if not isinstance(context, ProjectContext) or not isinstance(network, Network):
             raise ProjectPersistenceError("Project context or Network is invalid.")
+        if instrumentation is not None:
+            if not isinstance(instrumentation, ProjectInstrumentationCollection):
+                raise ProjectPersistenceError("Project instrumentation collection is invalid.")
+            if instrumentation.project_id != context.project_id:
+                raise ProjectPersistenceError("Instrumentation collection project_id does not match the active project.")
+            for installation in instrumentation.installations:
+                try:
+                    monitored = network.get_by_identity(installation.monitored_equipment_id)
+                except KeyError as exc:
+                    raise ProjectPersistenceError(f"Instrumentation installation {installation.installation_id!r} references missing monitored equipment {installation.monitored_equipment_id!r}.") from exc
+                expected_type = installation.monitored_equipment_type.replace("-", "_").upper()
+                actual_type = str(getattr(monitored, "element_type", "")).upper()
+                if expected_type != actual_type:
+                    raise ProjectPersistenceError(f"Instrumentation installation {installation.installation_id!r} expects monitored equipment type {expected_type!r}, found {actual_type!r}.")
         if presentation_collection is not None:
             normalized_collection = ProjectPersistenceService._normalize_presentation_collection(
                 presentation_collection,
