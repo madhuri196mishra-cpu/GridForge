@@ -81,6 +81,8 @@ class ProjectInstrumentationCollection:
             raise TypeError("Project instrumentation collection must be a mapping.")
         if set(data) != {"schema", "project_id", "sources", "installations"}:
             raise ValueError("Project instrumentation collection fields are not canonical.")
+        if isinstance(data["schema"], bool) or not isinstance(data["schema"], int):
+            raise TypeError("Instrumentation collection schema must be an integer.")
         if data["schema"] != INSTRUMENTATION_COLLECTION_SCHEMA:
             raise ValueError(f"Unsupported instrumentation collection schema: {data['schema']!r}.")
         if data["project_id"] != project_id:
