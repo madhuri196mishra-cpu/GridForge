@@ -1953,3 +1953,121 @@ def solve_universal_motor_transient_cpu(motor_id,parameters,duration_s,step_s,*,
         {"integrator":result.integrator,"precision":"float64","workload":"universal_motor_series_field_single",
          "model":"series_commutator_motor_averaged_envelope","supply_mode":parameters.supply_mode,
          "model_fidelity":"averaged_rectified_envelope_not_cycle_resolved","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+_WOUND_SYNC_STATE_NAMES = ("stator_d_current_a","stator_q_current_a","field_current_a","damper_d_current_a","damper_q_current_a","rotor_angle_rad","rotor_speed_rad_s","temperature_c")
+
+
+@dataclass(frozen=True)
+class WoundFieldSynchronousParameters:
+    stator_resistance_ohm: float
+    stator_d_inductance_h: float
+    stator_q_inductance_h: float
+    field_resistance_ohm: float
+    field_inductance_h: float
+    damper_d_resistance_ohm: float
+    damper_q_resistance_ohm: float
+    damper_d_inductance_h: float
+    damper_q_inductance_h: float
+    mutual_field_inductance_h: float
+    mutual_damper_d_inductance_h: float
+    mutual_damper_q_inductance_h: float
+    pole_pairs: int
+    inertia_kg_m2: float
+    friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 12000.0
+    thermal_conductance_w_k: float = 40.0
+    ambient_temperature_c: float = 25.0
+    initial_speed_rad_s: float = 0.0
+    initial_temperature_c: float = 25.0
+    frequency_hz: float = 50.0
+
+    def __post_init__(self):
+        for n in ("stator_resistance_ohm","stator_d_inductance_h","stator_q_inductance_h","field_resistance_ohm","field_inductance_h","damper_d_resistance_ohm","damper_q_resistance_ohm","damper_d_inductance_h","damper_q_inductance_h","inertia_kg_m2","thermal_capacity_j_k","frequency_hz"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{n} must be finite and positive")
+        for n in ("mutual_field_inductance_h","mutual_damper_d_inductance_h","mutual_damper_q_inductance_h"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<0: raise ValueError(f"{n} must be finite and non-negative")
+        for n in ("friction_n_m_s","thermal_conductance_w_k","ambient_temperature_c","initial_speed_rad_s","initial_temperature_c"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        if self.friction_n_m_s<0 or self.thermal_conductance_w_k<0: raise ValueError("passive parameters must be non-negative")
+        if isinstance(self.pole_pairs,bool) or not isinstance(self.pole_pairs,int) or self.pole_pairs<1: raise ValueError("pole_pairs must be a positive integer")
+        if self.mutual_field_inductance_h**2>=self.stator_d_inductance_h*self.field_inductance_h: raise ValueError("field mutual inductance violates positive-energy bound")
+        if self.mutual_damper_d_inductance_h**2>=self.stator_d_inductance_h*self.damper_d_inductance_h: raise ValueError("d-axis damper mutual inductance violates positive-energy bound")
+        if self.mutual_damper_q_inductance_h**2>=self.stator_q_inductance_h*self.damper_q_inductance_h: raise ValueError("q-axis damper mutual inductance violates positive-energy bound")
+
+
+@dataclass(frozen=True)
+class WoundFieldSynchronousSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    stator_voltage_d_v: np.ndarray
+    stator_voltage_q_v: np.ndarray
+    field_voltage_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be non-empty")
+        for n in ("time_s","state_data","stator_voltage_d_v","stator_voltage_q_v","field_voltage_v","load_torque_nm"):
+            v=np.asarray(getattr(self,n),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{n} must be finite")
+            v.setflags(write=False); object.__setattr__(self,n,v)
+        n=self.time_s.size
+        if self.state_data.size!=n*8 or any(getattr(self,k).size!=n for k in ("stator_voltage_d_v","stator_voltage_q_v","field_voltage_v","load_torque_nm")): raise ValueError("synchronous result arrays must align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return _WOUND_SYNC_STATE_NAMES
+    def state(self,name):
+        try: i=_WOUND_SYNC_STATE_NAMES.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,8)[:,i].view(); v.setflags(write=False); return v
+    def channels(self,p):
+        x=self.state_data.reshape(self.sample_count,8); id_,iq,iff,ikd,ikq,angle,speed,temp=x.T
+        torque=1.5*p.pole_pairs*((p.stator_d_inductance_h-p.stator_q_inductance_h)*id_*iq+p.mutual_field_inductance_h*iff*iq)
+        vals={"stator_d_current_a":id_,"stator_q_current_a":iq,"field_current_a":iff,"damper_d_current_a":ikd,"damper_q_current_a":ikq,
+          "rotor_angle_rad":angle,"rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),
+          "synchronous_speed_error_rad_s":speed-2*np.pi*p.frequency_hz/p.pole_pairs,"electromagnetic_torque_nm":torque,
+          "winding_temperature_c":temp,"stator_copper_loss_w":1.5*p.stator_resistance_ohm*(id_**2+iq**2),
+          "field_copper_loss_w":p.field_resistance_ohm*iff**2,"damper_copper_loss_w":p.damper_d_resistance_ohm*ikd**2+p.damper_q_resistance_ohm*ikq**2,
+          "mechanical_output_power_w":torque*speed,"load_torque_nm":self.load_torque_nm,"field_voltage_v":self.field_voltage_v,
+          "stator_voltage_d_v":self.stator_voltage_d_v,"stator_voltage_q_v":self.stator_voltage_q_v}
+        for v in vals.values(): v.setflags(write=False)
+        return vals
+
+
+def solve_wound_field_synchronous_transient_cpu(motor_id,parameters,duration_s,step_s,*,stator_voltage_d_v,stator_voltage_q_v,field_voltage_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,WoundFieldSynchronousParameters): raise TypeError("parameters must be WoundFieldSynchronousParameters")
+    count,_=_validate_time(duration_s,step_s); p=parameters
+    profiles={}
+    for n,v in (("stator_voltage_d_v",stator_voltage_d_v),("stator_voltage_q_v",stator_voltage_q_v),("field_voltage_v",field_voltage_v),("load_torque_nm",load_torque_nm)):
+        if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        profiles[n]=np.full(count,float(v))
+    def deriv(x,u):
+        id_,iq,iff,ikd,ikq,angle,speed,temp=x
+        slip=speed-2*np.pi*p.frequency_hz/p.pole_pairs
+        psid=p.stator_d_inductance_h*id_+p.mutual_field_inductance_h*iff+p.mutual_damper_d_inductance_h*ikd
+        psiq=p.stator_q_inductance_h*iq+p.mutual_damper_q_inductance_h*ikq
+        did=(u[0]-p.stator_resistance_ohm*id_+slip*psiq)/p.stator_d_inductance_h
+        diq=(u[1]-p.stator_resistance_ohm*iq-slip*psid)/p.stator_q_inductance_h
+        diff=(u[2]-p.field_resistance_ohm*iff)/p.field_inductance_h
+        dikd=-p.damper_d_resistance_ohm*ikd/p.damper_d_inductance_h
+        dikq=-p.damper_q_resistance_ohm*ikq/p.damper_q_inductance_h
+        torque=1.5*p.pole_pairs*((p.stator_d_inductance_h-p.stator_q_inductance_h)*id_*iq+p.mutual_field_inductance_h*iff*iq)
+        loss=1.5*p.stator_resistance_ohm*(id_**2+iq**2)+p.field_resistance_ohm*iff**2+p.damper_d_resistance_ohm*ikd**2+p.damper_q_resistance_ohm*ikq**2
+        return np.asarray((did,diq,diff,dikd,dikq,speed,(torque-u[3]-p.friction_n_m_s*speed)/p.inertia_kg_m2,(loss-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k),dtype=np.float64)
+    initial=np.asarray((0.,0.,0.,0.,0.,0.,p.initial_speed_rad_s,p.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="wound_field_synchronous_damper_single",derivative=deriv,initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+      input_at=lambda i,_t:(profiles["stator_voltage_d_v"][i],profiles["stator_voltage_q_v"][i],profiles["field_voltage_v"][i],profiles["load_torque_nm"][i]),precision="float64")
+    r=solve_numerical_problem(problem)
+    if r.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected synchronous motor sample count")
+    return WoundFieldSynchronousSimulationResult(motor_id.strip(),r.time_s,r.state_data,profiles["stator_voltage_d_v"],profiles["stator_voltage_q_v"],profiles["field_voltage_v"],profiles["load_torque_nm"],r.sample_period_s,"cpu-rk4",
+      {"integrator":r.integrator,"precision":"float64","workload":"wound_field_synchronous_damper_single","model":"experimental_rotor_dq_wound_field_damper_envelope","model_fidelity":"damper_induced_emf_and_full_flux_matrix_not_resolved","integration_engine":"core.numerics.ode.solve_rk4"})
