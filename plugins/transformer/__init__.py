@@ -10,7 +10,7 @@ from .vector_group import VectorGroup
 from .grounding import Grounding
 from .tap_changer import TapChanger
 from .equivalent import TransformerEquivalent
-from .profile import TransformerProfile, TransformerFamily, InsulationSystem, CoolingMethod
+from .profile import TransformerProfile, TransformerFamily, InsulationSystem, CoolingMethod, validate_transformer_profile_windings
 from .measurement_binding import (
     TransformerMeasurementBinding,
     resolve_transformer_measurement_bindings,
@@ -18,15 +18,15 @@ from .measurement_binding import (
 from .telemetry import (
     ChannelDefinition, MeasurementQuality, SignalKind, TelemetrySample,
     TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
-    validate_transformer_snapshot,
+    build_transformer_channel_catalogue_for_core, validate_transformer_snapshot,
 )
 
 __all__ = [
     "TransformerPlugin", "Winding", "VectorGroup", "Grounding", "TapChanger",
     "TransformerEquivalent", "TransformerProfile", "TransformerFamily",
-    "InsulationSystem", "CoolingMethod", "ChannelDefinition",
+    "InsulationSystem", "CoolingMethod", "validate_transformer_profile_windings", "ChannelDefinition",
     "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
-    "TransformerQuantity", "build_transformer_channel_catalogue",
+    "TransformerQuantity", "build_transformer_channel_catalogue", "build_transformer_channel_catalogue_for_core",
     "validate_transformer_snapshot",
     "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
