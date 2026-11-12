@@ -47,6 +47,10 @@ from .excitation_handoff import (
     build_generator_excitation_snapshot,
 )
 from .avr_component import AVRComponentBindingError, FirstOrderAVRStateComponent
+from .integrator_adapter import (
+    GeneratorAugmentedIntegratorError, GeneratorAugmentedStepResult,
+    GeneratorAugmentedDAEAdapter,
+)
 from .stage_evaluation import (
     GeneratorDynamicStageError, GeneratorDynamicStageResult,
     TerminalVoltageProjector, ElectricalPowerEvaluator,
@@ -54,6 +58,8 @@ from .stage_evaluation import (
 )
 from .network_stage import (
     GeneratorNetworkStageError,
+    GeneratorNetworkConvergenceEvidence,
+    GeneratorNetworkSolveResult,
     GeneratorNetworkStageRequest,
     GeneratorNetworkStageSolution,
     GeneratorNetworkSolver,
@@ -84,10 +90,13 @@ __all__ = [
     "ExcitationHandoffError", "AVRGeneratorBinding",
     "GeneratorExcitationSnapshot", "build_generator_excitation_snapshot",
     "AVRComponentBindingError", "FirstOrderAVRStateComponent",
+    "GeneratorAugmentedIntegratorError", "GeneratorAugmentedStepResult",
+    "GeneratorAugmentedDAEAdapter",
     "GeneratorDynamicStageError", "GeneratorDynamicStageResult",
     "TerminalVoltageProjector", "ElectricalPowerEvaluator",
     "GeneratorMachineDerivativeEvaluator", "evaluate_generator_dynamic_stage",
-    "GeneratorNetworkStageError", "GeneratorNetworkStageRequest",
+    "GeneratorNetworkStageError", "GeneratorNetworkConvergenceEvidence",
+    "GeneratorNetworkSolveResult", "GeneratorNetworkStageRequest",
     "GeneratorNetworkStageSolution", "GeneratorNetworkSolver",
     "solve_generator_network_stage",
     "generator_measurement_contracts", "generator_model_capability",
