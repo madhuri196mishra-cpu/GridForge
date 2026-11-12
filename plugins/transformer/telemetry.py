@@ -239,16 +239,19 @@ def build_transformer_channel_catalogue(
             TransformerQuantity.HYDROGEN, TransformerQuantity.METHANE,
             TransformerQuantity.ETHANE, TransformerQuantity.ETHYLENE,
             TransformerQuantity.ACETYLENE, TransformerQuantity.CARBON_MONOXIDE,
-            TransformerQuantity.CARBON_DIOXIDE,
+            TransformerQuantity.CARBON_DIOXIDE, TransformerQuantity.DISSOLVED_OXYGEN,
+            TransformerQuantity.DISSOLVED_NITROGEN,
         }: continue
         if not include_oltc and quantity in {
             TransformerQuantity.TAP_POSITION, TransformerQuantity.TAP_MOTOR_CURRENT,
-            TransformerQuantity.TAP_OPERATION_COUNT,
+            TransformerQuantity.TAP_OPERATION_COUNT, TransformerQuantity.TAP_TRANSITION_TIME,
+            TransformerQuantity.TAP_CONTACT_RESISTANCE,
         }: continue
         if not include_partial_discharge and quantity is TransformerQuantity.PARTIAL_DISCHARGE:
             continue
         if not include_bushing_monitoring and quantity in {
             TransformerQuantity.INSULATION_POWER_FACTOR, TransformerQuantity.CAPACITANCE,
+            TransformerQuantity.BUSHING_LEAKAGE_CURRENT,
         }: continue
         add(quantity, unit, subsystem, quantity.value, kind=kind, sensor=sensor)
     return tuple(result)
