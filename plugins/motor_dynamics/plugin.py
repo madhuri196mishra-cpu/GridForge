@@ -18,6 +18,7 @@ from .commands import (
 if TYPE_CHECKING:
     from .dashboard import MotorTelemetryDashboardWidget
 from .persistence import MotorPluginPersistenceHandler
+from plugins.electrical_dynamics.composition import require_electrical_dynamics_composition
 from .read_models import MotorSimulationReadModelStore
 from .study_handler import MotorTransientResultPublisher, MotorTransientStudyHandler
 from core.application.events import StudyCancelled, StudyCompleted, StudyFailed, StudyStarted
@@ -130,7 +131,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
         services = getattr(context, "services", None)
         if not isinstance(services, Mapping):
             raise TypeError("PluginContext.services must be a mapping")
-        composition = services.get("electrical_dynamics_composition")
+        composition = require_electrical_dynamics_composition(services)
         if composition is None:
             raise RuntimeError(
                 "Motor dynamics cannot be activated until PluginContext.services "
