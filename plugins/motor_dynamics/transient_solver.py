@@ -2071,3 +2071,102 @@ def solve_wound_field_synchronous_transient_cpu(motor_id,parameters,duration_s,s
     if r.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected synchronous motor sample count")
     return WoundFieldSynchronousSimulationResult(motor_id.strip(),r.time_s,r.state_data,profiles["stator_voltage_d_v"],profiles["stator_voltage_q_v"],profiles["field_voltage_v"],profiles["load_torque_nm"],r.sample_period_s,"cpu-rk4",
       {"integrator":r.integrator,"precision":"float64","workload":"wound_field_synchronous_damper_single","model":"experimental_rotor_dq_wound_field_damper_envelope","model_fidelity":"damper_induced_emf_and_full_flux_matrix_not_resolved","integration_engine":"core.numerics.ode.solve_rk4"})
+
+
+@dataclass(frozen=True)
+class HysteresisMotorParameters:
+    """Averaged synchronous torque-angle approximation for a hysteresis motor."""
+    pole_pairs: int
+    rated_voltage_rms_v: float
+    frequency_hz: float
+    pullout_torque_nm: float
+    inertia_kg_m2: float
+    viscous_friction_n_m_s: float = 0.0
+    thermal_capacity_j_k: float = 8000.0
+    thermal_conductance_w_k: float = 25.0
+    rotor_loss_fraction: float = 0.08
+    ambient_temperature_c: float = 25.0
+    initial_speed_rad_s: float = 0.0
+    initial_load_angle_rad: float = 0.0
+    initial_temperature_c: float = 25.0
+
+    def __post_init__(self):
+        if isinstance(self.pole_pairs,bool) or not isinstance(self.pole_pairs,int) or self.pole_pairs<1: raise ValueError("pole_pairs must be a positive integer")
+        for n in ("rated_voltage_rms_v","frequency_hz","pullout_torque_nm","inertia_kg_m2","thermal_capacity_j_k"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)) or v<=0: raise ValueError(f"{n} must be finite and positive")
+        for n in ("viscous_friction_n_m_s","thermal_conductance_w_k","rotor_loss_fraction","ambient_temperature_c","initial_speed_rad_s","initial_load_angle_rad","initial_temperature_c"):
+            v=getattr(self,n)
+            if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        if self.viscous_friction_n_m_s<0 or self.thermal_conductance_w_k<0 or not 0<=self.rotor_loss_fraction<=1: raise ValueError("friction/conductance must be non-negative and rotor_loss_fraction must be in [0,1]")
+
+
+@dataclass(frozen=True)
+class HysteresisMotorSimulationResult:
+    motor_id: str
+    time_s: np.ndarray
+    state_data: np.ndarray
+    supply_voltage_rms_v: np.ndarray
+    load_torque_nm: np.ndarray
+    sample_period_s: float
+    backend: str
+    diagnostics: Mapping[str, Any]
+
+    def __post_init__(self):
+        if not isinstance(self.motor_id,str) or not self.motor_id.strip(): raise ValueError("motor_id must be non-empty")
+        for n in ("time_s","state_data","supply_voltage_rms_v","load_torque_nm"):
+            v=np.asarray(getattr(self,n),dtype=np.float64).reshape(-1).copy()
+            if not np.isfinite(v).all(): raise ValueError(f"{n} must be finite")
+            v.setflags(write=False); object.__setattr__(self,n,v)
+        n=self.time_s.size
+        if self.state_data.size!=n*4 or self.supply_voltage_rms_v.size!=n or self.load_torque_nm.size!=n: raise ValueError("hysteresis result arrays must align")
+        object.__setattr__(self,"diagnostics",MappingProxyType(dict(self.diagnostics)))
+    @property
+    def sample_count(self): return int(self.time_s.size)
+    @property
+    def state_names(self): return ("rotor_speed_rad_s","rotor_electrical_angle_rad","load_angle_rad","rotor_temperature_c")
+    def state(self,name):
+        try: i=self.state_names.index(name)
+        except ValueError as exc: raise KeyError(name) from exc
+        v=self.state_data.reshape(self.sample_count,4)[:,i].view(); v.setflags(write=False); return v
+    def channels(self,p):
+        speed,rotor_angle,delta,temp=self.state_data.reshape(self.sample_count,4).T
+        voltage_ratio=self.supply_voltage_rms_v/p.rated_voltage_rms_v
+        torque=p.pullout_torque_nm*np.minimum(voltage_ratio**2,1.5)*np.sin(delta)
+        sync_speed=2*np.pi*p.frequency_hz/p.pole_pairs
+        margin=p.pullout_torque_nm*np.minimum(voltage_ratio**2,1.5)-np.abs(self.load_torque_nm)
+        vals={"rotor_speed_rad_s":speed,"rotor_speed_rpm":speed*60/(2*np.pi),"rotor_electrical_angle_rad":rotor_angle,
+          "load_angle_rad":delta,"electromagnetic_torque_nm":torque,"synchronous_speed_error_rad_s":speed-sync_speed,
+          "pullout_torque_margin_nm":margin,"supply_voltage_rms_v":self.supply_voltage_rms_v,
+          "rotor_loss_w":p.rotor_loss_fraction*np.abs(torque*speed),"rotor_temperature_c":temp,
+          "load_torque_nm":self.load_torque_nm,"mechanical_output_power_w":torque*speed}
+        for v in vals.values(): v.setflags(write=False)
+        return vals
+
+
+def solve_hysteresis_motor_transient_cpu(motor_id,parameters,duration_s,step_s,*,supply_voltage_rms_v,load_torque_nm=0.0):
+    if not isinstance(motor_id,str) or not motor_id.strip(): raise ValueError("motor_id must be non-empty")
+    if not isinstance(parameters,HysteresisMotorParameters): raise TypeError("parameters must be HysteresisMotorParameters")
+    count,_=_validate_time(duration_s,step_s); p=parameters
+    profiles={}
+    for n,v in (("supply_voltage_rms_v",supply_voltage_rms_v),("load_torque_nm",load_torque_nm)):
+        if not _is_numeric_scalar(v) or not isfinite(float(v)): raise ValueError(f"{n} must be finite and numeric")
+        if n=="supply_voltage_rms_v" and v<0: raise ValueError("supply_voltage_rms_v must be non-negative")
+        profiles[n]=np.full(count,float(v))
+    sync=2*np.pi*p.frequency_hz/p.pole_pairs
+    def deriv(x,u):
+        speed,rotor_angle,delta,temp=x
+        ratio=min(u[0]/p.rated_voltage_rms_v,np.sqrt(1.5))
+        torque=p.pullout_torque_nm*ratio**2*np.sin(delta)
+        loss=p.rotor_loss_fraction*abs(torque*speed)
+        return np.asarray(((torque-u[1]-p.viscous_friction_n_m_s*speed)/p.inertia_kg_m2,
+          p.pole_pairs*speed,sync-p.pole_pairs*speed,
+          (loss-p.thermal_conductance_w_k*(temp-p.ambient_temperature_c))/p.thermal_capacity_j_k),dtype=np.float64)
+    initial=np.asarray((p.initial_speed_rad_s,p.pole_pairs*p.initial_speed_rad_s*0.0,p.initial_load_angle_rad,p.initial_temperature_c))
+    problem=NumericalProblem(problem_id=motor_id.strip(),workload="hysteresis_motor_torque_angle_single",derivative=deriv,
+      initial_state=initial,duration_s=duration_s,maximum_step_s=step_s,
+      input_at=lambda i,_t:(profiles["supply_voltage_rms_v"][i],profiles["load_torque_nm"][i]),precision="float64")
+    r=solve_numerical_problem(problem)
+    if r.sample_count!=count: raise RuntimeError("shared ODE engine returned an unexpected hysteresis motor sample count")
+    return HysteresisMotorSimulationResult(motor_id.strip(),r.time_s,r.state_data,profiles["supply_voltage_rms_v"],profiles["load_torque_nm"],r.sample_period_s,"cpu-rk4",
+      {"integrator":r.integrator,"precision":"float64","workload":"hysteresis_motor_torque_angle_single","model":"averaged_synchronous_torque_angle","model_fidelity":"not_a_material_hysteresis_or_asynchronous_pullin_model","synchronous_speed_rad_s":sync,"integration_engine":"core.numerics.ode.solve_rk4"})
