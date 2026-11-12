@@ -3182,6 +3182,7 @@ GridForge V2 — Controlled root-main reconciliation (partial, source-reviewed)
 Date: 2026-11-12
 Repository: madhuri196mishra-cpu/GridForge
 Branch: sync/root-main-controlled-reconciliation-2026-11-12
+Pull request: #221 (open, not merged)
 Authoritative root main: c75b3a43ce4125d787dc9bd584313430d95d9691
 Madhuri main: 7a9f5374d5f121dc4a81b3e1571f9d8cddbba263
 Common ancestor: 070d1db89c7452b17c493da2c718f82f3ae1b31a
