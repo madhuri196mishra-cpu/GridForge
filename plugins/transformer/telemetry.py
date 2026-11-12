@@ -273,53 +273,64 @@ def publish_transformer_sensor_snapshot(
     snapshot: TelemetrySnapshot,
     catalogue: Iterable[ChannelDefinition],
     *,
+    bindings: Iterable[object],
+    measurement_channels: Mapping[str, object],
+    instrumentation: object,
     attestations: Mapping[str, object],
     publish_sample: Callable[..., object],
 ) -> tuple[object, ...]:
-    """Hand attested physical sensor samples to Application's canonical ingress.
+    """Publish attested physical sensor samples through canonical Application ingress.
 
-    This is an adapter only: it creates no producer identity, signature,
-    clock authority, activation generation, channel registry, or sample state.
-    The deployment producer adapter must supply one already-authenticated
-    MeasurementSampleAttestation per sample. Application remains responsible
-    for signature verification, project/generation binding, trusted clock and
-    monotonic sequence enforcement.
-
-    Timestamps are required to represent UTC Unix seconds, matching the
-    canonical Application measurement clock domain configured by the host.
+    Binding IDs are translated explicitly from plugin telemetry point IDs to
+    canonical Core MeasurementChannel IDs. Attestations are keyed by and must
+    identify those Core channel IDs, never an untrusted plugin-local alias.
     """
     from math import isclose
+    from .measurement_binding import resolve_transformer_measurement_bindings
 
     if not isinstance(attestations, Mapping):
-        raise TypeError("attestations must map channel IDs to signed producer attestations.")
+        raise TypeError("attestations must map Core channel IDs to signed producer attestations.")
+    if not isinstance(measurement_channels, Mapping):
+        raise TypeError("measurement_channels must be the active Application channel mapping.")
     if not callable(publish_sample):
         raise TypeError("publish_sample must be the canonical Application sample-ingress callable.")
 
     points = tuple(catalogue)
     validate_transformer_snapshot(snapshot, points)
-    by_id = {point.channel_id: point for point in points}
-    sample_ids = {sample.channel_id for sample in snapshot.samples}
-    if set(attestations) != sample_ids:
-        raise ValueError("Exactly one producer attestation is required for every snapshot sample.")
+    resolved = resolve_transformer_measurement_bindings(
+        points,
+        bindings,
+        measurement_channels,
+        instrumentation=instrumentation,
+    )
+    core_by_point = {point.channel_id: channel for point, channel in resolved}
+    sample_points = {sample.channel_id for sample in snapshot.samples}
+    if not sample_points.issubset(core_by_point):
+        missing = sorted(sample_points - set(core_by_point))
+        raise ValueError(f"Transformer telemetry samples have no explicit Core channel binding: {missing!r}.")
+    if any(
+        by_id.sensor_type is None or by_id.signal_kind is SignalKind.ESTIMATED
+        for by_id in (point for point in points if point.channel_id in sample_points)
+    ):
+        raise ValueError("Only declared physical sensor points can use the physical sensor handoff.")
+
+    core_ids = {str(getattr(core_by_point[point_id], "id", "")) for point_id in sample_points}
+    if "" in core_ids or len(core_ids) != len(sample_points):
+        raise ValueError("Resolved Core channels must expose unique canonical IDs.")
+    if set(attestations) != core_ids:
+        raise ValueError("Exactly one producer attestation keyed by Core channel ID is required per sample.")
 
     results: list[object] = []
     for sample in snapshot.samples:
-        point = by_id[sample.channel_id]
-        if point.sensor_type is None or point.signal_kind is SignalKind.ESTIMATED:
-            raise ValueError(
-                f"Telemetry point {sample.channel_id!r} is not a declared physical sensor channel."
-            )
-        if sample.sequence is None:
-            raise ValueError(
-                f"Physical sensor sample {sample.channel_id!r} requires an explicit producer sequence."
-            )
-        attestation = attestations[sample.channel_id]
+        channel = core_by_point[sample.channel_id]
+        core_channel_id = str(channel.id)
+        attestation = attestations[core_channel_id]
         expected_quality = sample.core_quality
         expected_available = sample.available
-        if getattr(attestation, "channel_id", None) != sample.channel_id:
-            raise ValueError("Producer attestation channel identity does not match its telemetry sample.")
-        if getattr(attestation, "sample_sequence", None) != sample.sequence:
-            raise ValueError("Producer attestation sequence does not match its telemetry sample.")
+        if getattr(attestation, "channel_id", None) != core_channel_id:
+            raise ValueError("Producer attestation channel identity does not match its resolved Core channel.")
+        if getattr(attestation, "sample_sequence", None) != sample.sequence or sample.sequence is None:
+            raise ValueError("Physical sensor sample and attestation require the same explicit producer sequence.")
         if getattr(attestation, "quality", None) is not expected_quality:
             raise ValueError("Producer attestation quality does not match its telemetry sample.")
         if getattr(attestation, "available", None) is not expected_available:
@@ -338,12 +349,10 @@ def publish_transformer_sensor_snapshot(
                 abs_tol=1e-6,
             )
         ):
-            raise ValueError(
-                "Producer attestation timestamp must match the sample's UTC Unix timestamp."
-            )
+            raise ValueError("Producer attestation timestamp must match the sample's UTC Unix timestamp.")
         results.append(
             publish_sample(
-                sample.channel_id,
+                core_channel_id,
                 sample.value,
                 attestation=attestation,
                 quality=expected_quality,
@@ -352,6 +361,48 @@ def publish_transformer_sensor_snapshot(
         )
     return tuple(results)
 
+
+def publish_active_transformer_sensor_snapshot(
+    application: object,
+    snapshot: TelemetrySnapshot,
+    catalogue: Iterable[ChannelDefinition],
+    *,
+    bindings: Iterable[object],
+    attestations: Mapping[str, object],
+) -> tuple[object, ...]:
+    """Resolve active project authorities and publish through Application.
+
+    Intended for a transformer plugin initialized with the host-created
+    EngineeringPluginContext. It fails closed when project, Network,
+    instrumentation, or MeasurementChannel activation identities disagree.
+    """
+    from core.application.instrumentation import ProjectInstrumentationCollection
+
+    lifecycle = getattr(application, "project_lifecycle", None)
+    context = getattr(lifecycle, "context", None)
+    network = getattr(lifecycle, "network", None)
+    service = getattr(application, "measurement_channel_service", None)
+    instrumentation = getattr(application, "instrumentation_collection", None)
+    if context is None or network is None or service is None:
+        raise RuntimeError("Transformer telemetry publication requires an active Application project.")
+    if not isinstance(instrumentation, ProjectInstrumentationCollection):
+        raise RuntimeError("Active Application project has no canonical instrumentation collection.")
+    if (
+        instrumentation.project_id != context.project_id
+        or service.project_id != context.project_id
+        or service.network is not network
+        or service.activation_generation <= 0
+    ):
+        raise RuntimeError("Application project, instrumentation and measurement activation identities disagree.")
+    return publish_transformer_sensor_snapshot(
+        snapshot,
+        catalogue,
+        bindings=bindings,
+        measurement_channels=service.channels,
+        instrumentation=instrumentation,
+        attestations=attestations,
+        publish_sample=service.publish_sample,
+    )
 
 def validate_transformer_snapshot(
     snapshot: TelemetrySnapshot,
