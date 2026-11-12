@@ -3175,3 +3175,31 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+======================================================================
+GridForge V2 — Reconciliation: Atomic multi-equipment engineering updates
+Date: 12 November 2026
+Implementation: madhuri196mishra-cpu/GridForge
+Source work: PR #214 (preserved); reconciled on current main
+
+- Ported the Application-owned engineering batch preparation and immutable
+  aggregate command path from PR #214 onto a fresh branch based on current
+  implementation main. The original PR and its branch remain preserved.
+- Retained one canonical Application preparation boundary: all selected
+  targets must be committed equipment of one compatible type; each parameter
+  must be editable, non-derived, and non-topology-impacting; each child update
+  is prepared before one aggregate execution.
+- Reconciled the batch handler with the current command/event architecture.
+  Child updates share the existing Application transaction and history entry;
+  semantic model events are emitted with batch and child provenance.
+- Added multi-selection projection and the contextual engineering parameter
+  table while preserving the existing single-target inspector and CT channel
+  editor. Batch state is cleared when selection or creation mode changes.
+- Tightened handler validation so a directly constructed aggregate command
+  cannot mix incompatible canonical model update command types.
+- No Core equipment identity, MeasurementChannel authority, Application
+  lifecycle, or alternate command/transaction authority was introduced.
+- Verification: source-level patch application and GitHub fetch-back. Tests,
+  CI, GUI, startup, and runtime experiments were not run in this reconciliation.
+
+======================================================================
