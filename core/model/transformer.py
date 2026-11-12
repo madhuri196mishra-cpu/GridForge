@@ -263,6 +263,7 @@ class Transformer(Branch):
         self._hv_phase_roles = self._validate_winding_phase_roles(hv_phase_roles, "HV")
         self._lv_phase_roles = self._validate_winding_phase_roles(lv_phase_roles, "LV")
         self._hv_terminal_role, self._lv_terminal_role = self._validate_terminal_mapping(hv_terminal_role, lv_terminal_role)
+        self._validate_explicit_winding_compatibility()
         self._impedance_reference_winding = self._normalize_reference_winding(impedance_reference_winding)
         self._zero_sequence_resistance_ohm, self._zero_sequence_reactance_ohm = self._validate_zero_sequence_impedance(zero_sequence_resistance_ohm, zero_sequence_reactance_ohm)
         self._core_construction = self._normalize_core_construction(core_construction)
@@ -326,6 +327,20 @@ class Transformer(Branch):
                 raise ValueError("Transformer winding roles must be unique.")
             records = tuple(sorted(records, key=lambda item: item.sequence))
         return records
+
+    def _validate_explicit_winding_compatibility(self) -> None:
+        """Prevent explicit HV/LV records from contradicting legacy solver inputs."""
+        records = getattr(self, "_windings", ())
+        if not records:
+            return
+        by_role = {item.role.upper(): item for item in records}
+        for role, connection, phases, neutral, terminal in (
+            ("HV", self._hv_winding_connection, self._hv_phase_roles, self._hv_neutral_terminal_role, self._hv_terminal_role),
+            ("LV", self._lv_winding_connection, self._lv_phase_roles, self._lv_neutral_terminal_role, self._lv_terminal_role),
+        ):
+            record = by_role[role]
+            if (record.connection, record.phase_roles, record.neutral_terminal_role, record.terminal_role) != (connection, phases, neutral, terminal):
+                raise ValueError(f"Explicit {role} winding record must exactly match the established Core {role} configuration.")
 
     @property
     def windings(self) -> tuple[TransformerWinding, ...]:
