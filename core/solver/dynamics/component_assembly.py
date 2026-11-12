@@ -47,6 +47,7 @@ class DynamicComponentBinding:
     terminal_id: str
     equipment_type: EquipmentType = EquipmentType.GENERATOR
     equipment_id: str | None = None
+    terminal_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("component_id", "bus_id", "terminal_id"):
@@ -72,6 +73,15 @@ class DynamicComponentBinding:
         if not isinstance(equipment_id, str) or not equipment_id.strip():
             raise DynamicComponentAssemblyError("equipment_id must be a non-empty canonical Core identity")
         object.__setattr__(self, "equipment_id", equipment_id.strip())
+        terminals = tuple(self.terminal_ids) if self.terminal_ids else (self.terminal_id,)
+        if any(not isinstance(value, str) or not value.strip() for value in terminals):
+            raise DynamicComponentAssemblyError("terminal_ids must contain non-empty Core terminal identities")
+        terminals = tuple(value.strip() for value in terminals)
+        if len(terminals) != len(set(terminals)):
+            raise DynamicComponentAssemblyError("terminal_ids must be unique per equipment binding")
+        if self.terminal_id not in terminals:
+            raise DynamicComponentAssemblyError("terminal_ids must include the primary terminal_id")
+        object.__setattr__(self, "terminal_ids", terminals)
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,7 +219,7 @@ def evaluate_dynamic_components(
                 )
             mechanical_outputs[machine_id] = power
         for injection in result.terminal_injections:
-            if injection.terminal_id != binding.terminal_id:
+            if injection.terminal_id not in binding.terminal_ids:
                 raise DynamicComponentAssemblyError(
                     f"component {component_id!r} cannot inject at unbound terminal {injection.terminal_id!r}"
                 )
