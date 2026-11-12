@@ -43,6 +43,7 @@ class MeasurementSampleAttestation:
     channel_id: str
     quality: MeasurementQuality
     available: bool
+    diagnostic_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("producer_id", "project_id", "timestamp_domain", "signature", "channel_id"):
@@ -59,6 +60,14 @@ class MeasurementSampleAttestation:
             raise TypeError("quality must be a MeasurementQuality.")
         if not isinstance(self.available, bool):
             raise TypeError("available must be bool.")
+        if isinstance(self.diagnostic_codes, (str, bytes)):
+            raise TypeError("diagnostic_codes must be a tuple of canonical strings.")
+        codes = tuple(self.diagnostic_codes)
+        if any(not isinstance(code, str) or not code.strip() or code != code.strip() for code in codes):
+            raise ValueError("diagnostic_codes must contain canonical non-empty strings.")
+        if len(set(codes)) != len(codes):
+            raise ValueError("diagnostic_codes cannot contain duplicates.")
+        object.__setattr__(self, "diagnostic_codes", codes)
 
 
 class MeasurementChannelService:
@@ -219,6 +228,7 @@ class MeasurementChannelService:
                 quality=quality,
                 available=available,
                 sample_sequence=attestation.sample_sequence,
+                diagnostic_codes=attestation.diagnostic_codes,
             )
             handler = self._sample_published_handler
             if handler is not None:
