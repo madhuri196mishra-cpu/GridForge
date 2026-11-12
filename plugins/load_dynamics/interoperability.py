@@ -23,10 +23,11 @@ PLUGIN_ID = "gridforge.plugin.load_dynamics"
 class LoadPhaseTerminal:
     """Host-resolved terminal/phase mapping and electrical per-unit bases.
 
-    terminal_voltage_v and phase_voltage_base_v must use the same branch
-    voltage definition (line-neutral, line-line, delta branch or DC pair).
-    phase_power_base_va is the matching per-branch apparent-power base.
-    power_share allocates the equipment's total demand across its branches.
+    terminal_voltage_v and phase_voltage_base_v use the same branch voltage
+    definition. For a two-terminal branch, terminal_voltage_v is the oriented
+    source-to-return voltage and the optional return fields identify the
+    opposite nodal current injection. phase_power_base_va is the matching
+    per-branch apparent-power base. power_share allocates total demand.
     """
 
     injection_id: str
@@ -36,6 +37,9 @@ class LoadPhaseTerminal:
     phase_voltage_base_v: float
     phase_power_base_va: float
     power_share: float
+    return_terminal_id: str | None = None
+    return_phase_id: str | None = None
+    return_injection_id: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("injection_id", "terminal_id", "phase_id"):
@@ -59,6 +63,20 @@ class LoadPhaseTerminal:
             if name == "power_share" and not 0.0 < value <= 1.0:
                 raise ValueError("power_share must be in (0, 1]")
             object.__setattr__(self, name, float(value))
+        return_values = (
+            self.return_terminal_id, self.return_phase_id, self.return_injection_id
+        )
+        if any(value is not None for value in return_values):
+            if any(not isinstance(value, str) or not value.strip() for value in return_values):
+                raise ValueError(
+                    "return_terminal_id, return_phase_id and return_injection_id "
+                    "must be supplied together"
+                )
+            if self.return_terminal_id.strip() == self.terminal_id:
+                raise ValueError("source and return terminals must be different")
+            object.__setattr__(self, "return_terminal_id", self.return_terminal_id.strip())
+            object.__setattr__(self, "return_phase_id", self.return_phase_id.strip())
+            object.__setattr__(self, "return_injection_id", self.return_injection_id.strip())
 
 
 def evaluate_zip_terminal_injections(
@@ -71,11 +89,12 @@ def evaluate_zip_terminal_injections(
 ) -> tuple[DynamicTerminalInjection, ...]:
     """Evaluate a ZIP load as phase-resolved network current injections.
 
-    The host supplies the canonical terminal-to-branch mapping and matching
-    voltage/apparent-power bases. Shares must allocate the total load demand
-    exactly once. Positive injection is equipment-to-network, so consuming
-    load current is negative. This is a reduced ZIP representation, not a
-    detailed motor, converter, furnace or unbalanced device model.
+    The host supplies canonical terminal-to-branch mapping, source/return
+    orientation and matching voltage/apparent-power bases. Shares allocate
+    total load demand exactly once. Source-node current is negative and
+    return-node current positive under the equipment-to-network injection
+    convention. This is a reduced ZIP representation, not a detailed motor,
+    converter, furnace or unbalanced device model.
     """
     if not isinstance(nameplate, LoadNameplate):
         raise TypeError("nameplate must be LoadNameplate")
@@ -88,17 +107,21 @@ def evaluate_zip_terminal_injections(
     phases = tuple(phase_terminals)
     if not phases or any(not isinstance(item, LoadPhaseTerminal) for item in phases):
         raise ValueError("phase_terminals must contain LoadPhaseTerminal values")
-    injection_ids = [item.injection_id for item in phases]
+    injection_ids = []
+    for item in phases:
+        injection_ids.append(item.injection_id)
+        if item.return_injection_id is not None:
+            injection_ids.append(item.return_injection_id)
     if len(injection_ids) != len(set(injection_ids)):
-        raise ValueError("load phase injection IDs must be unique")
+        raise ValueError("load phase source/return injection IDs must be unique")
     if abs(sum(item.power_share for item in phases) - 1.0) > 1e-9:
         raise ValueError("phase power shares must sum to 1.0 to avoid duplicate or omitted demand")
 
     p0_kw = nameplate.rated_active_power_kw
-    if nameplate.connection in {LoadConnection.DC_TWO_WIRE, LoadConnection.DC_THREE_WIRE}:
-        q0_kvar = 0.0
-    else:
-        q0_kvar = p0_kw * tan(acos(nameplate.rated_power_factor))
+    is_dc = nameplate.connection in {LoadConnection.DC_TWO_WIRE, LoadConnection.DC_THREE_WIRE}
+    if is_dc and any(item.return_terminal_id is None for item in phases):
+        raise ValueError("DC load branches require explicit source and return terminal mappings")
+    q0_kvar = 0.0 if is_dc else p0_kw * tan(acos(nameplate.rated_power_factor))
     active_multiplier, reactive_multiplier = (
         profile.multipliers(float(time_s)) if profile is not None else (1.0, 1.0)
     )
@@ -116,12 +139,20 @@ def evaluate_zip_terminal_injections(
         q_var = q_kvar * 1000.0 * reactive_multiplier * phase.power_share
         apparent_power_pu = complex(p_va, q_var) / phase.phase_power_base_va
         current_injection_pu = -complex(apparent_power_pu / voltage_pu).conjugate()
+        branch_current_pu = complex(apparent_power_pu / voltage_pu).conjugate()
         result.append(DynamicTerminalInjection(
             injection_id=phase.injection_id,
             terminal_id=phase.terminal_id,
             phase_id=phase.phase_id,
-            current_injection_pu=current_injection_pu,
+            current_injection_pu=-branch_current_pu,
         ))
+        if phase.return_terminal_id is not None:
+            result.append(DynamicTerminalInjection(
+                injection_id=phase.return_injection_id,
+                terminal_id=phase.return_terminal_id,
+                phase_id=phase.return_phase_id,
+                current_injection_pu=branch_current_pu,
+            ))
     return tuple(result)
 
 
