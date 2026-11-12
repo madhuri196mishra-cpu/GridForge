@@ -38,6 +38,27 @@ def test_plan_rejects_non_finite_geometry() -> None:
         DrawingEntity("e1", "LINE", "WIRE", {"start": [0.0, float("nan")]}, {})
 
 
+def test_validator_rejects_empty_sld_plan_without_entity_bound_mapping_provenance() -> None:
+    plan = DrawingPlan(
+        project_id="project-1",
+        export_id="export-empty-sld",
+        source_revision="revision-1",
+        symbol_profile=SymbolProfile.ANSI_IEEE,
+        drawing_types=("sld",),
+        entities=(),
+        coordinate_system="world",
+        units="mm",
+        source_kind="sld_export_snapshot",
+        source_id="document-1",
+        source_document_id="document-1",
+    )
+    with pytest.raises(
+        DrawingPlanValidationError,
+        match="SLD export plans require transformed entities carrying reviewed coordinate provenance",
+    ):
+        validate_drawing_plan(plan)
+
+
 def test_validator_rejects_duplicate_stable_entity_ids() -> None:
     first = DrawingEntity("same", "LINE", "WIRE", {"start": [0, 0], "end": [1, 1]}, {})
     second = DrawingEntity("same", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 1}, {})
