@@ -1,7 +1,7 @@
 """Pure evaluation boundary for registered dynamic-state extensions.
 
 This module evaluates component derivatives from one detached global-state
-snapshot and returns canonical machine power handoffs. It deliberately does
+snapshot and returns machine power handoffs plus terminal current injections. It deliberately does
 not invoke machine equations, solve the network, integrate, or commit sampled
 feedback; the host must coordinate those operations in one accepted-step-aware
 DAE evaluation.
@@ -13,6 +13,8 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 
 import numpy as np
+
+from core.model import EquipmentType
 
 from .component_contract import (
     DynamicComponentEvaluation,
@@ -34,7 +36,7 @@ class DynamicComponentBinding:
 
     Generator components retain the machine_id handoff. Motor and load
     components set machine_id=None and identify their Core equipment through
-    equipment_kind/equipment_id; they are never represented as synthetic
+    equipment_type/equipment_id; they are never represented as synthetic
     synchronous machines.
     """
 
@@ -42,7 +44,7 @@ class DynamicComponentBinding:
     machine_id: str | None
     bus_id: str
     terminal_id: str
-    equipment_kind: str = "generator"
+    equipment_type: EquipmentType = EquipmentType.GENERATOR
     equipment_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -51,15 +53,17 @@ class DynamicComponentBinding:
             if not isinstance(value, str) or not value.strip():
                 raise DynamicComponentAssemblyError(f"{name} must be a non-empty stable identity")
             object.__setattr__(self, name, value.strip())
-        if self.equipment_kind not in {"generator", "motor", "load"}:
-            raise DynamicComponentAssemblyError("equipment_kind must be generator, motor or load")
+        if not isinstance(self.equipment_type, EquipmentType):
+            raise DynamicComponentAssemblyError("equipment_type must be canonical Core EquipmentType")
+        if self.equipment_type not in {EquipmentType.GENERATOR, EquipmentType.MOTOR, EquipmentType.LOAD}:
+            raise DynamicComponentAssemblyError("equipment_type must identify a generator, motor or load")
         if self.machine_id is not None:
             if not isinstance(self.machine_id, str) or not self.machine_id.strip():
                 raise DynamicComponentAssemblyError("machine_id must be None or a non-empty identity")
-            if self.equipment_kind != "generator":
+            if self.equipment_type is not EquipmentType.GENERATOR:
                 raise DynamicComponentAssemblyError("only generator bindings may drive a machine state block")
             object.__setattr__(self, "machine_id", self.machine_id.strip())
-        elif self.equipment_kind == "generator":
+        elif self.equipment_type is EquipmentType.GENERATOR:
             raise DynamicComponentAssemblyError("generator bindings require a canonical machine_id")
         equipment_id = self.equipment_id
         if equipment_id is None:
@@ -71,7 +75,7 @@ class DynamicComponentBinding:
 
 @dataclass(frozen=True, slots=True)
 class DynamicComponentBatchEvaluation:
-    """Immutable component derivative blocks and machine power handoffs."""
+    """Immutable derivative blocks, machine handoffs and terminal injections."""
 
     component_derivatives: Mapping[str, tuple[float, ...]]
     mechanical_power_outputs_pu: Mapping[str, float]
@@ -122,9 +126,10 @@ def evaluate_dynamic_components(
     Each component receives its own immutable local state and the shared
     read-only study inputs. Its returned derivative must match its reserved
     state slice. A component may return mechanical power only for the machine
-    to which it is bound. Multiple components may not drive the same machine
-    in one evaluation; the host must define an explicit aggregation policy
-    before such a topology can be supported.
+    to which it is bound. Motor/load components bind directly to their Core
+    equipment identities and may emit terminal current injections only at the
+    bound terminal. Multiple controllers may share one generator, but only one
+    may provide its mechanical-power handoff in an evaluation.
     """
     if not isinstance(layout, DynamicSystemStateLayout):
         raise TypeError("layout must be DynamicSystemStateLayout")
