@@ -220,3 +220,34 @@ The limits are interpreted in the physical interface's declared unit; this
 does not apply additional conversion or calibration. Instrument scaling,
 ratio correction, calibration uncertainty, alarm thresholds, and sensor
 diagnostics remain separate engineering responsibilities.
+
+## Transformer quality and diagnostics on the canonical MeasurementChannel
+
+Transformer telemetry quality is not retained only in plugin snapshots.
+`to_core_measurement_quality()` maps the transformer source quality into
+Core's canonical `MeasurementQuality`:
+- GOOD → GOOD
+- UNCERTAIN → SUSPECT
+- BAD → INVALID
+- NOT_CONNECTED → NOT_CONNECTED (also unavailable)
+- STALE → STALE
+- SUBSTITUTED → SUBSTITUTED (suspect for consumer validity)
+- OUT_OF_RANGE → OUT_OF_RANGE (invalid for consumer validity)
+
+Each `TelemetrySample` can carry canonical `diagnostic_codes` such as
+sensor/device diagnostic identifiers, DGA condition flags, partial-discharge
+alarms, bushing-monitor flags, or OLTC condition flags. The producer includes
+the same codes in the signed Application `MeasurementSampleAttestation`.
+After signature verification, `MeasurementChannelService.publish_sample()`
+copies those codes and the Core quality/availability state into the
+authoritative `MeasurementChannel` sample state. They are therefore visible
+to all consumers of that same channel, alongside its value, timestamp and
+sequence. Diagnostic codes are immutable sample metadata, are updated only
+through the existing Application service capability, and are covered by the
+producer attestation; the plugin cannot write them directly.
+
+The channel's existing `validity()` contract maps NOT_CONNECTED to
+UNAVAILABLE, STALE to STALE, OUT_OF_RANGE/INVALID to INVALID_QUALITY, and
+SUBSTITUTED/SUSPECT to SUSPECT_QUALITY. This exposes both the source's
+specific quality and the consumer-facing validity result without creating a
+second quality or measurement-channel authority.
