@@ -94,16 +94,16 @@ class GeneratorDynamicsPlugin(GridForgePlugin):
         )
 
         application = context.application
-        composition = services.get("generator_dynamics_composition")
+        composition = services.get("electrical_dynamics_composition")
         if composition is None:
             raise RuntimeError(
                 "Generator dynamics activation requires the Application-owned "
-                "'generator_dynamics_composition' service; no parallel service is created."
+                "'electrical_dynamics_composition' service; no parallel service is created."
             )
         register_extension = getattr(composition, "register_generator_extension", None)
         if not callable(register_extension):
             raise TypeError(
-                "generator_dynamics_composition must expose register_generator_extension"
+                "electrical_dynamics_composition must expose register_generator_extension"
             )
 
         # Model-specific sampled adapters are created per StudyRequest, not
@@ -112,12 +112,12 @@ class GeneratorDynamicsPlugin(GridForgePlugin):
         adapter_factory = getattr(composition, "create_generator_sampled_adapter", None)
         if solver is None or not callable(getattr(solver, "solve_generator_transient", None)):
             raise RuntimeError(
-                "generator_dynamics_composition must expose the host-owned "
+                "electrical_dynamics_composition must expose the host-owned "
                 "generator_transient_solver.solve_generator_transient(...) capability"
             )
         if not callable(adapter_factory):
             raise RuntimeError(
-                "generator_dynamics_composition must expose "
+                "electrical_dynamics_composition must expose "
                 "create_generator_sampled_adapter(request=..., execution_context=...)"
             )
 
