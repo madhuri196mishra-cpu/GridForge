@@ -142,7 +142,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
         motor_service = getattr(composition, "motor_service", None)
         if motor_service is None:
             raise RuntimeError(
-                "motor_dynamics_composition must expose a separate 'motor_service'; "
+                "electrical_dynamics_composition must expose a separate 'motor_service'; "
                 "the registration adapter itself is not a domain service."
             )
 
