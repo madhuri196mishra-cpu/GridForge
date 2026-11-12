@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from math import isfinite
+
+from core.model.transformer import Transformer
+from .profile import TransformerProfile, validate_transformer_profile_windings
 from typing import Iterable
 
 class MeasurementQuality(str, Enum):
@@ -159,6 +162,27 @@ class TelemetrySnapshot:
                      captured_at: datetime | None = None) -> "TelemetrySnapshot":
         batch = tuple(samples)
         return cls(equipment_id, captured_at or datetime.now(timezone.utc), batch)
+
+def build_transformer_channel_catalogue_for_core(
+    transformer: Transformer,
+    profile: TransformerProfile,
+    *,
+    include_dga: bool = True,
+    include_oltc: bool = True,
+    include_partial_discharge: bool = True,
+    include_bushing_monitoring: bool = True,
+) -> tuple[ChannelDefinition, ...]:
+    """Build telemetry points only from winding IDs declared by the Core Transformer."""
+    winding_ids = validate_transformer_profile_windings(profile, transformer)
+    return build_transformer_channel_catalogue(
+        transformer.id,
+        winding_ids,
+        include_dga=include_dga,
+        include_oltc=include_oltc,
+        include_partial_discharge=include_partial_discharge,
+        include_bushing_monitoring=include_bushing_monitoring,
+    )
+
 
 def validate_transformer_snapshot(
     snapshot: TelemetrySnapshot,
