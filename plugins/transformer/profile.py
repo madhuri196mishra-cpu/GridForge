@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
+from math import isfinite
 
 class TransformerFamily(str, Enum):
     POWER="power"; DISTRIBUTION="distribution"; AUTOTRANSFORMER="autotransformer"
@@ -51,11 +52,13 @@ class TransformerProfile:
         if len(set(windings)) != len(windings):
             raise ValueError("Transformer winding ids must be unique.")
         object.__setattr__(self, "winding_ids", windings)
-        if self.rated_frequency_hz <= 0:
-            raise ValueError("Rated frequency must be positive.")
+        if not isfinite(self.rated_frequency_hz) or self.rated_frequency_hz <= 0:
+            raise ValueError("Rated frequency must be finite and positive.")
         low, high = self.minimum_frequency_hz, self.maximum_frequency_hz
-        if low is not None and low <= 0 or high is not None and high <= 0:
-            raise ValueError("Operating frequency limits must be positive.")
+        if low is not None and (not isfinite(low) or low <= 0):
+            raise ValueError("Minimum operating frequency must be finite and positive.")
+        if high is not None and (not isfinite(high) or high <= 0):
+            raise ValueError("Maximum operating frequency must be finite and positive.")
         if low is not None and high is not None and low > high:
             raise ValueError("Minimum frequency cannot exceed maximum frequency.")
         if low is not None and self.rated_frequency_hz < low:
