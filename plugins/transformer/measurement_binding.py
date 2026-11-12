@@ -109,7 +109,7 @@ def resolve_transformer_measurement_bindings(
         if getattr(source_reference, "equipment_id", None) != source_id:
             raise ValueError("Core source terminal identity does not match its source equipment.")
         if getattr(getattr(source_reference, "equipment_type", None), "value", None) != {
-            "CT": "current_transformer", "PT": "potential_transformer", "CVT": "cvt"
+            "CT": "ct", "PT": "pt", "CVT": "cvt"
         }[source_type]:
             raise ValueError("Core source terminal equipment type does not match its source object.")
 
