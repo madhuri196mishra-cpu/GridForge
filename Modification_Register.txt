@@ -3591,3 +3591,27 @@ Accepted augmented-step evidence retained on checkpoint publication failure — 
 - Verification: touched-file fetch-back and static inspection of the
   StudyService exception path and archive encoder only. No tests, imports,
   runtime, CI or numerical simulation.
+
+
+Explicit augmented generator StudyService execution dispatch — 12 November 2026:
+- GeneratorTransientStudyHandler now reads an explicit execution_mode from
+  StudyRequest.configuration. The compatibility default remains sampled_ggov1;
+  that path still constructs GGOV1SampledExecutionAdapter and delegates to
+  solve_generator_transient unchanged.
+- Added opt-in augmented_dae dispatch requiring both the Application
+  composition's generator_augmented_transient_solver capability and
+  create_generator_augmented_adapter factory. The factory result is checked
+  as GeneratorAugmentedDAEAdapter before the host receives the request,
+  execution context, cancellation token and adapter.
+- Explicit augmented_dae selection fails closed when either optional host
+  capability is missing or invalid. There is no silent sampled-path fallback.
+  Cancellation is rechecked after adapter construction and before dispatch.
+- GeneratorDynamicsPlugin passes the optional capabilities from the existing
+  shared electrical_dynamics_composition. No second service, scheduler,
+  integrator, checkpoint store, event bus or persistence authority is added.
+- The host execution loop remains a required integration deliverable: it must
+  check cancellation between accepted steps, commit GGOV1 discrete feedback
+  only after numerical acceptance, preserve partial-result provenance, and
+  return detached evidence to Application StudyService for persistence.
+- Verification: touched-file fetch-back and static source/call-path review
+  only. No tests, imports, runtime, CI or numerical simulations.
