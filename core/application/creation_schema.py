@@ -496,6 +496,7 @@ _BUILTIN_COMMAND_FIELD_DISPOSITIONS: Mapping[str, Mapping[str, Mapping[str, str]
         "conductor_system": _field_disposition("later_configuration", "Typed conductor construction is not a scalar creation parameter.", "Line conductor configuration / UpdateLineCommand"),
     },
     "transformer": {
+        "windings": _field_disposition("later_configuration", "Structured multi-winding records are retained for the dedicated transformer configuration workflow; an empty default does not invent winding evidence.", "Transformer winding configuration / dedicated transformer configurator"),
         "hv_winding_connection": _field_disposition("later_configuration", "Winding connection belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
         "lv_winding_connection": _field_disposition("later_configuration", "Winding connection belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
         "hv_neutral_grounding_impedance_ohm": _field_disposition("later_configuration", "Neutral grounding evidence belongs to the dedicated transformer configurator.", "Transformer multiport/evidence configuration (#939)"),
