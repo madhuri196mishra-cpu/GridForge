@@ -583,6 +583,8 @@ def test_draft_connection_presentation_layer_round_trips_and_survives_route_upda
     }).layer_id == "default"
 
     draft = DraftNetwork("project-layer-wire", 1)
+    draft.add_equipment(_breaker("layered-source"))
+    draft.add_equipment(_breaker("layered-target"))
     draft.add_connection(restored)
     updated = draft.update_connection_route(
         "layered-wire",
