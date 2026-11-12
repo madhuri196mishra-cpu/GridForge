@@ -95,6 +95,30 @@ class GeneratorAugmentedStepResult:
                         "solver_id": convergence.solver_id,
                     },
                 },
+                "coupled_network": None if stage.coupled_network is None else {
+                    "topology_revision": stage.coupled_network.request.topology_revision,
+                    "iteration_count": stage.coupled_network.iteration_count,
+                    "injection_residual_norm": stage.coupled_network.injection_residual_norm,
+                    "scaled_injection_residual": stage.coupled_network.scaled_injection_residual,
+                    "terminal_currents_pu": {
+                        f"{terminal_id}|{phase_id}": {
+                            "real": current.real, "imag": current.imag
+                        }
+                        for (terminal_id, phase_id), current
+                        in stage.coupled_network.aggregated_terminal_currents_pu.items()
+                    },
+                    "algebraic_quality": {
+                        "status": stage.coupled_network.solution.status,
+                        "accepted": stage.coupled_network.solution.accepted,
+                        "quality_verified": stage.coupled_network.solution.quality_verified,
+                        "solver_name": stage.coupled_network.solution.solver_name,
+                        "absolute_residual_norm": stage.coupled_network.solution.absolute_residual_norm,
+                        "normalized_residual": stage.coupled_network.solution.normalized_residual,
+                        "residual_tolerance": stage.coupled_network.solution.residual_tolerance,
+                        "condition_number": stage.coupled_network.solution.condition_number,
+                        "condition_limit": stage.coupled_network.solution.condition_limit,
+                    },
+                },
                 "inputs": {
                     "terminal_voltages": {
                         terminal_id: {"real": voltage.real, "imag": voltage.imag}
