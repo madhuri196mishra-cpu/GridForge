@@ -252,3 +252,28 @@ UNAVAILABLE, STALE to STALE, OUT_OF_RANGE/INVALID to INVALID_QUALITY, and
 SUBSTITUTED/SUSPECT to SUSPECT_QUALITY. This exposes both the source's
 specific quality and the consumer-facing validity result without creating a
 second quality or measurement-channel authority.
+
+
+## Attested transformer sensor snapshot handoff
+
+`publish_transformer_sensor_snapshot(snapshot, catalogue, attestations, publish_sample=...)`+
+is the plugin-side adapter from an immutable transformer telemetry snapshot
+to the existing Application `MeasurementChannelService.publish_sample()`
+ingress. It validates the complete snapshot against the catalogue, requires
+exactly one attestation per sample, and requires the attested channel ID,
+sequence, Core quality, availability, diagnostics, and UTC Unix timestamp to
+match the telemetry sample before forwarding it.
+
+The caller must pass the canonical Application publication callable and
+attestations already produced by the deployment's trusted producer adapter.
+The plugin does not create signatures, producer identities, project IDs,
+activation generations, clock domains, or trusted timestamps. Application
+still verifies the signature and active project/generation, checks the trusted
+clock and monotonic sequence, validates source bounds, and owns the only
+authoritative channel update path. The helper rejects estimated/derived points
+and points without a declared physical sensor type.
+
+This handoff is a software integration boundary, not a device driver or
+commissioning workflow. RTD/fiber-optic protocol acquisition, device
+certificate provisioning, calibration evidence, wiring inspection, and
+site acceptance remain deployment responsibilities.
