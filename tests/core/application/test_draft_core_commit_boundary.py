@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from core.application.errors import ExecutionError
+
 from core.application.bootstrap import create_application
 from core.application.commands.draft_commands import (
     AddDraftEquipmentCommand,
@@ -154,6 +156,7 @@ def _attach_sld_document(app) -> SLDDocument:
         symbol_presentation_factory=lambda element_type: {
             "symbol_id": f"test-symbol-{element_type}",
             "definition_id": f"test-definition-{element_type}",
+            "standard_reference_id": f"test-standard-{element_type}",
         },
     ))
     return document
@@ -413,6 +416,7 @@ def _commit_with_sld(draft: DraftNetwork):
         symbol_presentation_factory=lambda element_type: {
             "symbol_id": f"test-symbol-{element_type}",
             "definition_id": f"test-definition-{element_type}",
+            "standard_reference_id": f"test-standard-{element_type}",
         },
     ))
     app.set_draft_network(draft)
@@ -534,7 +538,7 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
         document_id=document.document_id,
     ))
 
-    with pytest.raises(ValueError, match="current active DraftNetwork snapshot"):
+    with pytest.raises(ExecutionError, match="network.commit_draft") as error:
         app.execute(
             CommitNetworkCommand(
                 project_id=draft.project_id,
@@ -543,6 +547,8 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
                 document_id=document.document_id,
             )
         )
+    assert isinstance(error.value.__cause__, ValueError)
+    assert "current active DraftNetwork snapshot" in str(error.value.__cause__)
 
     assert app.read_network().elements == ()
     assert {item.draft_id for item in app.draft_network.equipment} == {"b1", "b2"}
