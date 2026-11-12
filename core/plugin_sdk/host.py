@@ -22,20 +22,20 @@ class EngineeringPluginContext:
     """Immutable, UI-independent context built by the engineering host."""
 
     application: Any
-    project_context: Any
-    activation_generation: int
     services: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    # Optional defaults preserve the historical direct-construction signature;
+    # EngineeringPluginHost always supplies a live project snapshot and generation.
+    project_context: Any = None
+    activation_generation: int = 0
 
     def __post_init__(self) -> None:
         if self.application is None:
             raise ValueError("application is required")
         if not isinstance(self.services, Mapping):
             raise TypeError("services must be a mapping")
-        if self.project_context is None:
-            raise ValueError("project_context is required for engineering plugin activation")
-        if isinstance(self.activation_generation, bool) or not isinstance(self.activation_generation, int) or self.activation_generation < 1:
-            raise ValueError("activation_generation must be a positive integer")
+        if isinstance(self.activation_generation, bool) or not isinstance(self.activation_generation, int) or self.activation_generation < 0:
+            raise ValueError("activation_generation must be a non-negative integer")
         if not isinstance(self.metadata, Mapping):
             raise TypeError("metadata must be a mapping")
         object.__setattr__(self, "services", MappingProxyType(dict(self.services)))
