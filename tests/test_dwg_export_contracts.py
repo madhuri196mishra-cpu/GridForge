@@ -59,6 +59,75 @@ def test_validator_rejects_empty_sld_plan_without_entity_bound_mapping_provenanc
         validate_drawing_plan(plan)
 
 
+def _sld_mapping_provenance(**overrides):
+    return {
+        "mapping_id": "site-grid-01",
+        "mapping_version": "1.0.0",
+        "source_coordinate_system": "sld-document-local",
+        "source_units": "sld-unit",
+        "target_coordinate_system": "world",
+        "target_units": "mm",
+        "millimetres_per_source_unit": 2.0,
+        "world_origin_mm": (1000.0, 2000.0),
+        "rotation_degrees": 90.0,
+        "reviewer": "engineering-review",
+        "reviewed_on": "2026-11-03",
+        "review_reference": "review:DWG-COORD-001",
+        **overrides,
+    }
+
+
+def _sld_entity(entity_id="sld-entity-1", provenance=None):
+    return DrawingEntity(
+        entity_id, "LINE", "WIRE",
+        {"start": (0.0, 0.0), "end": (1.0, 1.0)},
+        {"coordinate_transform": _sld_mapping_provenance() if provenance is None else provenance},
+    )
+
+
+def _sld_plan(*entities):
+    return DrawingPlan(
+        project_id="project-1", export_id="export-sld",
+        source_revision="revision-1", symbol_profile=SymbolProfile.ANSI_IEEE,
+        drawing_types=("sld",), entities=tuple(entities),
+        coordinate_system="world", units="mm",
+        source_kind="sld_export_snapshot", source_id="document-1",
+        source_document_id="document-1",
+    )
+
+
+def test_validator_accepts_complete_reviewed_sld_coordinate_provenance() -> None:
+    validate_drawing_plan(_sld_plan(_sld_entity()))
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"source_coordinate_system": "invented-frame"},
+        {"source_units": ""},
+        {"target_units": "inch"},
+        {"reviewed_on": "not-a-date"},
+        {"millimetres_per_source_unit": 0},
+        {"millimetres_per_source_unit": float("inf")},
+        {"world_origin_mm": (0.0,)},
+        {"review_reference": ""},
+    ],
+)
+def test_validator_rejects_invalid_sld_coordinate_provenance(overrides) -> None:
+    with pytest.raises(DrawingPlanValidationError, match="SLD entity"):
+        validate_drawing_plan(_sld_plan(_sld_entity(provenance=_sld_mapping_provenance(**overrides))))
+
+
+def test_validator_rejects_conflicting_sld_coordinate_mapping_provenance() -> None:
+    first = _sld_entity("first")
+    second = _sld_entity(
+        "second",
+        _sld_mapping_provenance(mapping_id="different-map"),
+    )
+    with pytest.raises(DrawingPlanValidationError, match="conflicting coordinate mapping"):
+        validate_drawing_plan(_sld_plan(first, second))
+
+
 def test_validator_rejects_duplicate_stable_entity_ids() -> None:
     first = DrawingEntity("same", "LINE", "WIRE", {"start": [0, 0], "end": [1, 1]}, {})
     second = DrawingEntity("same", "CIRCLE", "SYMBOL", {"center": [0, 0], "radius": 1}, {})
