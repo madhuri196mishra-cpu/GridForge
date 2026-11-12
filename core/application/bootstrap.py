@@ -832,6 +832,10 @@ def create_application(
                 if context is not None
                 else None
             )
+            # Clear the prior temperature inventory before validating the
+            # candidate wiring inventory. Otherwise the wiring validator could
+            # compare the previous project's sensor loops against the new project.
+            temperature_instrument_service.activate(None, None)
             instrumentation_wiring_service.activate(
                 context,
                 loaded.instrumentation_wiring if context is not None and loaded is not None else None,
