@@ -44,6 +44,8 @@ def resolve_transformer_measurement_bindings(
     catalogue: Iterable[ChannelDefinition],
     bindings: Iterable[TransformerMeasurementBinding],
     measurement_channels: Mapping[str, Any],
+    *,
+    instrumentation: Any | None = None,
 ) -> tuple[tuple[ChannelDefinition, Any], ...]:
     """Resolve explicit plugin-point bindings against canonical Core channels.
 
@@ -77,6 +79,54 @@ def resolve_transformer_measurement_bindings(
         if channel is None:
             raise KeyError(f"Core MeasurementChannel not found: {binding.measurement_channel_id}")
         signal_type = getattr(getattr(channel, "signal_type", None), "value", None)
+        if point.quantity is TransformerQuantity.WINDING_TEMPERATURE:
+            if point.signal_kind.value != "analog" or point.sensor_type is None:
+                raise ValueError("Winding temperature binding requires a declared physical analog sensor.")
+            if instrumentation is None:
+                raise ValueError("Winding temperature binding requires the active project instrumentation collection.")
+            physical_reference = getattr(channel, "source_reference", None)
+            installation_id = getattr(channel, "source_installation_id", None)
+            if physical_reference is None or not installation_id:
+                raise ValueError("Winding temperature channel requires a physical source-interface reference and installation.")
+            if signal_type != "TEMPERATURE":
+                raise ValueError("Winding temperature points require a Core TEMPERATURE channel.")
+            if (
+                physical_reference.interface_id != point.channel_id
+                or physical_reference.source_id != getattr(getattr(channel, "source", None), "source_id", None)
+                or physical_reference.source_family != getattr(getattr(channel, "source", None), "source_family", None)
+            ):
+                raise ValueError("Winding temperature channel source identity does not match the telemetry point interface.")
+            sources = {item.source_id: item for item in getattr(instrumentation, "sources", ())}
+            installations = {
+                item.installation_id: item for item in getattr(instrumentation, "installations", ())
+            }
+            source = sources.get(physical_reference.source_id)
+            installation = installations.get(installation_id)
+            if source is None or installation is None:
+                raise ValueError("Winding temperature source or installation is not in the active project instrumentation collection.")
+            interface = source.interface(physical_reference.interface_id)
+            if (
+                installation.source_id != source.source_id
+                or installation.interface_id != interface.interface_id
+                or installation.monitored_equipment_id != binding.equipment_id
+                or installation.monitored_equipment_type != "transformer"
+                or installation.monitored_point_id != point.winding_id
+                or interface.quantity != point.quantity.value
+                or interface.unit.casefold() != point.unit.casefold()
+                or interface.winding_id != point.winding_id
+            ):
+                raise ValueError("Winding temperature source installation does not match the transformer telemetry point.")
+            core_unit = str(getattr(channel, "unit", "")).strip()
+            if not core_unit or core_unit.casefold() != point.unit.casefold():
+                raise ValueError("Winding temperature channel unit does not match the telemetry point.")
+            core_phase = getattr(getattr(channel, "phase", None), "value", None)
+            if point.phase is not None and core_phase != point.phase.upper():
+                raise ValueError("Winding temperature channel phase does not match the telemetry point.")
+            seen_points.add(binding.telemetry_channel_id)
+            seen_core_channels.add(binding.measurement_channel_id)
+            resolved.append((point, channel))
+            continue
+
         compatibility = _SIGNAL_COMPATIBILITY.get(point.quantity)
         if compatibility is None:
             raise ValueError(
