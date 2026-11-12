@@ -18,7 +18,7 @@ from typing import Any, Mapping
 
 
 _REFERENCE_KIND = "measurement_source_interface"
-_FAMILY_PATTERN = re.compile(r"[a-z][a-z0-9_.-]*\\Z")
+_FAMILY_PATTERN = re.compile(r"[a-z][a-z0-9_.-]*\Z")
 _FIELDS = frozenset({"kind", "source_family", "source_id", "interface_id"})
 
 
