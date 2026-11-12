@@ -266,6 +266,27 @@ def test_export_manifest_binds_plan_registry_and_single_coordinate_mapping(tmp_p
     assert manifest["target_version"] == "ACAD2018"
 
 
+def test_export_manifest_rejects_empty_sld_plan_without_entity_bound_mapping(tmp_path):
+    from plugins.dwg_export import DrawingPlan, SymbolProfile, SymbolRegistry
+
+    executable = tmp_path / "converter"
+    executable.write_text("placeholder", encoding="utf-8")
+    executable.chmod(0o700)
+    backend = ODAFileConverterBackend(executable)
+    plan = DrawingPlan(
+        project_id="project-1", export_id="export-empty-sld",
+        source_revision="revision-8",
+        symbol_profile=SymbolProfile.ANSI_IEEE,
+        drawing_types=("sld",), entities=(),
+        source_kind="sld_export_snapshot",
+        source_id="document-1", source_document_id="document-1",
+        coordinate_system="world", units="mm",
+    )
+
+    with pytest.raises(ValueError, match="Empty SLD export plan"):
+        backend._build_export_manifest(plan, SymbolRegistry(), "ACAD2018")
+
+
 def test_export_manifest_rejects_empty_control_plan_without_entity_bound_mapping(tmp_path):
     from plugins.dwg_export import DrawingPlan, SymbolProfile, SymbolRegistry
 
