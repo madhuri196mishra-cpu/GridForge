@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from core.model.transformer import Transformer
 from core.measurement.measurement_source import (
     MeasurementSourceInstallation,
     PhysicalMeasurementSource,
@@ -97,4 +98,47 @@ class ProjectInstrumentationCollection:
         )
 
 
-__all__ = ["ProjectInstrumentationCollection", "INSTRUMENTATION_COLLECTION_SCHEMA"]
+
+
+def validate_instrumentation_targets(collection: ProjectInstrumentationCollection, network: Any) -> None:
+    """Validate project installations against canonical Network equipment.
+    Winding-bound transformer interfaces currently support only explicit Core
+    HV/LV sides. Tertiary and higher-order winding identities are rejected until
+    Core exposes a serializable multi-winding contract.
+    """
+    if not isinstance(collection, ProjectInstrumentationCollection):
+        raise TypeError("collection must be ProjectInstrumentationCollection.")
+    if network is None or not callable(getattr(network, "get_by_identity", None)):
+        raise TypeError("network must expose the canonical equipment identity resolver.")
+    for installation in collection.installations:
+        try:
+            monitored = network.get_by_identity(installation.monitored_equipment_id)
+        except KeyError as exc:
+            raise ValueError(f"Instrumentation installation {installation.installation_id!r} references missing monitored equipment {installation.monitored_equipment_id!r}.") from exc
+        expected_type = installation.monitored_equipment_type.replace("-", "_").upper()
+        actual_type = str(getattr(monitored, "element_type", "")).upper()
+        if expected_type != actual_type:
+            raise ValueError(f"Instrumentation installation {installation.installation_id!r} expects monitored equipment type {expected_type!r}, found {actual_type!r}.")
+        interface = collection.source(installation.source_id).interface(installation.interface_id)
+        winding_id = interface.winding_id
+        if winding_id is None:
+            continue
+        if not isinstance(monitored, Transformer):
+            raise ValueError("Winding-bound measurement interfaces must monitor Core Transformer equipment.")
+        if installation.monitored_equipment_type != "transformer":
+            raise ValueError("Winding-bound transformer installation must declare monitored_equipment_type='transformer'.")
+        if installation.monitored_point_id != winding_id:
+            raise ValueError(f"Installation {installation.installation_id!r} monitoring point does not match its source interface winding_id.")
+        side = winding_id.upper()
+        if side == "HV":
+            connection, phases = monitored.hv_winding_connection, monitored.hv_phase_roles
+        elif side == "LV":
+            connection, phases = monitored.lv_winding_connection, monitored.lv_phase_roles
+        else:
+            raise ValueError(f"Transformer winding {winding_id!r} is not a canonical Core monitoring point; only explicit HV/LV sides are currently supported.")
+        if connection is None:
+            raise ValueError(f"Transformer {monitored.id!r} has no explicit {side} winding connection; winding monitoring cannot be commissioned.")
+        if interface.phase is not None and phases is not None and interface.phase.upper() not in phases:
+            raise ValueError(f"Measurement interface phase {interface.phase!r} is not declared on transformer {side} winding.")
+
+__all__ = ["ProjectInstrumentationCollection", "INSTRUMENTATION_COLLECTION_SCHEMA", "validate_instrumentation_targets"]

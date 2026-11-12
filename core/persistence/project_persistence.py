@@ -20,7 +20,7 @@ from typing import Any, Mapping, Sequence
 
 from core.analysis.dynamic_model_association import DynamicMachineModelAssociation
 from core.application.project import ProjectContext
-from core.application.instrumentation import ProjectInstrumentationCollection
+from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
 from core.application.revision import ProjectRevision
 from core.application.study import StudyCaseDefinition
 from core.analysis.power_flow_configuration import PowerFlowStudyConfiguration
@@ -836,19 +836,12 @@ class ProjectPersistenceService:
         if not isinstance(context, ProjectContext) or not isinstance(network, Network):
             raise ProjectPersistenceError("Project context or Network is invalid.")
         if instrumentation is not None:
-            if not isinstance(instrumentation, ProjectInstrumentationCollection):
-                raise ProjectPersistenceError("Project instrumentation collection is invalid.")
             if instrumentation.project_id != context.project_id:
                 raise ProjectPersistenceError("Instrumentation collection project_id does not match the active project.")
-            for installation in instrumentation.installations:
-                try:
-                    monitored = network.get_by_identity(installation.monitored_equipment_id)
-                except KeyError as exc:
-                    raise ProjectPersistenceError(f"Instrumentation installation {installation.installation_id!r} references missing monitored equipment {installation.monitored_equipment_id!r}.") from exc
-                expected_type = installation.monitored_equipment_type.replace("-", "_").upper()
-                actual_type = str(getattr(monitored, "element_type", "")).upper()
-                if expected_type != actual_type:
-                    raise ProjectPersistenceError(f"Instrumentation installation {installation.installation_id!r} expects monitored equipment type {expected_type!r}, found {actual_type!r}.")
+            try:
+                validate_instrumentation_targets(instrumentation, network)
+            except (TypeError, ValueError) as exc:
+                raise ProjectPersistenceError(f"Invalid project instrumentation target: {exc}") from exc
         if presentation_collection is not None:
             normalized_collection = ProjectPersistenceService._normalize_presentation_collection(
                 presentation_collection,

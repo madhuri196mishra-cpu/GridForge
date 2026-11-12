@@ -36,7 +36,7 @@ from core.analysis.transient_stability import TransientStabilityAnalysis, Transi
 from core.network import Network
 from core.model.breaker import Breaker
 from core.persistence import ProjectPersistenceService, StudyResultArchive
-from core.application.instrumentation import ProjectInstrumentationCollection
+from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
 from core.persistence.project_package import normalize_package_path
 from core.protection.project_configuration import ProtectionProjectConfiguration
 from core.control.configuration import ControlConfiguration
@@ -973,15 +973,7 @@ def create_application(
             if instrumentation is not None:
                 if instrumentation.project_id != context.project_id:
                     raise ValueError("Instrumentation collection project_id does not match the candidate project.")
-                for installation in instrumentation.installations:
-                    try:
-                        monitored = candidate_network.get_by_identity(installation.monitored_equipment_id)
-                    except KeyError as exc:
-                        raise ValueError(f"Instrumentation installation {installation.installation_id!r} references missing monitored equipment {installation.monitored_equipment_id!r}.") from exc
-                    expected_type = installation.monitored_equipment_type.replace("-", "_").upper()
-                    actual_type = str(getattr(monitored, "element_type", "")).upper()
-                    if expected_type != actual_type:
-                        raise ValueError(f"Instrumentation installation {installation.installation_id!r} expects {expected_type!r}, found {actual_type!r}.")
+                validate_instrumentation_targets(instrumentation, candidate_network)
             configuration = loaded.protection_configuration
             if configuration is not None and configuration.project_id != context.project_id:
                 raise ValueError("Protection configuration project_id does not match the candidate project.")
