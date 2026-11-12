@@ -355,6 +355,11 @@ class Transformer(Branch):
             TransformerWinding("LV", 2, "LV", connection=self.lv_winding_connection, phase_roles=self.lv_phase_roles, neutral_terminal_role=self.lv_neutral_terminal_role, terminal_role=self.lv_terminal_role),
         )
 
+    @property
+    def configured_windings(self) -> tuple[TransformerWinding, ...]:
+        """Return only explicitly persisted winding records, without a legacy projection."""
+        return self._windings
+
     def winding(self, winding_id: str) -> TransformerWinding:
         if not isinstance(winding_id, str) or not winding_id.strip():
             raise ValueError("winding_id must be a non-empty string.")
