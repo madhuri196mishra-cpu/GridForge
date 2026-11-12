@@ -213,4 +213,52 @@ class MotorDynamicsComposition:
         return teardown
 
 
-__all__ = ["ADD_DRAFT_MOTOR_PLACEMENT", "CONNECT_MOTOR_TO_BUS", "MotorDraftService", "MotorDynamicsComposition"]
+class ElectricalDynamicsApplicationComposition(MotorDynamicsComposition):
+    """Single Application-owned host composition shared by dynamics plugins.
+
+    This first integration slice exposes only capabilities backed by current
+    Application services. Generator/load execution and coupled transient
+    execution remain unavailable until their host solvers and study loop exist.
+    """
+
+    def __init__(self, application: Any) -> None:
+        super().__init__(application)
+        from core.application.electrical_dynamics_read_models import MotorSimulationReadModelStore
+
+        self.motor_read_models = MotorSimulationReadModelStore()
+        self.generator_transient_solver = None
+        self.generator_augmented_transient_solver = None
+        self.load_transient_solver = None
+
+    @property
+    def measurement_channels(self) -> tuple[Any, ...]:
+        """Read the active canonical Application measurement-channel snapshot."""
+        return tuple(self.application.measurement_channel_service.channels)
+
+    @property
+    def capability_report(self) -> Mapping[str, Mapping[str, Any]]:
+        """Report registration, adapter, study and coupling capabilities separately."""
+        from types import MappingProxyType
+
+        def report(*, registered: bool, solver: bool, study: bool) -> Mapping[str, Any]:
+            return MappingProxyType({
+                "model_registration": registered,
+                "solver_adapter_available": solver,
+                "executable_study": study,
+                "fully_coupled_network_execution": False,
+            })
+
+        return MappingProxyType({
+            "generator": report(registered=True, solver=False, study=False),
+            "motor": report(registered=True, solver=True, study=True),
+            "load": report(registered=True, solver=False, study=False),
+        })
+
+
+__all__ = [
+    "ADD_DRAFT_MOTOR_PLACEMENT",
+    "CONNECT_MOTOR_TO_BUS",
+    "MotorDraftService",
+    "MotorDynamicsComposition",
+    "ElectricalDynamicsApplicationComposition",
+]
