@@ -6,6 +6,7 @@ from core.solver.dynamics.dynamic_state_layout import (
 from core.solver.dynamics.component_assembly import (
     DynamicComponentAssemblyError, DynamicComponentBinding,
     DynamicComponentBatchEvaluation, evaluate_dynamic_components,
+    aggregate_dynamic_terminal_injections,
 )
 from core.solver.dynamics.derivative_assembly import (
     DynamicDerivativeAssemblyError, DynamicSystemDerivativeAssembly,
@@ -36,6 +37,7 @@ __all__ = [
     "MachineDerivativeEvaluator", "evaluate_composed_dynamic_derivatives",
     "DynamicComponentAssemblyError", "DynamicComponentBinding",
     "DynamicComponentBatchEvaluation", "evaluate_dynamic_components",
+    "aggregate_dynamic_terminal_injections",
     "DynamicSystemLayoutError", "DynamicStateBlockSlice", "DynamicSystemStateLayout",
     "DynamicsEquipmentBinding", "DynamicsEquipmentKind",
     "DynamicsModelCapability", "DynamicsModelReadiness", "DynamicsParticipant",
