@@ -3,7 +3,7 @@
 Author: Subhendu Mishra
 
 Host command registration and topology mutations are delegated to the explicit
-motor_dynamics_composition service supplied through PluginContext.
+electrical_dynamics_composition host object supplied through PluginContext.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from .commands import (
 if TYPE_CHECKING:
     from .dashboard import MotorTelemetryDashboardWidget
 from .persistence import MotorPluginPersistenceHandler
+from plugins.electrical_dynamics.composition import require_electrical_dynamics_composition
 from .read_models import MotorSimulationReadModelStore
 from .study_handler import MotorTransientResultPublisher, MotorTransientStudyHandler
 from core.application.events import StudyCancelled, StudyCompleted, StudyFailed, StudyStarted
@@ -131,18 +132,18 @@ class MotorDynamicsPlugin(GridForgePlugin):
         services = getattr(context, "services", None)
         if not isinstance(services, Mapping):
             raise TypeError("PluginContext.services must be a mapping")
-        composition = services.get("motor_dynamics_composition")
+        composition = require_electrical_dynamics_composition(services)
         if composition is None:
             raise RuntimeError(
                 "Motor dynamics cannot be activated until PluginContext.services "
-                "provides 'motor_dynamics_composition' with transactional motor "
+                "provides 'electrical_dynamics_composition' with transactional motor "
                 "services and command registration."
             )
 
         register = getattr(composition, "register_motor_extension", None)
         if not callable(register):
             raise TypeError(
-                "motor_dynamics_composition must expose register_motor_extension"
+                "electrical_dynamics_composition must expose register_motor_extension"
             )
 
         # Keep command registration and domain service responsibilities distinct.
