@@ -3691,3 +3691,22 @@ Canonical Application/plugin composition gap audit — 12 November 2026:
 - Verification: source fetch-back and static source/call-path inspection only.
   No tests, imports, runtime, CI, GUI or numerical simulations. No main or
   SubhenduMishra29/GridForge changes.
+
+
+Production startup call-site confirmation — 12 November 2026:
+- Inspected main.py at both EngineeringPluginHost.activate() and UI
+  PluginContext construction. Both supply only the legacy
+  services["motor_dynamics_composition"] key. MotorDynamicsPlugin and the
+  generator/load plugins resolve only
+  services["electrical_dynamics_composition"] through the shared resolver.
+- The startup mismatch is therefore present in the concrete production caller,
+  not just an unlocated potential injection gap. A key rename by itself would
+  still be incomplete: MotorDynamicsComposition does not expose the
+  Application-owned motor_read_models contract or the generator/load solver
+  capabilities.
+- No key-only patch was applied because it would make the plugin proceed to a
+  second known missing-capability failure and falsely imply a valid shared
+  composition. A complete Application-owned composition and its lifecycle
+  ownership must be implemented together.
+- Verification: main.py and plugin source fetch-back/static inspection only;
+  no startup or runtime was executed.
