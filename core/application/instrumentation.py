@@ -102,9 +102,11 @@ class ProjectInstrumentationCollection:
 
 def validate_instrumentation_targets(collection: ProjectInstrumentationCollection, network: Any) -> None:
     """Validate project installations against canonical Network equipment.
-    Winding-bound transformer interfaces currently support only explicit Core
-    HV/LV sides. Tertiary and higher-order winding identities are rejected until
-    Core exposes a serializable multi-winding contract.
+
+    Transformer winding targets resolve through the Core Transformer's
+    canonical winding identity collection, including explicitly declared
+    tertiary and higher-order winding records. These associations remain
+    domain monitoring points, not electrical terminals or topology edges.
     """
     if not isinstance(collection, ProjectInstrumentationCollection):
         raise TypeError("collection must be ProjectInstrumentationCollection.")
