@@ -3175,3 +3175,53 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+
+======================================================================
+GRIDFORGE V2 — ELECTRICAL DYNAMICS INTEROPERABILITY RECONCILIATION
+Date: 12 November 2026
+Implementation repository: madhuri196mishra-cpu/GridForge
+Implementation branch: electrical-dynamics-integration-reconciled
+Baseline: latest generator-dynamics-plugin at integration branch creation
+
+- Re-fetched generator-dynamics-plugin after discovering it had advanced
+  while the first integration branch was being assembled. Preserved the
+  latest 14 upstream commits, including Core DynamicStateComponent,
+  DynamicComponentInputs, DynamicComponentEvaluation, generator GGOV1
+  machine-binding/per-unit handoff, and the latest motor catalogue,
+  instrumentation and solver changes.
+- Created a reconciled integration branch from the latest generator branch;
+  the earlier electrical-dynamics-integration branch remains preserved.
+- Ported the Load Dynamics foundation and the shared electrical-dynamics
+  interoperability contracts to the reconciled branch.
+- Re-exported the canonical Core dynamic component contract through
+  plugins/electrical_dynamics; no competing dynamic-state protocol was added.
+- Added shared plugin metadata/measurement normalization and typed Core
+  equipment participant binding. Repeated identical Core equipment identities
+  are rejected before a coupled participant set is accepted.
+- Generator, motor and load plugin activation now resolves the single
+  host-supplied PluginContext.services['electrical_dynamics_composition'].
+  Application owns this host object; each plugin validates only the
+  specialist capabilities it requires.
+- Repaired literal escaped-newline sequences in generator/motor package
+  __init__.py files encountered on the preserved generator branch so the
+  interoperability adapter exports are syntactically represented as source
+  lines. Removed one duplicated motor single-phase export entry.
+- Load ZIP equations remain experimental model data and do not advertise an
+  integrated power-flow or transient study. Motor readiness follows its
+  family catalogue; generator transient capability remains host-solver
+  required.
+- No new Core equipment, measurement channel/value store, Application study
+  scheduler, event bus, persistence authority, command manager or UI manager
+  was introduced. Core Generator/Motor/Load, MeasurementChannel and the
+  existing Application StudyService remain authoritative.
+- The coupled DAE still does not consume DynamicStateComponent; global state
+  assembly, physical asset equivalence mapping, actual shared host composition
+  implementation, measurement provisioning, persistence/UI integration and
+  model reference validation remain open.
+- Verification: source-level fetch-back and architecture reconciliation
+  only. No tests, CI, imports, startup, GUI, coupled simulation, hardware
+  probing or commissioning were run. No merge to main and no changes to
+  SubhenduMishra29/GridForge.
+======================================================================
