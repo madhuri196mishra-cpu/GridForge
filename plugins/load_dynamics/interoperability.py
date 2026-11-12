@@ -35,8 +35,8 @@ def load_model_capability(family: LoadFamily) -> DynamicsModelCapability:
         family_id=family.value,
         model_id=f"load.zip.{family.value}",
         readiness=DynamicsModelReadiness.EXPERIMENTAL,
-        study_types=frozenset({"power_flow"}),
-        numerical_workloads=frozenset({"load_profile_batch"}),
+        study_types=frozenset(),
+        numerical_workloads=frozenset(),
         measurement_point_ids=frozenset(point.point_id for point in points),
     )
 
