@@ -3615,3 +3615,42 @@ Explicit augmented generator StudyService execution dispatch — 12 November 202
   return detached evidence to Application StudyService for persistence.
 - Verification: touched-file fetch-back and static source/call-path review
   only. No tests, imports, runtime, CI or numerical simulations.
+
+
+Augmented generator host-loop integration audit — 12 November 2026:
+- Re-fetched the active feature branch and inspected the shared electrical
+  dynamics composition protocol, GeneratorDynamicsPlugin activation,
+  GeneratorTransientStudyHandler dispatch, Application StudyService,
+  Core DAESolver.step, GeneratorAugmentedDAEAdapter.step,
+  GGOV1StepAttempt and the augmented adapter archive contract.
+- Confirmed that Application StudyService owns handler dispatch,
+  cancellation linearization, StudyResult construction, configured result
+  persistence and lifecycle events, but does not drive numerical steps.
+  Core DAESolver.step remains a legacy machine-only single-step API and does
+  not consume the composed generator/motor/load state or fixed-point network
+  coupling.
+- Confirmed that GeneratorAugmentedDAEAdapter advances one interval and
+  provides an accepted-step observer, while GGOV1StepAttempt provides only
+  detached accept/reject values. Neither owns a study loop or committed
+  checkpoint history.
+- No concrete Application composition implementation of
+  generator_augmented_transient_solver.solve_generator_augmented_transient
+  or create_generator_augmented_adapter is present in the inspected branch
+  tree. The shared ElectricalDynamicsComposition protocol currently declares
+  only sampled generator execution capabilities. Therefore the current
+  augmented_dae StudyService route is a fail-closed typed handoff, not an
+  executable end-to-end study path.
+- Updated the generator README with the precise host contract: resolve
+  request-scoped model/topology inputs, validate initial state, drive
+  accepted intervals with cancellation checks, transact GGOV1 feedback only
+  after numerical acceptance, retain detached partial trajectory evidence,
+  and return primitive result data through StudyService. The existing
+  Application StudyService remains the sole terminal persistence/event
+  authority.
+- No speculative host service, second scheduler, duplicate result store,
+  or plugin-owned persistence loop was introduced. Implementing the missing
+  loop requires the actual Application composition/solver implementation
+  and its canonical source/callers to be available for reconciliation.
+- Verification: feature-branch fetch-back and static source/call-path
+  inspection only. No tests, imports, runtime, CI, GUI or numerical
+  simulations. No changes to main or SubhenduMishra29/GridForge.
