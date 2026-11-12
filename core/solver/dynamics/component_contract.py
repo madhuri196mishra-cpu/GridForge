@@ -106,6 +106,7 @@ class DynamicTerminalInjection:
     terminal_id: str
     phase_id: str
     current_injection_pu: complex
+    current_base_a: float
 
     def __post_init__(self) -> None:
         for name in ("injection_id", "terminal_id", "phase_id"):
@@ -124,6 +125,10 @@ class DynamicTerminalInjection:
                 "current_injection_pu must be a finite complex value"
             )
         object.__setattr__(self, "current_injection_pu", current)
+        base = _finite_number(self.current_base_a, "current_base_a")
+        if base <= 0.0:
+            raise DynamicComponentContractError("current_base_a must be positive")
+        object.__setattr__(self, "current_base_a", base)
 
 
 @dataclass(frozen=True, slots=True)
