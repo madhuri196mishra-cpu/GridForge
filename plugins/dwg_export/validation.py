@@ -103,6 +103,10 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
         raise DrawingPlanValidationError(
             "Control export plans must contain reviewed world-coordinate geometry in millimetres"
         )
+    if plan.source_kind == "sld_export_snapshot" and not plan.entities:
+        raise DrawingPlanValidationError(
+            "SLD export plans require transformed entities carrying reviewed coordinate provenance"
+        )
     if plan.source_kind == "control_program_read_model" and not plan.entities:
         raise DrawingPlanValidationError(
             "Control export plans require transformed entities carrying reviewed coordinate provenance"
