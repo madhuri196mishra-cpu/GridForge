@@ -3175,3 +3175,51 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+
+======================================================================
+GRIDFORGE V2 — ELECTRICAL DYNAMICS INTEROPERABILITY (CURRENT BASELINE)
+Date: 12 November 2026
+Implementation repository: madhuri196mishra-cpu/GridForge
+Implementation branch: electrical-dynamics-integration-current
+Baseline: generator-dynamics-plugin at branch creation, including Core
+DynamicStateComponent and DynamicSystemStateLayout contracts
+
+- Created this integration branch from the then-current generator-dynamics
+  branch and preserved its generator, motor, Core dynamic component, and
+  composable global state-layout work.
+- Ported the Load Dynamics foundation and shared interoperability adapters
+  without altering the source load-dynamics-plugin branch.
+- Shared plugin package re-exports the existing Core
+  DynamicStateComponent, DynamicComponentInputs, DynamicComponentEvaluation,
+  and DynamicSystemStateLayout contracts. No parallel dynamic state or state
+  layout protocol is defined.
+- Added immutable shared metadata for canonical Core equipment bindings,
+  normalized family-specific measurement point definitions, model readiness,
+  and repeated equipment participant rejection.
+- Generator, motor and load plugin activation now resolves one host-supplied
+  electrical_dynamics_composition object from PluginContext.services. The
+  Application composition root owns and supplies this object; the plugins
+  retain specialist registration and solver capabilities.
+- Preserved one Core equipment identity per physical model participant and
+  documented the no-double-counting rule for detailed motor injections versus
+  separate static load representations.
+- Load ZIP equations are experimental model data only; no integrated load
+  power-flow or transient study is advertised. Motor family readiness follows
+  its existing family catalogue; generator transient execution remains
+  dependent on the host solver composition.
+- Corrected literal escaped-newline source sequences in Core dynamic solver
+  and generator/motor package exports so the new shared state-layout exports
+  are represented as actual source lines. Removed duplicate motor package
+  export and repeated manifest capability entries.
+- The Core DAESolver/MultiMachineSystem still do not consume the composed
+  DynamicSystemStateLayout. Coupled DAE assembly, accepted/rejected-step
+  transaction, physical asset equivalence mapping, actual host composition
+  implementation, physical measurement provisioning, persistence/UI
+  integration and reference-case validation remain open.
+- Verification: source-level fetch-back and architecture reconciliation
+  only. No tests, CI, imports, startup, GUI, coupled simulation, hardware
+  probing or commissioning were run. No merge to main and no changes to
+  SubhenduMishra29/GridForge.
+======================================================================
