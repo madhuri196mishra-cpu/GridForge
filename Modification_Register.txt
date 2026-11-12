@@ -3195,9 +3195,11 @@ Implementation branch: electrical-dynamics-application-composition-2026-11-12
   to Application, not the Motor Dynamics plugin. Plugin shutdown must not clear
   this shared projection.
 - The composition exposes the canonical Application measurement-channel
-  snapshot and an explicit capability report. Current truth: motor sampled
-  study is available; generator/load sampled study adapters are unavailable;
-  fully coupled network transient execution is unavailable for all three.
+  snapshot and a typed capability report. Only the activated Motor plugin is
+  reported registered; generator/load registrations and sampled-study adapters
+  are unavailable. Measurement-point normalization and Core terminal-injection
+  contract exposure remain unavailable in this host composition. Fully coupled
+  network transient execution is unavailable for all three.
 - Generator and Load plugin activation is intentionally not enabled by this
   slice: their required host solver adapters are absent from create_application().
   No placeholder solver or false execution capability is introduced.
@@ -3205,7 +3207,12 @@ Implementation branch: electrical-dynamics-application-composition-2026-11-12
   was replaced. No Qt/SLD dependency was added to Core.
 - Verification: fetched-back source and caller inspection only. No tests,
   imports, startup, GUI, CI, or numerical execution were run.
-- This is a partial Application composition integration. Project-generation
-  scoping of simulation projections and activation of all three plugins remain
-  open; do not merge PR #218 on this evidence alone.
+- The Application composition subscribes once to committed ProjectLoaded and
+  ProjectClosed events and clears its project-scoped motor projection on those
+  transitions. Its subscriptions are released by the Application shutdown path;
+  plugin shutdown does not clear Application read models.
+- This is a partial Application composition integration. Generator/load plugin
+  activation, measurement-point normalization, Core dynamic terminal-injection
+  contract exposure, and fully coupled network execution remain open; do not
+  merge PR #218 on this evidence alone.
 ======================================================================
