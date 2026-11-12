@@ -166,3 +166,31 @@ points without declared sensor types, and estimated/derived quantities so a
 computed value cannot be misrepresented as a physical instrument output.
 The returned interfaces can be included in the existing Core
 `PhysicalMeasurementSource` and project-owned installation workflow.
+
+## Application provisioning from physical source interfaces
+
+The existing Application `MeasurementChannelService.activate()` path can
+reconstruct a logical channel from a project-owned physical source interface
+without fabricating an electrical `EndpointReference` or Core `Terminal`.
+A persisted measurement definition identifies the canonical
+`source_reference` mapping (`kind`, `source_family`, `source_id`,
+`interface_id`) and its exact `source_installation_id`. The candidate
+`ProjectInstrumentationCollection` is validated against the candidate
+Network before definitions are reconstructed; the source and interface are
+then resolved only from that candidate collection.
+
+Physical-source channel definitions require an explicit `producer_id`,
+trusted `timestamp_domain`, and positive `stale_after` duration. The
+interface's declared quantity, unit, phase and signal kind govern the Core
+channel classification and unit. A declared `signal_type`, if present, must
+agree. One installation may provision at most one logical MeasurementChannel
+in an activation. Existing producer attestation, project activation
+generation, trusted clock, monotonic sequence and Application sample ingress
+remain mandatory; source provisioning does not grant a producer permission
+to publish.
+
+Electrical CT/PT/CVT channels continue to use their canonical terminal-backed
+provisioning path. Physical sensor channels use the source-interface reference
+and installation identity only; the two reference domains are mutually
+exclusive. This is logical channel provisioning, not proof that hardware is
+connected, calibrated, commissioned, or currently producing valid samples.
