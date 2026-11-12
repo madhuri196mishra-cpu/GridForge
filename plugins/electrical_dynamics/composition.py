@@ -24,6 +24,7 @@ class ElectricalDynamicsComposition(Protocol):
         self, *, plugin: Any, command_handlers: Mapping[str, Any]
     ) -> Callable[[], None]: ...
     motor_service: Any
+    motor_read_models: Any
 
     # Load sampled transient execution.
     load_transient_solver: Any
