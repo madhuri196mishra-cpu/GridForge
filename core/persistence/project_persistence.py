@@ -33,8 +33,12 @@ from core.control.configuration import ControlConfiguration
 from core.network import Network
 from core.protection.project_configuration import ProtectionProjectConfiguration, ProtectionProjectConfigurationSnapshot
 from core.application.services.validation_service import ValidationService, ValidationSeverity
+from core.model.instrument_wiring import InstrumentationWiringInventory
+from core.model.temperature_instrument import TemperatureInstrumentInventory
 
 from .network_serializer import deserialize_network, serialize_network
+from .instrument_wiring_serializer import deserialize_instrumentation_wiring, serialize_instrumentation_wiring
+from .temperature_instrument_serializer import deserialize_temperature_instruments, serialize_temperature_instruments
 from .migration import ProjectPersistenceMigration, ProjectMigrationError, SLDMigrationError, validate_canonical_sld
 from .project_package import (
     MANIFEST_NAME,
@@ -67,6 +71,8 @@ class LoadedProject:
     control_signal_mapping: ControlSignalMapping | None = None
     study_cases: tuple[StudyCaseDefinition, ...] = ()
     instrumentation: ProjectInstrumentationCollection | None = None
+    instrumentation_wiring: InstrumentationWiringInventory = InstrumentationWiringInventory()
+    temperature_instruments: TemperatureInstrumentInventory = TemperatureInstrumentInventory()
 
 
 class ProjectPersistenceError(RuntimeError):
@@ -133,6 +139,12 @@ class ProjectPersistenceService:
             raise ProjectPersistenceError(f"Invalid dynamic machine model association: {exc}") from exc
 
         measurement_definitions = project["measurement"]["channels"]
+        try:
+            instrumentation_wiring = deserialize_instrumentation_wiring(project.get("instrumentation_wiring"))
+            temperature_instruments = deserialize_temperature_instruments(project.get("temperature_instruments"))
+            self._validate_temperature_instrument_channels(temperature_instruments, measurement_definitions)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProjectPersistenceError(f"Invalid persisted instrumentation wiring/temperature inventory: {exc}") from exc
         instrumentation_data = project.get("instrumentation")
         try:
             instrumentation = (
@@ -229,6 +241,8 @@ class ProjectPersistenceService:
             protection_presentation=protection_presentation,
             study_cases=study_cases,
             instrumentation=instrumentation,
+            instrumentation_wiring=instrumentation_wiring,
+            temperature_instruments=temperature_instruments,
         )
 
     def save(self, context: ProjectContext, network: Network,
@@ -244,7 +258,9 @@ class ProjectPersistenceService:
              protection_presentation: Mapping[str, Any] | None = None,
              presentation_collection: Mapping[str, Any] | None = None,
              study_cases: Sequence[StudyCaseDefinition] = (),
-             instrumentation: ProjectInstrumentationCollection | None = None) -> None:
+             instrumentation: ProjectInstrumentationCollection | None = None,
+             instrumentation_wiring: InstrumentationWiringInventory | None = None,
+             temperature_instruments: TemperatureInstrumentInventory | None = None) -> None:
         if path is None:
             path = presentation
             presentation = None
@@ -310,6 +326,15 @@ class ProjectPersistenceService:
             raise TypeError("instrumentation must be ProjectInstrumentationCollection or None.")
         if instrumentation.project_id != context.project_id:
             raise ProjectPersistenceError("Instrumentation collection project_id does not match the project.")
+        if instrumentation_wiring is None:
+            instrumentation_wiring = InstrumentationWiringInventory()
+        if not isinstance(instrumentation_wiring, InstrumentationWiringInventory):
+            raise TypeError("instrumentation_wiring must be InstrumentationWiringInventory or None.")
+        if temperature_instruments is None:
+            temperature_instruments = TemperatureInstrumentInventory()
+        if not isinstance(temperature_instruments, TemperatureInstrumentInventory):
+            raise TypeError("temperature_instruments must be TemperatureInstrumentInventory or None.")
+        self._validate_temperature_instrument_channels(temperature_instruments, measurement_definitions)
         if not isinstance(study_cases, Sequence) or any(
             not isinstance(item, StudyCaseDefinition) for item in study_cases
         ):
@@ -395,6 +420,8 @@ class ProjectPersistenceService:
             "measurement": {"channels": [dict(item) for item in measurement_definitions]},
             "study_cases": [self._serialize_study_case(item) for item in study_cases],
             "instrumentation": instrumentation.to_mapping(),
+            "instrumentation_wiring": serialize_instrumentation_wiring(instrumentation_wiring),
+            "temperature_instruments": serialize_temperature_instruments(temperature_instruments),
         }
         if protection_snapshot is not None:
             project["protection"] = protection_snapshot.to_dict()
@@ -740,6 +767,7 @@ class ProjectPersistenceService:
             "schema", "project", "network", "presentations", "dynamic_models",
             "measurement", "control", "control_signal_mapping", "protection", "protection_presentation",
             "draft_network", "draft_networks", "study_cases", "instrumentation",
+            "instrumentation_wiring", "temperature_instruments",
         }
         unknown = sorted(set(project) - allowed)
         if unknown:
@@ -796,9 +824,39 @@ class ProjectPersistenceService:
                 raise ProjectPersistenceError(f"Canonical {key} payload must be an object.")
         if "draft_network" in project and "draft_networks" in project:
             raise ProjectPersistenceError("Canonical project cannot contain both draft_network and draft_networks.")
+        wiring = project.get("instrumentation_wiring")
+        if not isinstance(wiring, Mapping):
+            raise ProjectPersistenceError("Canonical instrumentation_wiring payload must be an object.")
+        temperature_instruments = project.get("temperature_instruments")
+        if not isinstance(temperature_instruments, Mapping):
+            raise ProjectPersistenceError("Canonical temperature_instruments payload must be an object.")
         study_cases = project.get("study_cases", [])
         if not isinstance(study_cases, list) or any(not isinstance(item, Mapping) for item in study_cases):
             raise ProjectPersistenceError("Canonical study_cases must be an array of objects.")
+
+    @staticmethod
+    def _validate_temperature_instrument_channels(
+        inventory: TemperatureInstrumentInventory,
+        measurement_definitions: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Ensure declared temperature MeasurementChannel IDs exist in this project."""
+        channel_ids = {
+            str(item.get("channel_id", item.get("id", ""))).strip()
+            for item in measurement_definitions
+        }
+        channel_ids.discard("")
+        for instrument in inventory.instruments:
+            channel_id = instrument.measurement_channel_id
+            if channel_id is not None and channel_id not in channel_ids:
+                raise ProjectPersistenceError(
+                    f"Temperature instrument '{instrument.id}' references missing MeasurementChannel '{channel_id}'."
+                )
+        for interface in inventory.interfaces:
+            channel_id = interface.measurement_channel_id
+            if channel_id is not None and channel_id not in channel_ids:
+                raise ProjectPersistenceError(
+                    f"Temperature interface '{interface.id}' references missing MeasurementChannel '{channel_id}'."
+                )
 
     @staticmethod
     def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = (), instrumentation: ProjectInstrumentationCollection | None = None) -> None:
