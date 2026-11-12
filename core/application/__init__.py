@@ -60,6 +60,7 @@ from .read_models import (
     TransientAlgebraicQualityReadModel,
     TransientEventReadModel,
     TransientResultPresentationReadModel,
+    InstrumentationWiringReadModel,
 )
 from .read_service import (
     ArchivedStudyResultReadModel,
@@ -138,6 +139,7 @@ __all__ = [
     "TransientAlgebraicQualityReadModel",
     "TransientEventReadModel",
     "TransientResultPresentationReadModel",
+    "InstrumentationWiringReadModel",
     "ArchivedStudyResultReadModel",
     "StudyResultComparisonReadModel",
     "StudyResultNumericDeltaReadModel",

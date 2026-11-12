@@ -70,6 +70,9 @@ from .services.control_service import ControlApplicationService
 from .services.model_service import ModelService
 from .services.protection_configuration_service import ProtectionConfigurationService
 from .services.measurement_channel_service import MeasurementChannelService, MeasurementSampleAttestation
+from .services.instrumentation_wiring_service import InstrumentationWiringService, InstrumentationWiringCommandHandlers
+from .services.instrumentation_receiver_compatibility import validate_inventory_receiver_bindings
+from .services.temperature_instrument_service import TemperatureInstrumentService, TemperatureInstrumentCommandHandlers
 from .synchronism_check import (
     BypassAuthorization,
     ProjectScopedSynchronismAuditSink,
@@ -139,6 +142,10 @@ def create_application(
             target[command_type] = handler
 
     control_service = ControlApplicationService(ControlConfiguration.empty(initial_context.project_id))
+    instrumentation_wiring_service = InstrumentationWiringService()
+    temperature_instrument_service = TemperatureInstrumentService(instrumentation_wiring_service)
+    instrumentation_wiring_service.bind_inventory_validator(temperature_instrument_service.validate_wiring_inventory)
+    temperature_instrument_service.bind_measurement_channels_provider(lambda: measurement_channel_service.channels)
     application: Application | None = None
     synchronism_guard: Any = None
 
@@ -206,6 +213,8 @@ def create_application(
         register_handlers(handlers, build_model_command_handlers(model_service), "model")
         register_handlers(handlers, ElectricalConnectionCommandHandlers().handlers(), "electrical connection")
         register_handlers(handlers, SimpleWireConnectionCommandHandlers().handlers(), "simple wire connectivity")
+        register_handlers(handlers, InstrumentationWiringCommandHandlers(instrumentation_wiring_service).handlers(), "instrumentation wiring")
+        register_handlers(handlers, TemperatureInstrumentCommandHandlers(temperature_instrument_service).handlers(), "temperature instruments")
         register_handlers(handlers, PhaseDomainConductorNetworkCommandHandlers().handlers(), "phase-domain conductor network")
         register_handlers(handlers, JunctionCommandHandlers().handlers(), "junction topology")
         register_handlers(
@@ -641,6 +650,8 @@ def create_application(
         measurement_channel_service=measurement_channel_service,
         control_service=control_service,
         protection_execution_audit_store=protection_execution_audit_store,
+        instrumentation_wiring_service=instrumentation_wiring_service,
+        temperature_instrument_service=temperature_instrument_service,
     )
     application.instrumentation_collection = ProjectInstrumentationCollection(initial_context.project_id)
     measurement_channel_service.bind_execution_lock(application._execution_lock)
@@ -759,6 +770,8 @@ def create_application(
         previous_configuration = protection_configuration_service.configuration
         previous_synchronism_guard = synchronism_guard
         previous_measurement_state = measurement_channel_service.snapshot_state()
+        previous_wiring_state = instrumentation_wiring_service.snapshot_state()
+        previous_temperature_state = temperature_instrument_service.snapshot_state()
         previous_protection_runtime = application.protection_runtime
         previous_protection_presentation = getattr(application, "protection_presentation", None)
         # Capture the exact pre-transition authority. Reconstructing a synthetic
@@ -791,6 +804,8 @@ def create_application(
             nonlocal synchronism_guard
             synchronism_guard = previous_synchronism_guard
             measurement_channel_service.restore_state(previous_measurement_state)
+            instrumentation_wiring_service.restore_state(previous_wiring_state)
+            temperature_instrument_service.restore_state(previous_temperature_state)
             if previous_configuration is None:
                 protection_configuration_service.deactivate()
             else:
@@ -816,6 +831,22 @@ def create_application(
                 else ProjectInstrumentationCollection(context.project_id)
                 if context is not None
                 else None
+            )
+            # Clear the prior temperature inventory before validating the
+            # candidate wiring inventory. Otherwise the wiring validator could
+            # compare the previous project's sensor loops against the new project.
+            temperature_instrument_service.activate(None, None)
+            instrumentation_wiring_service.activate(
+                context,
+                loaded.instrumentation_wiring if context is not None and loaded is not None else None,
+                network=network if context is not None else None,
+                generation=generation,
+            )
+            temperature_instrument_service.activate(
+                context,
+                loaded.temperature_instruments if context is not None and loaded is not None else None,
+                network=network if context is not None else None,
+                generation=generation,
             )
             measurement_channel_service.activate(
                 context,
@@ -878,6 +909,8 @@ def create_application(
                 application.configure_control_signal_mapping(
                     loaded.control_signal_mapping if loaded is not None else None
                 )
+                temperature_instrument_service.validate_measurement_channels()
+                instrumentation_wiring_service.validate_receiver_bindings()
                 if loaded is None:
                     dynamic_models.replace(())
                 else:
@@ -1068,6 +1101,8 @@ def create_application(
             presentation_collection=presentation_collection,
             study_cases=application.study_cases,
             instrumentation=application.instrumentation_collection,
+            instrumentation_wiring=instrumentation_wiring_service.inventory,
+            temperature_instruments=temperature_instrument_service.inventory,
             protection_presentation=(                application.protection_presentation.to_dict()
                 if callable(getattr(getattr(application, "protection_presentation", None), "to_dict", None))
                 else getattr(application, "protection_presentation", None)
@@ -1077,6 +1112,37 @@ def create_application(
         return Network()
 
     application.dynamic_models = dynamic_models
+    application.instrumentation_wiring_service = instrumentation_wiring_service
+    application.temperature_instrument_service = temperature_instrument_service
+
+    def validate_instrumentation_receivers(candidate_inventory: Any) -> None:
+        project_id = instrumentation_wiring_service.project_id or "closed-project"
+        mapping = application.control_signal_mapping or ControlSignalMapping()
+        configuration = protection_configuration_service.configuration or ProtectionProjectConfiguration(project_id)
+        outcomes = validate_inventory_receiver_bindings(
+            candidate_inventory, control_mapping=mapping,
+            protection_configuration=configuration,
+            channels=measurement_channel_service.channels,
+        )
+        failures = tuple(item for item in outcomes if not item.compatible)
+        if failures:
+            details = "; ".join(
+                f"{item.receiver_kind} {item.receiver_id}/{item.input_id}: " + ", ".join(item.diagnostics)
+                for item in failures
+            )
+            raise ValueError("Instrumentation receiver reconciliation failed; candidate inventory was rejected: " + details)
+
+    instrumentation_wiring_service.bind_receiver_validator(validate_instrumentation_receivers)
+    # The initial project is already ACTIVE at generation 1; initialize both
+    # new project-scoped inventories explicitly rather than waiting for a
+    # later project transition to invoke the lifecycle activator.
+    instrumentation_wiring_service.activate(
+        initial_context, None, network=network, generation=1
+    )
+    temperature_instrument_service.activate(
+        initial_context, None, network=network, generation=1
+    )
+    temperature_instrument_service.validate_measurement_channels()
 
     lifecycle = ProjectLifecycleService(
         network=network,

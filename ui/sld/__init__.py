@@ -55,3 +55,9 @@ from .simple_wire_inspector import SimpleWireInspector
 from .simple_wire_selection import delete_selected_simple_wire
 
 __all__ = [*globals().get('__all__', ()), "SimpleWireInspector", "delete_selected_simple_wire"]
+
+from .instrumentation_wiring_projection import (
+    SLDPhysicalWiringSegment, SLDPhysicalWiringRecord,
+    SLDInstrumentationWiringProjection, SLDInstrumentationWiringAdapter,
+)
+__all__ = [*__all__, "SLDPhysicalWiringSegment", "SLDPhysicalWiringRecord", "SLDInstrumentationWiringProjection", "SLDInstrumentationWiringAdapter"]

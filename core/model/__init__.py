@@ -71,3 +71,29 @@ __all__ = (
     "Shunt", "Capacitor", "Reactor", "Solar", "Battery", "Grid", "CTPolarity", "CurrentTransformer", "PT",
     "PotentialTransformer", "CVT", "Relay", "EndpointReference", "EndpointReferenceKind", "EquipmentType",
 )
+
+from .instrument_wiring import (
+    WiringTerminalReference, WiringConductorRole, SignalKind, CarrierKind,
+    CableAssembly, CableCore, PanelWire, SignalDefinition,
+    SignalCarrierBinding, PhysicalConnectionHop, WiringTagSeries,
+    WiringTagPolicy, InstrumentationWiringInventory,
+)
+from .temperature_instrument import (
+    TemperatureService, TemperatureSensorTechnology, TemperatureInputMode,
+    TemperatureConsumerKind, TemperatureThermocoupleCableClass,
+    TemperatureThermocoupleCableSpec, TemperatureReceiverInputKind,
+    TemperatureReceiverInput, TemperatureTerminalMapping,
+    TemperatureInstrument, TemperatureInterfaceDevice,
+    TemperatureAlarmTripBinding, TemperatureInstrumentInventory,
+)
+__all__ = [*__all__,
+    "WiringTerminalReference", "WiringConductorRole", "SignalKind", "CarrierKind",
+    "CableAssembly", "CableCore", "PanelWire", "SignalDefinition",
+    "SignalCarrierBinding", "PhysicalConnectionHop", "WiringTagSeries",
+    "WiringTagPolicy", "InstrumentationWiringInventory", "TemperatureService",
+    "TemperatureSensorTechnology", "TemperatureInputMode", "TemperatureConsumerKind",
+    "TemperatureThermocoupleCableClass", "TemperatureThermocoupleCableSpec",
+    "TemperatureReceiverInputKind", "TemperatureReceiverInput",
+    "TemperatureTerminalMapping", "TemperatureInstrument", "TemperatureInterfaceDevice",
+    "TemperatureAlarmTripBinding", "TemperatureInstrumentInventory",
+]

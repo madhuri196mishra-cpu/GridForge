@@ -320,3 +320,33 @@ class NetworkCommitted(ApplicationEvent):
     """Semantic completion boundary for one aggregate DraftNetwork commit."""
     def __init__(self, *, metadata: Mapping[str, Any] | None = None, correlation_id: UUID | None = None, causation_id: UUID | None = None) -> None:
         super().__init__("network.committed", dict(metadata or {}), correlation_id=correlation_id, causation_id=causation_id)
+
+
+
+@dataclass(frozen=True)
+class InstrumentationWiringChanged(ApplicationEvent):
+    """Canonical project instrumentation wiring inventory changed."""
+
+    def __init__(self, *, operation: str, metadata: Mapping[str, Any] | None = None,
+                 correlation_id: UUID | None = None, causation_id: UUID | None = None) -> None:
+        payload = {"operation": operation, "inventory_kind": "instrumentation_wiring"}
+        if metadata:
+            payload.update(metadata)
+        super().__init__("instrumentation.wiring_changed", payload,
+                         correlation_id=correlation_id, causation_id=causation_id)
+
+
+@dataclass(frozen=True)
+class TemperatureInstrumentChanged(ApplicationEvent):
+    """Canonical BTD/OTD/WTD inventory changed."""
+
+    def __init__(self, *, operation: str, metadata: Mapping[str, Any] | None = None,
+                 correlation_id: UUID | None = None, causation_id: UUID | None = None) -> None:
+        payload = {"operation": operation, "inventory_kind": "temperature_instruments"}
+        if metadata:
+            payload.update(metadata)
+        super().__init__("temperature_instrument.changed", payload,
+                         correlation_id=correlation_id, causation_id=causation_id)
+
+
+__all__ += ["InstrumentationWiringChanged", "TemperatureInstrumentChanged"]
