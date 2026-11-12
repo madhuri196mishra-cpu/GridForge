@@ -144,14 +144,28 @@ def _breaker(draft_id: str) -> DraftEquipment:
     )
 
 
+def _attach_sld_document(app, project_id: str) -> SLDDocument:
+    document = SLDDocument(f"{project_id}:sld", project_id=project_id)
+    app.project_lifecycle.activate_presentation(document)
+    app.attach_sld_service(SLDService(
+        document,
+        symbol_presentation_factory=lambda element_type: {
+            "symbol_id": f"test-symbol-{element_type}",
+            "definition_id": f"test-definition-{element_type}",
+        },
+    ))
+    return document
+
+
 def _commit(app, draft: DraftNetwork):
+    document = _attach_sld_document(app, draft.project_id)
     app.set_draft_network(draft)
     return app.execute(
         CommitNetworkCommand(
             project_id=draft.project_id,
             activation_generation=draft.activation_generation,
             draft_network=draft.to_dict(),
-            document_id=app.presentation.document_id,
+            document_id=document.document_id,
         )
     )
 
@@ -373,6 +387,7 @@ def _route() -> dict:
 def _commit_with_sld(draft: DraftNetwork):
     app = create_application(Network())
     document = SLDDocument("route:sld", project_id=draft.project_id)
+    app.project_lifecycle.activate_presentation(document)
     app.attach_sld_service(SLDService(
         document,
         symbol_presentation_factory=lambda element_type: {
@@ -385,7 +400,7 @@ def _commit_with_sld(draft: DraftNetwork):
         project_id=draft.project_id,
         activation_generation=draft.activation_generation,
         draft_network=draft.to_dict(),
-        document_id=app.presentation.document_id,
+        document_id=document.document_id,
     ))
     return app, result, document
 
@@ -487,13 +502,17 @@ def test_commit_route_save_reload_preserves_persistent_sld_route(tmp_path):
 def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
     app = create_application(Network())
     draft = DraftNetwork("project-stale-snapshot", 1)
+    document = _attach_sld_document(app, draft.project_id)
     draft.add_equipment(_bus("b1"))
     app.set_draft_network(draft)
     stale_payload = draft.to_dict()
 
     # Model a later, valid Application-owned authoring command after the
     # original commit snapshot was captured.
-    app.execute(AddDraftEquipmentCommand(equipment=_bus("b2").to_dict()))
+    app.execute(AddDraftEquipmentCommand(
+        equipment=_bus("b2").to_dict(),
+        document_id=document.document_id,
+    ))
 
     with pytest.raises(ValueError, match="current active DraftNetwork snapshot"):
         app.execute(
@@ -501,7 +520,7 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
                 project_id=draft.project_id,
                 activation_generation=draft.activation_generation,
                 draft_network=stale_payload,
-                document_id=app.presentation.document_id,
+                document_id=document.document_id,
             )
         )
 
@@ -511,6 +530,7 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
 
 def test_application_draft_network_exposes_only_detached_snapshots():
     app = create_application(Network())
+    document = _attach_sld_document(app, "project-detached-draft")
     supplied = DraftNetwork("project-detached-draft", 1)
     supplied.add_equipment(_bus("b1"))
     app.set_draft_network(supplied)
@@ -526,7 +546,7 @@ def test_application_draft_network_exposes_only_detached_snapshots():
     assert {item.draft_id for item in app.draft_network.equipment} == {"b1"}
 
     # Active authoring changes remain available through Application commands.
-    app.execute(AddDraftEquipmentCommand(equipment=_bus("b2").to_dict()))
+    app.execute(AddDraftEquipmentCommand(equipment=_bus("b2").to_dict(), document_id=document.document_id))
     assert {item.draft_id for item in app.draft_network.equipment} == {"b1", "b2"}
 
 
