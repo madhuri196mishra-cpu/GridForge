@@ -198,3 +198,25 @@ provisioning path. Physical sensor channels use the source-interface reference
 and installation identity only; the two reference domains are mutually
 exclusive. This is logical channel provisioning, not proof that hardware is
 connected, calibrated, commissioned, or currently producing valid samples.
+
+## Physical interface engineering-range enforcement
+
+A physical source interface's optional `minimum` and `maximum` bounds are
+carried into the immutable Core `MeasurementChannel` configuration when the
+Application provisions that channel. The bounds are not accepted as
+producer-supplied sample metadata and cannot be changed after project channel
+activation.
+
+At trusted `MeasurementChannelService.publish_sample()` ingress, the
+existing producer attestation is verified first; the sample is then checked
+against the channel's declared physical-interface bounds before any channel
+state is updated or a sample-published handler is invoked. Values outside
+either configured bound are rejected without changing the last accepted
+sample. Complex values are rejected when scalar bounds are configured because
+they cannot be ordered against a scalar engineering interval. Interfaces with
+no declared bounds retain the existing finite-scalar/complex validation.
+
+The limits are interpreted in the physical interface's declared unit; this
+does not apply additional conversion or calibration. Instrument scaling,
+ratio correction, calibration uncertainty, alarm thresholds, and sensor
+diagnostics remain separate engineering responsibilities.
