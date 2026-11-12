@@ -3440,3 +3440,17 @@ Generator/motor source reconciliation and injection evidence — 12 November 202
 - Verification: fetch-back of touched sources and static source reconciliation
   only. No tests, CI, imports, startup, GUI, network solve, numerical
   simulation, hardware probing or commissioning were run.
+
+
+
+Explicit multi-terminal dynamic equipment bindings — 12 November 2026:
+- DynamicComponentBinding now carries a validated immutable terminal_ids set.
+  The primary terminal remains explicit for compatibility; the complete set
+  includes it and may include additional canonical Core terminals.
+- Dynamic component evaluation accepts terminal current contributions only
+  when their terminal identity belongs to the binding's terminal_ids set.
+  This permits a two-terminal ZIP branch to contribute equal/opposite source
+  and return currents without weakening equipment identity validation.
+- The binding still does not resolve terminal-to-bus topology; Core host
+  topology resolution remains required before network assembly.
+- Verification: source fetch-back and static call-path inspection only.
