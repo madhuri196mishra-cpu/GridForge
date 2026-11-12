@@ -159,20 +159,6 @@ class DynamicsModelCapability:
             raise ValueError("catalogue-only models cannot advertise executable study types")
 
 
-@dataclass(frozen=True, slots=True)
-class DynamicsEquipmentBinding:
-    """Reference an existing Core equipment identity; never contain a model object."""
-    equipment_type: EquipmentType
-    equipment_id: str
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.equipment_type, EquipmentType):
-            raise TypeError("equipment_type must be Core EquipmentType")
-        if not isinstance(self.equipment_id, str) or not self.equipment_id.strip():
-            raise ValueError("equipment_id must be a non-empty Core equipment identifier")
-        object.__setattr__(self, "equipment_id", self.equipment_id.strip())
-
-
 def validate_unique_equipment_participants(
     bindings: Iterable[DynamicsEquipmentBinding],
 ) -> tuple[DynamicsEquipmentBinding, ...]:
