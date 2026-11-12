@@ -142,7 +142,20 @@ class GeneratorDynamicsPlugin(GridForgePlugin):
                 )
             self._unhooks.append(extension_token)
 
-            handler = GeneratorTransientStudyHandler(solver, adapter_factory)
+            # Augmented DAE execution is an optional, explicit host capability.
+            # The sampled GGOV1 solver/factory remain mandatory and unchanged.
+            augmented_solver = getattr(
+                composition, "generator_augmented_transient_solver", None
+            )
+            augmented_adapter_factory = getattr(
+                composition, "create_generator_augmented_adapter", None
+            )
+            handler = GeneratorTransientStudyHandler(
+                solver,
+                adapter_factory,
+                augmented_solver=augmented_solver,
+                augmented_adapter_factory=augmented_adapter_factory,
+            )
 
             def release_study_handler() -> None:
                 # StudyService refuses removal while this study type is active;
