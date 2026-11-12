@@ -17,6 +17,7 @@ Coordinate Generator Dynamics, Motor Dynamics and Load Dynamics as independently
 | Network topology and terminal injections | Core / existing network model contracts | Supply model equations/contributions through approved adapters |
 | Measurement channels and instrument sources | Core measurement contracts and Application provisioning | Declare logical point templates; request canonical provisioning |
 | Study request, scheduling, cancellation and provenance | Application `StudyService` | Register typed handlers and return detached results |
+| Read models and result projections | Application | Supply the motor read-model projection through the shared host composition; plugins publish detached results and never clear Application-owned stores on shutdown |
 | Project transactions and persistence | Application services | Supply versioned plugin configuration DTOs to host-owned persistence |
 | Numerical backend capability and selection | `core.numerics.backend` | Declare workload needs; do not probe devices or own runtimes |
 | UI, SLD projection and read models | Existing UI/Application projections | Provide plugin-specific presentation adapters; no direct Core mutation |
@@ -66,7 +67,7 @@ No family is labelled reference-validated or field-validated by this integration
 
 ## Shared composition boundary
 
-`plugins/electrical_dynamics/composition.py` defines the common host protocol. Generator, motor and load activation now resolve the same `electrical_dynamics_composition` key. The protocol groups their existing extension registration, motor service, and per-request sampled solver adapter capabilities into one host-supplied object. It creates no new Application service and owns no service lifecycle. The Application composition root still must implement and supply this object.
+`plugins/electrical_dynamics/composition.py` defines the common host protocol. Generator, motor and load activation now resolve the same `electrical_dynamics_composition` key. The protocol groups their existing extension registration, motor service, and per-request sampled solver adapter capabilities into one host-supplied object. It creates no new Application service and owns no service lifecycle. The Application composition root still must implement and supply this object, including `motor_read_models`; the motor plugin no longer instantiates or clears a competing result projection store.
 
 ## Remaining integration gates
 
