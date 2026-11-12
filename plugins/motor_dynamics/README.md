@@ -406,3 +406,29 @@ This is an experimental averaged model, not a validated pull-in, synchronising, 
 A dedicated CPU torque-angle envelope model is available for the hysteresis motor family. It exposes rated RMS voltage, frequency, pole pairs, pull-out torque, inertia, friction and a rotor-loss fraction; outputs include rotor speed/angle, load angle, torque, synchronous-speed error, pull-out torque margin and rotor thermal estimate.
 
 This is not a material hysteresis model: it does not resolve rotor ring magnetisation, hysteresis-loop energy, asynchronous starting/pull-in, detailed air-gap fields, voltage/frequency transients or validated synchronising dynamics. The pull-out margin is a static voltage-scaled torque-capacity estimate, not a dynamic stability certificate. CPU/RK4 only.
+
+
+## AC servo family: instrumentation and model boundary
+
+The AC-servo catalogue now distinguishes synchronous permanent-magnet and induction servo technology in its engineering description and defines drive-side feedback points separately from motor-terminal metering. Optional points cover DC-link measurements, d/q current references and feedback, encoder position/speed, position following error, speed/torque commands, inverter temperature, holding-brake state, drive-ready state, and drive-fault state. The host must bind each configured point to a real source and canonical Core terminal; no encoder, drive, brake, or instrument is fabricated by the plugin.
+
+**Dynamic model status:** this work does not claim an AC-servo transient solver. A synchronous PM servo requires a servo-specific control/feedback model around its machine equations; an induction servo requires its own rotor-flux and vector-control model. The existing general PMSM and induction solvers are not silently substituted. Resolver/encoder quantisation, current/speed/position loops, PWM/dead-time, brake sequencing, drive protection and validated servo tuning remain outside the implemented model.
+
+
+## Synchronous-PM AC servo cascade
+
+An experimental CPU/RK4 model now integrates cascaded position-P, speed-PI and d/q-current-PI control around the PMSM rotor-dq equations. It includes bounded speed/current/voltage commands, conditional anti-windup, encoder position quantisation, mechanical position/speed, electromagnetic torque, winding temperature, copper loss and regenerative mechanical power reporting. Use `PMSMServoParameters` and `solve_pmsm_servo_transient_cpu`; the model is separate from the open-loop PMSM solver.
+
+This is an averaged control-envelope model, not a validated drive commissioning or safety model. PWM switching/dead-time, inverter DC-link energy dynamics, discrete controller delays, resolver dynamics, torque ripple, STO/brake safety sequencing and validated gain tuning are omitted. The AC-servo family still includes induction servo variants, which require a distinct rotor-flux-oriented servo model and are not covered by this synchronous-PM implementation. GPU/NPU acceleration is not claimed for this stateful cascade.
+
+
+## Induction AC servo rotor-flux FOC (experimental)
+
+A distinct CPU/RK4 induction-servo model is available through InductionServoParameters and solve_induction_servo_transient_cpu. It uses a reduced-order rotor-flux-oriented induction-machine envelope with a rotor-flux state, position-P / speed-PI / d-q-current-PI cascade, encoder quantisation, current and voltage limits, conditional anti-windup, mechanical position/speed, torque, copper-loss and lumped winding-temperature outputs. This is not an alias for the PMSM servo solver.
+
+The model is an experimental averaged-control approximation. It does not resolve PWM/inverter switching or dead-time, discrete controller delay, rotor-flux observer error, field weakening, DC-link energy, detailed saturation/cross-saturation, parameter identification, safety-rated STO/brake sequencing or validated drive commissioning. Use measured drive feedback and independently validate controller tuning before engineering decisions. CPU/RK4 only; no GPU/NPU capability is claimed.
+
+
+## Brushed-DC servo cascade (experimental)
+
+DCServoParameters and solve_dc_servo_transient_cpu provide an averaged position-P / speed-PI / armature-current-PI cascade around the existing DC excitation model. Explicit machine excitation configuration remains required. Outputs include position/speed, current and voltage commands, torque, power and winding thermal channels. CPU/RK4 only; PWM/chopper switching, brush commutation, armature reaction, field weakening, discrete timing, brake sequencing and safety-rated commissioning are not modelled. Not validated for drive commissioning; no GPU/NPU capability is claimed.
