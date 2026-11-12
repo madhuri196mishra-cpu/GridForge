@@ -120,9 +120,186 @@ def validate_dynamic_network_solution(
     return solution
 
 
+
+from .component_assembly import aggregate_dynamic_terminal_injections
+from .component_contract import DynamicTerminalInjection
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicNetworkStageResult:
+    """Converged network/current fixed-point evidence for one trial stage."""
+
+    request: DynamicNetworkSolveRequest
+    solution: AlgebraicNetworkSolution
+    terminal_injections: tuple[DynamicTerminalInjection, ...]
+    aggregated_terminal_currents_pu: Mapping[tuple[str, str], complex]
+    iteration_count: int
+    injection_residual_norm: float
+    scaled_injection_residual: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.request, DynamicNetworkSolveRequest):
+            raise TypeError("request must be DynamicNetworkSolveRequest")
+        validate_dynamic_network_solution(self.request, self.solution)
+        injections = tuple(self.terminal_injections)
+        if any(not isinstance(item, DynamicTerminalInjection) for item in injections):
+            raise DynamicNetworkCouplingError("terminal_injections must contain typed contributions")
+        currents: dict[tuple[str, str], complex] = {}
+        for key, value in self.aggregated_terminal_currents_pu.items():
+            if not isinstance(key, tuple) or len(key) != 2:
+                raise DynamicNetworkCouplingError("aggregated current keys must be terminal/phase pairs")
+            current = complex(value)
+            if not np.isfinite(current.real) or not np.isfinite(current.imag):
+                raise DynamicNetworkCouplingError("aggregated currents must be finite")
+            currents[(str(key[0]), str(key[1]))] = current
+        if type(self.iteration_count) is not int or self.iteration_count < 1:
+            raise DynamicNetworkCouplingError("iteration_count must be a positive integer")
+        for name, value in (
+            ("injection_residual_norm", self.injection_residual_norm),
+            ("scaled_injection_residual", self.scaled_injection_residual),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(float(value)) or value < 0:
+                raise DynamicNetworkCouplingError(f"{name} must be finite and non-negative")
+        if self.scaled_injection_residual > 1.0:
+            raise DynamicNetworkCouplingError("stage result cannot be published above the injection convergence threshold")
+        object.__setattr__(self, "terminal_injections", injections)
+        object.__setattr__(self, "aggregated_terminal_currents_pu", MappingProxyType(currents))
+
+
+TerminalInjectionEvaluator = Callable[
+    [AlgebraicNetworkSolution], Sequence[DynamicTerminalInjection]
+]
+
+
+def solve_dynamic_network_stage(
+    *,
+    machine_state: np.ndarray,
+    simulation_time_s: float,
+    topology_revision: int,
+    generator_field_voltages_pu: Mapping[str, float],
+    network_solver: DynamicNetworkSolver,
+    terminal_injection_evaluator: TerminalInjectionEvaluator,
+    network_current_bases_a: Mapping[tuple[str, str], float],
+    initial_terminal_currents_pu: Mapping[tuple[str, str], complex] | None = None,
+    absolute_tolerance: float = 1e-9,
+    relative_tolerance: float = 1e-7,
+    max_iterations: int = 20,
+) -> DynamicNetworkStageResult:
+    """Iterate network voltages and device injections to a consistent stage.
+
+    The callback evaluates every registered device against the supplied
+    quality-verified network solution and returns its typed current
+    contributions. It must be pure: no equipment mutation, sample publication
+    or accepted-state commit is permitted. Iteration k solves with I[k], then
+    computes I[k+1]. A result is returned only when their per-terminal/phase
+    difference meets the absolute-plus-relative tolerance.
+    """
+    if not callable(getattr(network_solver, "solve", None)):
+        raise TypeError("network_solver must implement solve(request)")
+    if not callable(terminal_injection_evaluator):
+        raise TypeError("terminal_injection_evaluator must be callable")
+    if not isinstance(network_current_bases_a, Mapping):
+        raise TypeError("network_current_bases_a must be a terminal/phase base mapping")
+    normalized_bases: dict[tuple[str, str], float] = {}
+    for key, value in network_current_bases_a.items():
+        if not isinstance(key, tuple) or len(key) != 2 or any(
+            not isinstance(part, str) or not part.strip() for part in key
+        ):
+            raise DynamicNetworkCouplingError("network current-base keys must be (terminal_id, phase_id)")
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(float(value)) or value <= 0:
+            raise DynamicNetworkCouplingError("network current bases must be finite and positive")
+        normalized = (key[0].strip(), key[1].strip())
+        if normalized in normalized_bases:
+            raise DynamicNetworkCouplingError("network current-base keys must be unique after normalization")
+        normalized_bases[normalized] = float(value)
+    if isinstance(max_iterations, bool) or not isinstance(max_iterations, int) or max_iterations < 1:
+        raise DynamicNetworkCouplingError("max_iterations must be a positive integer")
+    for name, value in (("absolute_tolerance", absolute_tolerance), ("relative_tolerance", relative_tolerance)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(float(value)) or value < 0:
+            raise DynamicNetworkCouplingError(f"{name} must be finite and non-negative")
+    if absolute_tolerance == 0 and relative_tolerance == 0:
+        raise DynamicNetworkCouplingError("at least one injection tolerance must be positive")
+
+    seed_request = DynamicNetworkSolveRequest(
+        machine_state=machine_state,
+        simulation_time_s=simulation_time_s,
+        topology_revision=topology_revision,
+        terminal_current_injections_pu=initial_terminal_currents_pu or {},
+        generator_field_voltages_pu=generator_field_voltages_pu,
+    )
+    current_guess = dict(seed_request.terminal_current_injections_pu)
+    missing_seed_bases = set(current_guess) - set(normalized_bases)
+    if missing_seed_bases:
+        raise DynamicNetworkCouplingError(
+            f"initial current estimate has no network base for {sorted(missing_seed_bases)!r}"
+        )
+
+    residual_norm = float("inf")
+    scaled_residual = float("inf")
+    for iteration in range(1, max_iterations + 1):
+        request = DynamicNetworkSolveRequest(
+            machine_state=machine_state,
+            simulation_time_s=simulation_time_s,
+            topology_revision=topology_revision,
+            terminal_current_injections_pu=current_guess,
+            generator_field_voltages_pu=generator_field_voltages_pu,
+        )
+        try:
+            solution = network_solver.solve(request)
+        except Exception as exc:
+            raise DynamicNetworkCouplingError(
+                f"network solver failed at t={request.simulation_time_s:.12g} s, iteration {iteration}"
+            ) from exc
+        validate_dynamic_network_solution(request, solution)
+
+        try:
+            injections = tuple(terminal_injection_evaluator(solution))
+            updated = dict(aggregate_dynamic_terminal_injections(
+                injections,
+                current_bases_a=normalized_bases,
+            ))
+        except Exception as exc:
+            raise DynamicNetworkCouplingError(
+                f"terminal injection evaluation failed at iteration {iteration}"
+            ) from exc
+
+        residual_norm = 0.0
+        scaled_residual = 0.0
+        for key in set(current_guess) | set(updated):
+            previous = complex(current_guess.get(key, 0j))
+            candidate = complex(updated.get(key, 0j))
+            difference = abs(candidate - previous)
+            allowed = float(absolute_tolerance) + float(relative_tolerance) * max(
+                abs(previous), abs(candidate)
+            )
+            residual_norm = max(residual_norm, difference)
+            ratio = difference / allowed if allowed > 0.0 else (0.0 if difference == 0.0 else float("inf"))
+            scaled_residual = max(scaled_residual, ratio)
+
+        if scaled_residual <= 1.0:
+            return DynamicNetworkStageResult(
+                request=request,
+                solution=solution,
+                terminal_injections=injections,
+                aggregated_terminal_currents_pu=updated,
+                iteration_count=iteration,
+                injection_residual_norm=residual_norm,
+                scaled_injection_residual=scaled_residual,
+            )
+        current_guess = updated
+
+    raise DynamicNetworkCouplingError(
+        f"network/device injection coupling did not converge in {max_iterations} iterations; "
+        f"last scaled residual={scaled_residual:.6g}, absolute residual={residual_norm:.6g}"
+    )
+
+
 __all__ = [
     "DynamicNetworkCouplingError",
     "DynamicNetworkSolveRequest",
     "DynamicNetworkSolver",
-    "validate_dynamic_network_solution",\n    "DynamicNetworkStageResult",\n    "TerminalInjectionEvaluator",\n    "solve_dynamic_network_stage",
+    "validate_dynamic_network_solution",
+    "DynamicNetworkStageResult",
+    "TerminalInjectionEvaluator",
+    "solve_dynamic_network_stage",
 ]
