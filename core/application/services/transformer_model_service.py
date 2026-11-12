@@ -380,7 +380,6 @@ class TransformerModelService(ModelServiceSupport):
                 _replace_physical_conductor_configuration=True,
                 _replace_phase_domain_multiport_configuration=True,
                 _replace_winding_configuration=True,
-                windings=old_state["windings"],
                 _replace_windings=True,
             )
             if service_state_changed or physical_topology_changed or winding_configuration_changed or multiport_configuration_changed:
