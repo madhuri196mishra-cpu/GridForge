@@ -43,6 +43,7 @@ PLUGIN_DESCRIPTOR = PluginDescriptor(
         "bldc_trapezoidal_cpu_transient", "synrm_dq_cpu_transient",
         "srm_phase_inductance_cpu_transient", "dc_excitation_cpu_transient",
         "single_phase_rms_envelope_cpu_transient", "universal_series_commutator_cpu_transient",
+        "wound_field_synchronous_damper_cpu_transient", "hysteresis_torque_angle_cpu_transient",
     }),
 )
 
