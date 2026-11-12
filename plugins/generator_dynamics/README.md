@@ -797,3 +797,30 @@ network convergence, terminal/power inputs and derivative contributions.
 The payload labels derivative entries as solver evaluations, not accepted
 trajectory points; hosts must persist accepted-step checkpoints separately and
 must not promote trial evaluations to committed states.
+
+
+### Explicit StudyService dispatch for augmented DAE execution
+
+The registered generator_transient handler now preserves sampled GGOV1 as its
+default execution mode and supports an explicit augmented_dae mode selected
+through the immutable StudyRequest configuration. Application composition may
+optionally provide generator_augmented_transient_solver with
+solve_generator_augmented_transient(...) and
+create_generator_augmented_adapter(...). The adapter factory must return the
+canonical GeneratorAugmentedDAEAdapter; the host solver receives that adapter,
+the original StudyRequest, execution context and StudyCancellationToken.
+
+An explicit augmented_dae request fails closed when the optional host solver
+or adapter factory is absent or malformed. It never falls back to sampled
+GGOV1. Cancellation is rechecked after adapter construction and immediately
+before handing execution to the host. The sampled_ggov1 path and its required
+host solver/factory remain unchanged.
+
+This is an execution-selection and typed handoff boundary, not the missing
+host execution loop. The host implementation must still check cancellation
+between accepted steps, use the augmented adapter's accepted-step observer
+only after a successful numerical step, transact sampled GGOV1 discrete
+feedback against the committed checkpoint, retain partial-result provenance,
+and return a detached result payload compatible with StudyService and its
+configured StudyResult persister. The plugin does not implement a second
+scheduler, checkpoint store, integrator, event publisher or persistence path.
