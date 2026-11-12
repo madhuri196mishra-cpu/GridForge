@@ -80,6 +80,8 @@ class HostPluginContext(Protocol):
     """Structural view of the canonical host-created PluginContext."""
 
     application: Any
+    project_context: Any
+    activation_generation: int
     services: Mapping[str, Any]
     metadata: Mapping[str, Any]
 
