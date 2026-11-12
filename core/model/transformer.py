@@ -16,6 +16,7 @@ No unit or base inference is performed by numerical builders.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -50,6 +51,53 @@ class TransformerWindingConnection(str, Enum):
     WYE_UNGROUNDED = "WYE_UNGROUNDED"
 
 
+@dataclass(frozen=True, slots=True)
+class TransformerWinding:
+    """Canonical engineering identity and nameplate metadata for one winding.
+
+    This record does not create an electrical terminal or network edge.
+    """
+    winding_id: str
+    sequence: int
+    role: str
+    rated_voltage_kv: float | None = None
+    rated_mva: float | None = None
+    connection: TransformerWindingConnection | str | None = None
+    phase_roles: tuple[str, ...] | None = None
+    neutral_terminal_role: str | None = None
+    terminal_role: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("winding_id", "role"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value or value != value.strip():
+                raise ValueError(f"{name} must be a canonical non-empty string.")
+        if isinstance(self.sequence, bool) or not isinstance(self.sequence, int) or self.sequence < 1:
+            raise ValueError("Winding sequence must be a positive integer.")
+        for name in ("rated_voltage_kv", "rated_mva"):
+            value = getattr(self, name)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0):
+                raise ValueError(f"{name} must be finite and positive when declared.")
+        connection = self.connection
+        if connection is not None and not isinstance(connection, TransformerWindingConnection):
+            try:
+                connection = TransformerWindingConnection(str(connection).strip().upper())
+            except ValueError as exc:
+                raise ValueError("Winding connection is not supported.") from exc
+            object.__setattr__(self, "connection", connection)
+        if self.phase_roles is not None:
+            if isinstance(self.phase_roles, (str, bytes)):
+                raise TypeError("Winding phase_roles must be a tuple/list, not a string.")
+            phases = tuple(str(item).strip().upper() for item in self.phase_roles)
+            if not phases or len(phases) != len(set(phases)) or any(item not in {"A", "B", "C"} for item in phases):
+                raise ValueError("Winding phase_roles must contain unique phase labels A, B, or C.")
+            object.__setattr__(self, "phase_roles", phases)
+        if self.neutral_terminal_role is not None and (not isinstance(self.neutral_terminal_role, str) or not self.neutral_terminal_role.strip()):
+            raise ValueError("neutral_terminal_role must be a non-empty string when declared.")
+        if self.terminal_role is not None and self.terminal_role not in {"FROM", "TO"}:
+            raise ValueError("terminal_role must be FROM or TO when declared.")
+
+
 class Transformer(Branch):
     """Static two-terminal transformer with an explicit impedance basis.
 
@@ -76,6 +124,7 @@ class Transformer(Branch):
         "_impedance_base_voltage_kv",
         "_hv_winding_connection",
         "_lv_winding_connection",
+        "_windings",
         "_hv_neutral_grounding_impedance_ohm",
         "_lv_neutral_grounding_impedance_ohm",
         "_hv_neutral_earth_return_impedance_ohm",
@@ -108,6 +157,7 @@ class Transformer(Branch):
         impedance_base_voltage_kv: float | None = None,
         hv_winding_connection: TransformerWindingConnection | str | None = None,
         lv_winding_connection: TransformerWindingConnection | str | None = None,
+        windings: tuple[TransformerWinding, ...] = (),
         hv_neutral_grounding_impedance_ohm: complex | None = None,
         lv_neutral_grounding_impedance_ohm: complex | None = None,
         hv_neutral_earth_return_impedance_ohm: complex | None = None,
@@ -199,6 +249,7 @@ class Transformer(Branch):
         self._shift = self._validate_finite(shift, "shift")
         self._hv_winding_connection = self._normalize_winding_connection(hv_winding_connection)
         self._lv_winding_connection = self._normalize_winding_connection(lv_winding_connection)
+        self._windings = self._normalize_windings(windings)
         self._hv_neutral_grounding_impedance_ohm = self._validate_neutral_grounding(hv_neutral_grounding_impedance_ohm, self._hv_winding_connection, "HV")
         self._lv_neutral_grounding_impedance_ohm = self._validate_neutral_grounding(lv_neutral_grounding_impedance_ohm, self._lv_winding_connection, "LV")
         self._hv_neutral_earth_return_impedance_ohm = self._validate_neutral_earth_return(hv_neutral_earth_return_impedance_ohm, self._hv_winding_connection, "HV")
@@ -253,6 +304,47 @@ class Transformer(Branch):
             raise ValueError("Transformer Z0 requires explicit impedance_reference_winding and HV/LV terminal mapping.")
         if self._zero_sequence_resistance_ohm is not None and (self._core_construction is None or self._zero_sequence_test_basis is None):
             raise ValueError("Transformer Z0 requires explicit core_construction and zero_sequence_test_basis.")
+
+    @staticmethod
+    def _normalize_windings(value: tuple[TransformerWinding, ...]) -> tuple[TransformerWinding, ...]:
+        if isinstance(value, (str, bytes)):
+            raise TypeError("windings must be an iterable of TransformerWinding records.")
+        records = tuple(value)
+        if any(not isinstance(item, TransformerWinding) for item in records):
+            raise TypeError("windings must contain only TransformerWinding records.")
+        if records:
+            if len(records) < 2:
+                raise ValueError("An explicit transformer winding collection requires at least HV and LV.")
+            if len({item.winding_id for item in records}) != len(records):
+                raise ValueError("Transformer winding IDs must be unique.")
+            if len({item.sequence for item in records}) != len(records):
+                raise ValueError("Transformer winding sequence numbers must be unique.")
+            roles = {item.role.upper() for item in records}
+            if not {"HV", "LV"}.issubset(roles):
+                raise ValueError("Explicit transformer windings must declare HV and LV roles.")
+            if len(roles) != len(records):
+                raise ValueError("Transformer winding roles must be unique.")
+            records = tuple(sorted(records, key=lambda item: item.sequence))
+        return records
+
+    @property
+    def windings(self) -> tuple[TransformerWinding, ...]:
+        """Return explicit windings, or a compatibility view of legacy HV/LV."""
+        records = getattr(self, "_windings", ())
+        if records:
+            return records
+        return (
+            TransformerWinding("HV", 1, "HV", connection=self.hv_winding_connection, phase_roles=self.hv_phase_roles, neutral_terminal_role=self.hv_neutral_terminal_role, terminal_role=self.hv_terminal_role),
+            TransformerWinding("LV", 2, "LV", connection=self.lv_winding_connection, phase_roles=self.lv_phase_roles, neutral_terminal_role=self.lv_neutral_terminal_role, terminal_role=self.lv_terminal_role),
+        )
+
+    def winding(self, winding_id: str) -> TransformerWinding:
+        if not isinstance(winding_id, str) or not winding_id.strip():
+            raise ValueError("winding_id must be a non-empty string.")
+        for item in self.windings:
+            if item.winding_id == winding_id:
+                return item
+        raise KeyError(f"Transformer winding not found: {winding_id!r}.")
 
     @staticmethod
     def _validate_terminal_mapping(hv_role: str | None, lv_role: str | None) -> tuple[str | None, str | None]:
@@ -1039,6 +1131,7 @@ class Transformer(Branch):
         self._shift = self._validate_finite(self._shift, "shift")
         self._hv_winding_connection = self._normalize_winding_connection(self._hv_winding_connection)
         self._lv_winding_connection = self._normalize_winding_connection(self._lv_winding_connection)
+        self._windings = self._normalize_windings(getattr(self, "_windings", ()))
         self._hv_neutral_grounding_impedance_ohm = self._validate_neutral_grounding(
             self._hv_neutral_grounding_impedance_ohm, self._hv_winding_connection, "HV"
         )
@@ -1106,6 +1199,7 @@ class Transformer(Branch):
                 "shift_deg": self.phase_shift_deg,
                 "hv_winding_connection": self._hv_winding_connection,
                 "lv_winding_connection": self._lv_winding_connection,
+                "windings": self.windings,
                 "hv_neutral_grounding_impedance_ohm": self._hv_neutral_grounding_impedance_ohm,
                 "hv_neutral_earth_return_impedance_ohm": self._hv_neutral_earth_return_impedance_ohm,
                 "lv_neutral_earth_return_impedance_ohm": self._lv_neutral_earth_return_impedance_ohm,
