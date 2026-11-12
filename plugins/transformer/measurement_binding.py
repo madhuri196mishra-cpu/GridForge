@@ -31,8 +31,8 @@ class TransformerMeasurementBinding:
 
 
 # The canonical Core MeasurementChannel supports these signal classes.
-# Complex quantities such as power are deliberately not inferred from a
-# single current/voltage point; they require an explicit Application model.
+# Power and energy are accepted only through explicitly typed canonical
+# Core channels with matching units; no P/Q/S calculation is inferred here.
 _SIGNAL_COMPATIBILITY = {
     TransformerQuantity.VOLTAGE: frozenset({"VOLTAGE"}),
     TransformerQuantity.CURRENT: frozenset({"CURRENT"}),
