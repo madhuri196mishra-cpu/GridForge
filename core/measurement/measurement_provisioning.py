@@ -116,6 +116,8 @@ class MeasurementProvisioning:
             source_terminal=None,
             source_reference=source_reference,
             source_installation_id=source_installation_id,
+            source_minimum=interface.minimum,
+            source_maximum=interface.maximum,
             **channel_kwargs,
         )
 
