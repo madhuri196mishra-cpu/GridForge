@@ -48,6 +48,7 @@ class DynamicComponentBinding:
     equipment_type: EquipmentType = EquipmentType.GENERATOR
     equipment_id: str | None = None
     terminal_ids: tuple[str, ...] = ()
+    terminal_bus_ids: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         for name in ("component_id", "bus_id", "terminal_id"):
@@ -82,6 +83,29 @@ class DynamicComponentBinding:
         if self.terminal_id not in terminals:
             raise DynamicComponentAssemblyError("terminal_ids must include the primary terminal_id")
         object.__setattr__(self, "terminal_ids", terminals)
+        raw_bus_map = self.terminal_bus_ids
+        if raw_bus_map is None:
+            if len(terminals) != 1:
+                raise DynamicComponentAssemblyError(
+                    "multi-terminal bindings require an explicit terminal_bus_ids mapping"
+                )
+            raw_bus_map = {self.terminal_id: self.bus_id}
+        if not isinstance(raw_bus_map, Mapping):
+            raise DynamicComponentAssemblyError("terminal_bus_ids must be a mapping")
+        bus_map: dict[str, str] = {}
+        for terminal, bus in raw_bus_map.items():
+            if not isinstance(terminal, str) or not terminal.strip():
+                raise DynamicComponentAssemblyError("terminal_bus_ids keys must be stable terminal identities")
+            if not isinstance(bus, str) or not bus.strip():
+                raise DynamicComponentAssemblyError("terminal_bus_ids values must be stable bus identities")
+            bus_map[terminal.strip()] = bus.strip()
+        if set(bus_map) != set(terminals):
+            raise DynamicComponentAssemblyError(
+                "terminal_bus_ids must map every and only explicitly bound terminal"
+            )
+        if bus_map[self.terminal_id] != self.bus_id:
+            raise DynamicComponentAssemblyError("primary terminal bus must match bus_id")
+        object.__setattr__(self, "terminal_bus_ids", MappingProxyType(bus_map))
 
 
 @dataclass(frozen=True, slots=True)
