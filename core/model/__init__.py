@@ -71,3 +71,12 @@ __all__ = (
     "Shunt", "Capacitor", "Reactor", "Solar", "Battery", "Grid", "CTPolarity", "CurrentTransformer", "PT",
     "PotentialTransformer", "CVT", "Relay", "EndpointReference", "EndpointReferenceKind", "EquipmentType",
 )
+
+
+# Physical cable installation routing (separate from electrical topology).
+from .physical_cable_routing import (
+    InstallationSystemKind, CableServiceClass, LengthSource, RoutingStatus,
+    ValidationSeverity, InstallationPoint, InstallationSystem,
+    InstallationRouteSegment, PhysicalCableRoute, CableRouteAssignment,
+    CableRoutingFinding, PhysicalCableRoutingInventory,
+)
