@@ -98,7 +98,12 @@ class DynamicComponentBinding:
                 raise DynamicComponentAssemblyError("terminal_bus_ids keys must be stable terminal identities")
             if not isinstance(bus, str) or not bus.strip():
                 raise DynamicComponentAssemblyError("terminal_bus_ids values must be stable bus identities")
-            bus_map[terminal.strip()] = bus.strip()
+            normalized_terminal = terminal.strip()
+            if normalized_terminal in bus_map:
+                raise DynamicComponentAssemblyError(
+                    "terminal_bus_ids contains duplicate normalized terminal identities"
+                )
+            bus_map[normalized_terminal] = bus.strip()
         if set(bus_map) != set(terminals):
             raise DynamicComponentAssemblyError(
                 "terminal_bus_ids must map every and only explicitly bound terminal"
