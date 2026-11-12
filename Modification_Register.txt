@@ -3454,3 +3454,19 @@ Explicit multi-terminal dynamic equipment bindings — 12 November 2026:
 - The binding still does not resolve terminal-to-bus topology; Core host
   topology resolution remains required before network assembly.
 - Verification: source fetch-back and static call-path inspection only.
+
+
+
+Multi-terminal topology provenance — 12 November 2026:
+- DynamicComponentBinding now requires terminal_bus_ids to map every and only
+  explicitly bound Core terminal. A multi-terminal binding cannot silently
+  inherit the primary terminal's bus for its return/secondary terminals.
+- Composed derivative assembly validates that every mapped bus has a solved
+  voltage and every mapped terminal has a host-resolved terminal voltage.
+  It deliberately does not equate terminal voltage with one bus potential:
+  line-line, delta and DC branch voltage is an oriented difference assembled
+  by the host from canonical terminal topology.
+- This separates topology provenance from voltage construction and prevents
+  incorrect assumptions for multi-node branch equipment.
+- Verification: source fetch-back and static contract/call-path inspection
+  only; no tests or numerical execution.
