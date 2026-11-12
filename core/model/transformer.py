@@ -89,8 +89,8 @@ class TransformerWinding:
             if isinstance(self.phase_roles, (str, bytes)):
                 raise TypeError("Winding phase_roles must be a tuple/list, not a string.")
             phases = tuple(str(item).strip().upper() for item in self.phase_roles)
-            if not phases or len(phases) != len(set(phases)) or any(item not in {"A", "B", "C"} for item in phases):
-                raise ValueError("Winding phase_roles must contain unique phase labels A, B, or C.")
+            if phases != ("A", "B", "C"):
+                raise ValueError("Winding phase_roles must explicitly declare the ordered three-phase set (A, B, C).")
             object.__setattr__(self, "phase_roles", phases)
         if self.neutral_terminal_role is not None and (not isinstance(self.neutral_terminal_role, str) or not self.neutral_terminal_role.strip()):
             raise ValueError("neutral_terminal_role must be a non-empty string when declared.")
