@@ -20,6 +20,7 @@ from .telemetry import (
     TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
     build_transformer_channel_catalogue_for_core,
     build_transformer_measurement_source_interfaces, validate_transformer_snapshot,
+    to_core_measurement_quality, measurement_availability_for_quality,
 )
 
 __all__ = [
@@ -28,7 +29,8 @@ __all__ = [
     "InsulationSystem", "CoolingMethod", "validate_transformer_profile_windings", "ChannelDefinition",
     "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
     "TransformerQuantity", "build_transformer_channel_catalogue", "build_transformer_channel_catalogue_for_core", "build_transformer_measurement_source_interfaces",
-    "validate_transformer_snapshot",
+    "validate_transformer_snapshot", "to_core_measurement_quality",
+    "measurement_availability_for_quality",
     "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
 __version__ = "0.2.0"
