@@ -28,6 +28,7 @@ from core.application.events import (
     SLDPresentationChanged,
     TopologyChanged,
     DraftChanged,
+    InstrumentationWiringChanged,
 )
 
 from ui.sld.sld_read_synchronizer import SLDReadSynchronizer
@@ -49,6 +50,7 @@ class SLDUpdateCoordinator:
         NetworkChanged,
         NetworkCommitted,
         ProtectionChanged,
+        InstrumentationWiringChanged,
         SLDPresentationChanged,
         DraftChanged,
         ProjectLoaded,
