@@ -3175,3 +3175,15 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+## Physical cable routing and installation engineering — 2026-11-12 (Core contract slice)
+
+- Created focused branch `physical-cable-routing-installation-2026-11-12` from current Madhuri main `7a9f5374d5f121dc4a81b3e1571f9d8cddbba263`.
+- Added `core/model/physical_cable_routing.py` with stable installation point/system/route/segment/cable-assignment IDs, explicit tray/ladder/trench/duct/conduit/underground/riser/box kinds, service classes, length provenance, route lifecycle, immutable ordered multi-segment paths and route inventory integrity checks.
+- Route geometry is independent of Qt/SLD drawing coordinates and Core electrical Network topology. Cable assignment references a stable cable ID without duplicating the electrical Cable model or depending on the not-yet-merged instrumentation PR #222.
+- Installed route length is exposed only when every segment has an explicitly approved route-geometry length. Manual cable length remains separate; slack and termination allowances are separate; procurement length requires a named procurement rule and explicit approved value.
+- Route validation reports missing segment length, non-authoritative route length, unsupported segregation and incomplete tray capacity data. It does not fabricate cable diameter, usable area, fill limit, dimensions, or standards.
+- Outstanding: Application commands/service and undo transaction, authoritative cable membership/schedule join, cable diameter/occupancy calculations, configurable project design criteria, bend-radius/environment/fire checks, persistence/migration, physical-layout projection, events/trace navigation, and end-to-end save/reopen.
+- Instrumentation wiring PR #222 remains open/draft and is not on Madhuri main. Dynamic accepted-step publication also remains incomplete on main.
+- Verification was static source inspection only; no tests/imports/CI/startup/GUI/persistence runtime checks.
