@@ -93,3 +93,24 @@ slice, not a claim of complete live SCADA/IEC 61850/IEC 60870-5-104/Modbus
 integration, thermal ageing validation, protection integration, or
 GPU/NPU solver acceleration. Those require explicit adapter and
 Application-level integration work.
+
+
+## Application measurement binding boundary
+
+`measurement_binding.py` adds an explicit, fail-closed binding contract from
+a transformer catalogue point to an already provisioned canonical Core
+`MeasurementChannel`. The resolver validates point/equipment identity,
+uniqueness, supported Core signal type, unit, and phase. It never creates a
+Core channel, changes its source, publishes a sample, or bypasses the
+Application's signed producer/clock checks.
+
+Only direct scalar quantities with a matching canonical Core signal type are
+currently bindable (voltage, current, frequency, phase angle, and explicitly
+typed power/custom quantities). Thermal, oil, DGA, insulation, bushing,
+mechanical, OLTC diagnostic, and protection-indication points require
+appropriate physical source models and/or dedicated Application producer
+adapters. They are intentionally rejected by this direct-binding resolver.
+An Application integration must additionally prove that the selected
+instrument channel is actually associated with the stated transformer in
+the active project topology; this plugin resolver does not claim to prove
+that relationship.
