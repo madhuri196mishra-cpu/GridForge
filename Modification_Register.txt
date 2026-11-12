@@ -3370,3 +3370,14 @@ Load branch terminal-pair safety refinement — 12 November 2026:
   delta/star neutral behavior, grounding, or phase sequence.
 - Verification: source fetch-back and static topology/formula inspection only.
   No tests or numerical execution were run.
+
+
+
+Canonical Core equipment discriminator refinement — 12 November 2026:
+- DynamicComponentBinding now uses Core EquipmentType directly rather than a
+  plugin-local string discriminator. Generator bindings retain machine_id;
+  motor/load bindings use their canonical Core equipment type and equipment
+  ID with no synthetic machine identity.
+- This keeps the solver binding aligned with the same Core EquipmentType
+  used by DynamicsEquipmentBinding and Core terminal endpoint references.
+- Verification: source fetch-back and static constructor/call-site review only.
