@@ -219,7 +219,7 @@ class DraftEquipment:
             "display_name": self.display_name,
             "terminal_contract": list(self.terminal_contract),
             "engineering_data": _canonical_value(self.engineering_data),
-            "endpoints": _canonical_value(self.endpoints),
+            "endpoints": _canonical_value({key: endpoint.to_dict() for key, endpoint in self.endpoints.items()}),
             "placement": None if self.placement is None else list(self.placement),
             "presentation": _canonical_value(self.presentation),
             "validation_state": _canonical_value(self.validation_state),
