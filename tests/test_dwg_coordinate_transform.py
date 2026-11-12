@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from plugins.dwg_export import DrawingEntity, SLDCoordinateTransform
 
 
 def _transform() -> SLDCoordinateTransform:
-    return SLDCoordinateTransform(
+    values = dict(
         mapping_id="site-map",
         mapping_version="1.0.0",
         source_coordinate_system="sld-document-local",
@@ -16,6 +18,10 @@ def _transform() -> SLDCoordinateTransform:
         reviewer="reviewer",
         reviewed_on="2026-11-04",
         review_reference="review:site-map",
+    )
+    return SLDCoordinateTransform(
+        **values,
+        reviewed_mapping_fingerprint=SLDCoordinateTransform.calculate_fingerprint(**values),
     )
 
 
@@ -195,3 +201,17 @@ def test_equipment_route_rejects_ambiguous_terminal_anchor_offset_coordinates() 
 
     with pytest.raises(ValueError, match="unsupported coordinate system"):
         _transform().transform_entities((route,))
+
+
+def test_sld_transform_rejects_mapping_drift_against_pinned_review_fingerprint() -> None:
+    values = dict(
+        mapping_id="site-map", mapping_version="1.0.0",
+        source_coordinate_system="sld-document-local", source_units="sld-unit",
+        millimetres_per_source_unit=2.0, world_origin_x_mm=100.0,
+        world_origin_y_mm=200.0, rotation_degrees=30.0,
+        reviewer="reviewer", reviewed_on="2026-11-04", review_reference="review:site-map",
+    )
+    reviewed = SLDCoordinateTransform.calculate_fingerprint(**values)
+    values["world_origin_x_mm"] = 101.0
+    with pytest.raises(ValueError, match="pinned reviewed fingerprint"):
+        SLDCoordinateTransform(**values, reviewed_mapping_fingerprint=reviewed)
