@@ -113,7 +113,10 @@ def create_application(
         clock_domain=measurement_clock_domain,
         max_source_clock_skew_seconds=max_measurement_source_clock_skew_seconds,
     )
-    measurement_channel_service.activate(initial_context, network, (), generation=1)
+    measurement_channel_service.activate(
+        initial_context, network, (), generation=1,
+        instrumentation=ProjectInstrumentationCollection(initial_context.project_id),
+    )
     protection_configuration_service = ProtectionConfigurationService(
         ProtectionProjectConfiguration(initial_context.project_id),
         network_provider=lambda: lifecycle.network if lifecycle is not None else network,
@@ -807,11 +810,19 @@ def create_application(
             # validating protection bindings or composing ProtectionRuntime.
             # The loaded definitions are configuration only; activation binds
             # them to this candidate Network and project generation.
+            candidate_instrumentation = (
+                loaded.instrumentation
+                if context is not None and loaded is not None and loaded.instrumentation is not None
+                else ProjectInstrumentationCollection(context.project_id)
+                if context is not None
+                else None
+            )
             measurement_channel_service.activate(
                 context,
                 network,
                 loaded.measurement_definitions if context is not None and loaded is not None else (),
                 generation=generation,
+                instrumentation=candidate_instrumentation,
             )
             if context is None:
                 application.set_draft_network_collection(None)
@@ -826,10 +837,7 @@ def create_application(
                 application._study_cases = {}
                 application.instrumentation_collection = None
             else:
-                application.instrumentation_collection = (
-                    loaded.instrumentation if loaded is not None and loaded.instrumentation is not None
-                    else ProjectInstrumentationCollection(context.project_id)
-                )
+                application.instrumentation_collection = candidate_instrumentation
                 configuration = (
                     loaded.protection_configuration
                     if loaded is not None and loaded.protection_configuration is not None
