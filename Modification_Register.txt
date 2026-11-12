@@ -3330,3 +3330,27 @@ Core dynamic terminal-injection contract — 12 November 2026:
   simulation.
 - Verification: GitHub source fetch-back and static call-path inspection only.
   No tests, CI, imports, startup, GUI or numerical execution were run.
+
+
+
+Load ZIP network-injection adapter — 12 November 2026:
+- Added LoadPhaseTerminal as a host-resolved branch/phase mapping with
+  canonical terminal ID, phase label, actual terminal voltage, matching
+  branch voltage base, per-branch apparent-power base and explicit share of
+  total equipment demand.
+- Added evaluate_zip_terminal_injections. It evaluates active/reactive ZIP
+  demand at the supplied time and terminal voltage, applies optional
+  piecewise-linear load profiles, converts branch complex power to per-unit
+  current on the supplied branch bases, and emits Core
+  DynamicTerminalInjection DTOs. Consumption uses negative current under
+  the equipment-to-network positive injection convention.
+- Phase shares must sum to one; injection IDs must be unique. DC connections
+  use zero reactive demand. The host remains responsible for correct
+  line-neutral, line-line, delta, grounded-star and DC terminal mapping and
+  for matching voltage/power bases.
+- This adapter is reduced ZIP algebraic demand only. It does not advertise
+  detailed motor, converter, furnace, harmonic or unbalanced device models,
+  nor does it execute a network solve. A physical motor must select either
+  this reduced representation or the Motor Dynamics model, never both.
+- Verification: source fetch-back and static formula/ownership review only.
+  No tests, imports, numerical experiments, network solve or commissioning.
