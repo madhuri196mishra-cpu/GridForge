@@ -3300,3 +3300,33 @@ Latest generator/motor interoperability source reconciliation — 12 November 20
 - Verification: source fetch-back and static ownership/measurement review
   only. No tests, CI, imports, startup, GUI, numerical simulation, hardware
   probing or commissioning were run.
+
+
+
+Core dynamic terminal-injection contract — 12 November 2026:
+- Extended the canonical Core DynamicComponentEvaluation with immutable,
+  finite, phase-resolved DynamicTerminalInjection contributions. Each
+  contribution identifies a stable injection ID, canonical terminal ID,
+  host-supplied phase ID and complex per-unit current. Positive current is
+  explicitly defined as injection from equipment into the network on the
+  study's declared current base.
+- Generalized the existing DynamicComponentBinding compatibly: generator
+  controller components retain machine_id and mechanical-power handoffs;
+  motor/load components bind equipment_kind/equipment_id directly to Core
+  equipment and terminal identities with machine_id=None. No synthetic
+  synchronous machine is created for a motor or load.
+- The existing component batch evaluator validates non-generator components
+  cannot emit machine mechanical-power handoffs and constrains every terminal
+  injection to the component's bound terminal. The batch and composed
+  derivative result expose immutable injection contributions for the host.
+- Preserved the existing DynamicStateComponent, global state layout,
+  component assembly and derivative assembly protocols. Multiple state
+  components can still attach to one physical participant (for example,
+  electrical and thermal state blocks); study-level participant uniqueness
+  remains enforced by the shared equipment participant validator.
+- Network algebraic consumption, phase aggregation, per-unit base mapping,
+  motor/load component adapters and accepted/rejected-step integration remain
+  open. This is a contract/assembly foundation, not a completed coupled
+  simulation.
+- Verification: GitHub source fetch-back and static call-path inspection only.
+  No tests, CI, imports, startup, GUI or numerical execution were run.
