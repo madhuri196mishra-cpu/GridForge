@@ -3270,3 +3270,33 @@ Application read-model ownership reconciliation — 12 November 2026:
   shape, but its instance lifecycle belongs to Application composition.
 - Verification: source fetch-back and ownership/call-site inspection only;
   no tests, imports, GUI or runtime experiments were run.
+
+
+
+Latest generator/motor interoperability source reconciliation — 12 November 2026:
+- Ported the generator plugin's FirstOrderAVRStateComponent and
+  evaluate_generator_dynamic_stage adapters. These use the canonical Core
+  DynamicStateComponent, DynamicSystemStateLayout and
+  evaluate_composed_dynamic_derivatives contracts, coordinating generator
+  excitation, network stage, terminal voltage projection and machine
+  derivative ordering without owning integration or Core equipment.
+- Reconciled the latest generator package exports and stage capability
+  metadata, plus the latest motor family catalogue, instrumentation,
+  transient solver, manifest, README and family-coverage test source.
+- Reapplied the wound-rotor duplicate measurement point correction after
+  source reconciliation; rotor.external_resistance is one family point with
+  combined consumer applicability.
+- MotorDynamicsPlugin now obtains motor_read_models from the shared
+  Application composition object. It no longer constructs or clears its own
+  MotorSimulationReadModelStore; Application owns projection lifetime.
+- Updated the shared architecture record: generator stage coordination is
+  present, but dynamic motor/load terminal injection and the complete
+  coupled network integration remain open. No claim of three-way coupled
+  simulation is made.
+- The generator-dynamics branch continued to advance during this work.
+  Integration source files were re-fetched and reconciled, but commit history
+  remains diverged; perform a final branch-history reconciliation before any
+  merge or PR. No merge was performed.
+- Verification: source fetch-back and static ownership/measurement review
+  only. No tests, CI, imports, startup, GUI, numerical simulation, hardware
+  probing or commissioning were run.
