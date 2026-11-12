@@ -109,7 +109,7 @@ def motor_measurement_points(family: MotorFamily) -> tuple[MotorMeasurementPoint
         if family in {MotorFamily.SINGLE_PHASE_CAPACITOR_START, MotorFamily.SINGLE_PHASE_PERMANENT_SPLIT_CAPACITOR, MotorFamily.SINGLE_PHASE_CAPACITOR_START_RUN}:
             pts.append(_p("machine.auxiliary_capacitor_voltage", "Auxiliary capacitor voltage", V, N, "V", ("monitoring","maintenance")))
     if family == MotorFamily.THREE_PHASE_WOUND_ROTOR_INDUCTION:
-        pts += [_p("rotor.external_resistance", "External rotor resistance", X, N, "ohm", ("control","commissioning","analysis")),
+        pts += [_p("rotor.external_resistance", "External rotor resistance", X, N, "ohm", ("control","commissioning","analysis","monitoring")),
                 _p("rotor.rotor_current", "Rotor current magnitude", C, N, "A", ("monitoring","protection")),
                 _p("rotor.rotor_copper_loss", "Rotor circuit copper loss", P, N, "W", ("monitoring","analysis"))]
 
@@ -168,8 +168,7 @@ def motor_measurement_points(family: MotorFamily) -> tuple[MotorMeasurementPoint
         if family == MotorFamily.DC_COMPOUND:
             pts.append(_p("excitation.compound_polarity", "Compound field polarity", D, N, "state", ("commissioning","control")))
     if family == MotorFamily.THREE_PHASE_WOUND_ROTOR_INDUCTION:
-        pts += [_p("rotor.external_resistance", "External rotor resistance", X, N, "ohm", ("control","monitoring")),
-                _p("rotor.slip_ring_temperature", "Slip-ring temperature", X, N, "degC", ("monitoring","alarm")),
+        pts += [_p("rotor.slip_ring_temperature", "Slip-ring temperature", X, N, "degC", ("monitoring","alarm")),
                 _p("rotor.brush_wear", "Rotor brush wear", X, N, "%", ("maintenance","alarm"))]
     if family in {MotorFamily.SINGLE_PHASE_CAPACITOR_START, MotorFamily.SINGLE_PHASE_PERMANENT_SPLIT_CAPACITOR,
                   MotorFamily.SINGLE_PHASE_CAPACITOR_START_RUN}:
