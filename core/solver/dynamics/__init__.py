@@ -41,6 +41,12 @@ from .component_contract import (
     DynamicStateComponent,
     validate_dynamic_state_component,
 )
+from .network_coupling import (
+    DynamicNetworkCouplingError,
+    DynamicNetworkSolveRequest,
+    DynamicNetworkSolver,
+    validate_dynamic_network_solution,
+)
 from .events import EventBatchConflictError, EventExecution, EventManager, EventOperation, EventTransition, SimulationEvent
 from .dae_solver import (
     AlgebraicNetworkSolution,
@@ -92,6 +98,10 @@ __all__ = [
     "EventExecution",
     "EventTransition",
     "EventManager",
+    "DynamicNetworkCouplingError",
+    "DynamicNetworkSolveRequest",
+    "DynamicNetworkSolver",
+    "validate_dynamic_network_solution",
     "AlgebraicNetworkSolution",
     "NetworkSolver",
     "MechanicalPowerMap",
