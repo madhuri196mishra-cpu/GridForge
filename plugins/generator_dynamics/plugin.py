@@ -18,6 +18,7 @@ from core.plugin_sdk import (
     validate_plugin_descriptor,
 )
 from .study_handler import GeneratorTransientStudyHandler
+from plugins.electrical_dynamics.composition import require_electrical_dynamics_composition
 
 GENERATOR_TRANSIENT_STUDY_TYPE = "generator_transient"
 
@@ -94,7 +95,7 @@ class GeneratorDynamicsPlugin(GridForgePlugin):
         )
 
         application = context.application
-        composition = services.get("electrical_dynamics_composition")
+        composition = require_electrical_dynamics_composition(services)
         if composition is None:
             raise RuntimeError(
                 "Generator dynamics activation requires the Application-owned "
