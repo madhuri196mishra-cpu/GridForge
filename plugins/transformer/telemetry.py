@@ -6,6 +6,7 @@ from enum import Enum
 from math import isfinite
 
 from core.model.transformer import Transformer
+from core.measurement.measurement_source import MeasurementSourceInterface
 from .profile import TransformerProfile, validate_transformer_profile_windings
 from typing import Iterable
 
@@ -182,6 +183,49 @@ def build_transformer_channel_catalogue_for_core(
         include_partial_discharge=include_partial_discharge,
         include_bushing_monitoring=include_bushing_monitoring,
     )
+
+
+def build_transformer_measurement_source_interfaces(
+    catalogue: Iterable[ChannelDefinition],
+    channel_ids: Iterable[str],
+) -> tuple[MeasurementSourceInterface, ...]:
+    """Project selected physical-sensor points into Core source-interface records.
+
+    The caller selects channels belonging to one real instrument. This helper
+    does not invent a source identity, assert that hardware is installed, or
+    provision a project source/installation.
+    """
+    points = tuple(catalogue)
+    by_id = {point.channel_id: point for point in points}
+    if len(by_id) != len(points):
+        raise ValueError("Transformer telemetry catalogue contains duplicate channel IDs.")
+    selected_ids = tuple(channel_ids)
+    if not selected_ids:
+        raise ValueError("At least one telemetry channel must be selected.")
+    if len(set(selected_ids)) != len(selected_ids):
+        raise ValueError("Selected telemetry channel IDs must be unique.")
+    result: list[MeasurementSourceInterface] = []
+    for channel_id in selected_ids:
+        point = by_id.get(channel_id)
+        if point is None:
+            raise KeyError(f"Transformer telemetry channel not found: {channel_id!r}.")
+        if point.sensor_type is None:
+            raise ValueError(f"Channel {channel_id!r} has no declared physical sensor type.")
+        if point.signal_kind is SignalKind.ESTIMATED:
+            raise ValueError(
+                f"Estimated channel {channel_id!r} is not a physical measurement-source interface."
+            )
+        result.append(MeasurementSourceInterface(
+            interface_id=point.channel_id,
+            quantity=point.quantity.value,
+            unit=point.unit,
+            signal_kind=point.signal_kind.value,
+            phase=point.phase,
+            winding_id=point.winding_id,
+            minimum=point.minimum,
+            maximum=point.maximum,
+        ))
+    return tuple(result)
 
 
 def validate_transformer_snapshot(
