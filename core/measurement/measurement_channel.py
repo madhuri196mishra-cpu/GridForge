@@ -360,8 +360,6 @@ class MeasurementChannel:
         name: str = "",
         source: Any = None,
         source_terminal: Any = None,
-        source_reference: Any = None,
-        source_installation_id: Optional[str] = None,
         phase: MeasurementPhase = MeasurementPhase.NONE,
         unit: str = "",
         nominal_value: float = 0.0,
@@ -374,6 +372,8 @@ class MeasurementChannel:
         timestamp_domain: Optional[str] = None,
         sample_sequence: Optional[int] = None,
         stale_after: Optional[float] = None,
+        source_reference: Any = None,
+        source_installation_id: Optional[str] = None,
     ) -> None:
 
         self._validate_id(id)
