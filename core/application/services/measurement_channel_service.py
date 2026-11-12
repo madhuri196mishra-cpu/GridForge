@@ -561,6 +561,11 @@ class MeasurementChannelService:
         channel_id = self._normalize_id(definition.get("channel_id", definition.get("id")))
         physical_reference_data = definition.get("source_reference")
         if physical_reference_data is not None:
+            if definition.get("source_terminal") is not None or definition.get("source_terminal_reference") is not None:
+                raise ValueError("A physical source channel cannot also declare an electrical source terminal.")
+            supplied_source_id = definition.get("source", definition.get("source_id"))
+            if supplied_source_id is not None and self._normalize_id(supplied_source_id) != MeasurementSourceReference.from_mapping(physical_reference_data).source_id:
+                raise ValueError("Physical source ID conflicts with the canonical source_reference.")
             if not isinstance(instrumentation, ProjectInstrumentationCollection):
                 raise ValueError("Physical source channel provisioning requires the candidate project instrumentation collection.")
             reference = MeasurementSourceReference.from_mapping(physical_reference_data)
