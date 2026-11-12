@@ -78,7 +78,7 @@ class ModelDTO:
             configuration_schema = (
                 configuration_schema
                 if has_configuration_schema
-                else TRANSFORMER_CONFIGURATION_SCHEMA_VERSION
+                else 1
             )
             if (
                 isinstance(configuration_schema, bool)
