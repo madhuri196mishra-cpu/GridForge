@@ -11,6 +11,7 @@ from core.application.creation import CreationCommitIntent, CreationCommandPrepa
 from core.application.creation_schema import creation_contracts_from_definitions
 
 _CANONICAL_CREATION_CONTRACTS = creation_contracts_from_definitions()
+from core.application.draft.handlers import _thaw_payload
 from core.application.draft.network import (
     DraftConnection,
     DraftEndpointReference,
@@ -161,14 +162,23 @@ def _attach_sld_document(app) -> SLDDocument:
 def _commit(app, draft: DraftNetwork):
     document = _attach_sld_document(app)
     app.set_draft_network(draft)
-    return app.execute(
-        CommitNetworkCommand(
-            project_id=draft.project_id,
-            activation_generation=draft.activation_generation,
-            draft_network=app.draft_network.to_dict(),
-            document_id=document.document_id,
-        )
+    command = CommitNetworkCommand(
+        project_id=draft.project_id,
+        activation_generation=draft.activation_generation,
+        draft_network=app.draft_network.to_dict(),
+        document_id=document.document_id,
     )
+    active = app._draft_network_for_command(document.document_id)
+    round_trip = DraftNetwork.from_dict(
+        _thaw_payload(command.payload["draft_network"]),
+        project_id=draft.project_id,
+        activation_generation=draft.activation_generation,
+    )
+    assert round_trip.to_dict() == active.to_dict(), (
+        "immutable CommitNetworkCommand payload must round-trip to the active "
+        "document DraftNetwork snapshot"
+    )
+    return app.execute(command)
 
 
 
