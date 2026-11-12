@@ -891,6 +891,8 @@ class Transformer(Branch):
         phase_domain_multiport_phase_shift_rad: float | None = None,
         _replace_phase_domain_multiport_configuration: bool = False,
         _replace_winding_configuration: bool = False,
+        windings: tuple[TransformerWinding, ...] | None = None,
+        _replace_windings: bool = False,
     ) -> None:
         """Atomically apply a validated Transformer engineering configuration.
 
@@ -991,6 +993,23 @@ class Transformer(Branch):
         target_hv_role = self._hv_terminal_role if hv_terminal_role is None and not _replace_winding_configuration else hv_terminal_role
         target_lv_role = self._lv_terminal_role if lv_terminal_role is None and not _replace_winding_configuration else lv_terminal_role
         target_hv_role, target_lv_role = self._validate_terminal_mapping(target_hv_role, target_lv_role)
+        if not isinstance(_replace_windings, bool):
+            raise TypeError("_replace_windings must be a bool.")
+        if _replace_windings:
+            target_windings = self._normalize_windings(() if windings is None else windings)
+        else:
+            if windings is not None:
+                raise ValueError("windings may only be supplied with _replace_windings=True.")
+            target_windings = self._windings
+        if target_windings:
+            by_role = {item.role.upper(): item for item in target_windings}
+            for role, connection, phases, neutral, terminal in (
+                ("HV", target_hv_connection, target_hv_phase_roles, target_hv_neutral_role, target_hv_role),
+                ("LV", target_lv_connection, target_lv_phase_roles, target_lv_neutral_role, target_lv_role),
+            ):
+                record = by_role[role]
+                if (record.connection, record.phase_roles, record.neutral_terminal_role, record.terminal_role) != (connection, phases, neutral, terminal):
+                    raise ValueError(f"Explicit {role} winding record must exactly match the established Core {role} configuration.")
         target_reference_winding = self._normalize_reference_winding(self._impedance_reference_winding if impedance_reference_winding is None and not _replace_winding_configuration else impedance_reference_winding)
         target_z0r = self._zero_sequence_resistance_ohm if zero_sequence_resistance_ohm is None and not _replace_winding_configuration else zero_sequence_resistance_ohm
         target_z0x = self._zero_sequence_reactance_ohm if zero_sequence_reactance_ohm is None and not _replace_winding_configuration else zero_sequence_reactance_ohm
@@ -1068,6 +1087,7 @@ class Transformer(Branch):
             self._phase_domain_terminal_admittance_siemens, self._zero_sequence_multiport_evidence,
             self._phase_domain_delta_loop_states, self._phase_domain_multiport_tap_ratio,
             self._phase_domain_multiport_phase_shift_rad,
+            self._windings,
         )
         try:
             self._r = target_r
@@ -1100,6 +1120,7 @@ class Transformer(Branch):
             self._phase_domain_delta_loop_states = target_delta_loops
             self._phase_domain_multiport_tap_ratio = target_multiport_tap
             self._phase_domain_multiport_phase_shift_rad = target_multiport_shift
+            self._windings = target_windings
             self.validate()
         except Exception:
             (
@@ -1119,6 +1140,7 @@ class Transformer(Branch):
                 self._phase_domain_terminal_admittance_siemens, self._zero_sequence_multiport_evidence,
                 self._phase_domain_delta_loop_states, self._phase_domain_multiport_tap_ratio,
                 self._phase_domain_multiport_phase_shift_rad,
+                self._windings,
             ) = old_state
             self.name = old_name
             raise
