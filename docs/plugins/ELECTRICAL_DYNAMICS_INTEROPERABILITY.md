@@ -82,3 +82,11 @@ No family is labelled reference-validated or field-validated by this integration
 ## Verification boundary
 
 The branch is a source-level interoperability foundation. It has not been activated in the Application composition root; no coupled solver, cross-plugin study execution, tests, CI, startup, GUI, hardware probing or commissioning has been performed. It is not merged to `main`.
+
+
+The generator stage result now cross-checks the final derivative assembly against
+the typed terminal-injection set returned by the converged fixed-point iteration.
+It compares contributions by stable injection identity and rejects a stage if
+the final derivative evaluation changes, drops, or adds a contribution after
+the network solve. This guards the important boundary between a converged
+voltage/current iterate and the derivative vector that the integrator consumes.
