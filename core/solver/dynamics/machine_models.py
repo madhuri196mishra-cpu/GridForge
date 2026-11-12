@@ -554,6 +554,11 @@ class ClassicalSynchronousMachine:
         )
 
         delta = state[0]
+        if field_voltage is not None and (
+            isinstance(field_voltage, bool)
+            or not isinstance(field_voltage, (int, float))
+        ):
+            raise MachineModelError("field_voltage must be a real numeric value")
         efd = self.Efd if field_voltage is None else float(field_voltage)
         self._validate_scalar(efd, "field_voltage")
         if efd < 0.0:
