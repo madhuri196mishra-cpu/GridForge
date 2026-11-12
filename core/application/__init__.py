@@ -85,6 +85,7 @@ from .protection_study import (
 from .revision_service import RevisionService
 from .validation import ValidationIssue, ValidationResult, ValidationSeverity, ValidationSummary
 from .services.validation_service import ValidationService
+from .electrical_dynamics_read_models import MotorSimulationReadModelStore, SimulationSummary
 
 __all__ = [
     "Application",
@@ -163,4 +164,6 @@ __all__ = [
     "ValidationSeverity",
     "ValidationSummary",
     "ValidationService",
+    "MotorSimulationReadModelStore",
+    "SimulationSummary",
 ]
