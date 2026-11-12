@@ -124,5 +124,5 @@ __all__ = [
     "DynamicNetworkCouplingError",
     "DynamicNetworkSolveRequest",
     "DynamicNetworkSolver",
-    "validate_dynamic_network_solution",
+    "validate_dynamic_network_solution",\n    "DynamicNetworkStageResult",\n    "TerminalInjectionEvaluator",\n    "solve_dynamic_network_stage",
 ]
