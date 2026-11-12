@@ -399,3 +399,10 @@ This is not a cycle-resolved AC commutator model. Brush contact drop, commutatio
 The wound-field synchronous profile has a separate CPU rotor-dq envelope solver with independently supplied stator d/q voltages and rotor DC field voltage. It tracks d/q stator currents, field current, d/q damper-current states, rotor angle and speed, synchronous-speed error, torque, copper losses and lumped winding temperature. Damper current states currently decay through their resistive-inductive time constants; induced damper EMF and full mutual flux-linkage matrix dynamics are not yet represented.
 
 This is an experimental averaged model, not a validated pull-in, synchronising, hunting or transient-stability model. It omits saturation, cross-saturation, iron loss, exciter/AVR dynamics, brushless exciter, detailed damper cage coupling, stator terminal-network coupling and PWM switching. CPU/RK4 only.
+
+
+## Hysteresis synchronous motor (experimental)
+
+A dedicated CPU torque-angle envelope model is available for the hysteresis motor family. It exposes rated RMS voltage, frequency, pole pairs, pull-out torque, inertia, friction and a rotor-loss fraction; outputs include rotor speed/angle, load angle, torque, synchronous-speed error, pull-out torque margin and rotor thermal estimate.
+
+This is not a material hysteresis model: it does not resolve rotor ring magnetisation, hysteresis-loop energy, asynchronous starting/pull-in, detailed air-gap fields, voltage/frequency transients or validated synchronising dynamics. The pull-out margin is a static voltage-scaled torque-capacity estimate, not a dynamic stability certificate. CPU/RK4 only.
