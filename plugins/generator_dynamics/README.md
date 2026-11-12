@@ -593,3 +593,36 @@ network re-solution coupling remain unresolved; this contract does not claim
 a closed-loop generator model. Sampled GGOV1 acceleration feedback must be
 held constant through every integrator stage and committed only by the
 accepted-step transaction owner.
+
+### AVR field-voltage handoff to the synchronous-machine model
+
+The existing classical synchronous-machine model now accepts an optional
+per-machine `field_voltage` input when calculating internal EMF, current
+injection and terminal electrical output. `MultiMachineSystem` exposes the
+same optional `field_voltages` mapping on `electrical_outputs()`,
+`electrical_powers()` and `derivatives()`. Values are finite,
+non-negative pu quantities keyed by canonical machine ID; unknown machine
+IDs, booleans, negative values and non-finite values are rejected. Machines
+without an explicit entry retain their configured static `Efd` parameter.
+
+This is the machine-side excitation input seam only. It does not yet connect
+the three-state `FirstOrderAVR` state to the machine system or to the
+network solver. The existing `DAESolver` network callback still receives
+only `(state, time)`, so a production AVR must provide one consistent
+field-voltage snapshot to both network current-injection assembly and
+machine electrical-output/derivative evaluation. Re-solving the algebraic
+network when AVR field voltage changes is mandatory; passing the override
+only to rotor electrical power would create an inconsistent DAE snapshot.
+No such callback or DAE integration is claimed by this increment.
+
+The plugin-side `build_generator_excitation_snapshot()` now provides the
+pre-network half of this boundary. It reads the state-owned third output of
+each bound `FirstOrderAVR`, validates one-to-one AVR/component/machine
+identity, and returns an immutable, time-stamped machine-to-field-voltage
+mapping. The same snapshot is intended to be passed to the network's machine
+current-injection assembly and to `MultiMachineSystem` electrical-output and
+derivative calls. This is an explicit sample contract, not a network solver
+adapter: the current `DAESolver` callback still cannot receive it, and AVR
+derivatives still need to be evaluated from the resulting terminal-voltage
+solution at the same integrator stage time. Therefore the complete AVR–network
+closed loop remains an integration task.
