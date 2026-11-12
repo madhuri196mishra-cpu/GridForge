@@ -152,16 +152,11 @@ def evaluate_composed_dynamic_derivatives(
                 raise DynamicDerivativeAssemblyError(
                     f"component {binding.component_id!r} has no voltage for terminal {terminal_id!r}"
                 )
-            if not np.isclose(
-                inputs.terminal_voltages[terminal_id],
-                voltages[bus_id],
-                rtol=1e-9,
-                atol=1e-12,
-            ):
-                raise DynamicDerivativeAssemblyError(
-                    f"component {binding.component_id!r} terminal voltage is inconsistent "
-                    f"with its resolved bus voltage"
-                )
+            # Terminal voltage is a host-resolved electrical quantity. For
+            # line-line, delta and DC branches it may be an oriented
+            # difference between multiple bus potentials, not the voltage of
+            # one bus. Topology provenance is validated above; the host owns
+            # the actual terminal-voltage construction.
 
     global_state = layout.pack(machine_vector, component_states)
     component_result = evaluate_dynamic_components(
