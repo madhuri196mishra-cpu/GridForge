@@ -59,6 +59,7 @@ from .events import (
     SimpleWireConnectionCreated, SimpleWireConnectionRemoved, JunctionCreated, JunctionRemoved,
 )
 from .project import ProjectContext, ProjectSnapshot
+from .instrumentation import ProjectInstrumentationCollection
 from .project_lifecycle import ProjectLifecycleService
 from .project_transition import ProjectTransitionDecision, ProjectTransitionRequired
 from .recovery import ApplicationRecoveryStatus
@@ -162,6 +163,7 @@ class Application:
         self._workspace_dirty_provider: Callable[[], bool] | None = None
         self._draft_network: Any | None = None
         self._draft_network_collection: DraftNetworkCollection | None = None
+        self._instrumentation_collection: ProjectInstrumentationCollection | None = None
         self._execution_lock = RLock()
         self._commit_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gridforge-network-commit")
         self._commit_state_lock = RLock()
@@ -209,6 +211,18 @@ class Application:
     def terminal_roles_by_type(self) -> Mapping[str, tuple[str, ...]]:
         """Return the immutable Core-derived terminal-role contract."""
         return self.TERMINAL_ROLES_BY_TYPE
+
+    @property
+    def instrumentation_collection(self) -> ProjectInstrumentationCollection | None:
+        """Return the active project-owned physical instrumentation collection."""
+        return self._instrumentation_collection
+
+    @instrumentation_collection.setter
+    def instrumentation_collection(self, collection: ProjectInstrumentationCollection | None) -> None:
+        """Replace the active instrumentation value during project activation/rollback."""
+        if collection is not None and not isinstance(collection, ProjectInstrumentationCollection):
+            raise TypeError("instrumentation_collection must be ProjectInstrumentationCollection or None.")
+        self._instrumentation_collection = collection
 
     @property
     def integrity_state(self) -> str:

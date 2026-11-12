@@ -1,79 +1,36 @@
-# plugins/transformer/__init__.py
+"""Transformer engineering and dynamics plugin capabilities.
 
+The Core Transformer remains authoritative for equipment identity and
+connectivity. This package contributes optional capability profiles,
+instrumentation metadata and telemetry contracts.
 """
-GridForge Transformer Plugin Package
-====================================
-
-GridForge Plugin Layer
-
-Provides optional transformer-specific capabilities that extend the
-frozen core/model transformer without expanding the core model.
-
-Available capabilities
-----------------------
-
-    TransformerPlugin
-        Common transformer-plugin base contract.
-
-    Winding
-        Physical transformer winding representation.
-
-    VectorGroup
-        Transformer winding connection and vector-group representation.
-
-    Grounding
-        Transformer neutral and grounding configuration.
-
-    TapChanger
-        Physical transformer tap-changer representation.
-
-    TransformerEquivalent
-        Detailed transformer electrical-equivalent representation.
-
-Architecture
-------------
-
-The authoritative transformer equipment object remains:
-
-    core.model.transformer.Transformer
-
-Specialized transformer capabilities live here:
-
-    plugins.transformer
-
-The plugin layer must not make the core model depend on these
-modules.
-
-Numerical calculations remain the responsibility of the appropriate
-network, solver, analysis, protection, dynamics, and simulation
-layers.
-
-GridForge V2 Status
--------------------
-ACTIVE DEVELOPMENT
-
-The transformer plugin package is not yet frozen.
-
-Copyright © 2026 Subhendu Mishra
-All Rights Reserved.
-"""
-
 from .base import TransformerPlugin
 from .winding import Winding
 from .vector_group import VectorGroup
 from .grounding import Grounding
 from .tap_changer import TapChanger
 from .equivalent import TransformerEquivalent
-
+from .profile import TransformerProfile, TransformerFamily, InsulationSystem, CoolingMethod, validate_transformer_profile_windings
+from .measurement_binding import (
+    TransformerMeasurementBinding,
+    resolve_transformer_measurement_bindings,
+)
+from .telemetry import (
+    ChannelDefinition, MeasurementQuality, SignalKind, TelemetrySample,
+    TelemetrySnapshot, TransformerQuantity, build_transformer_channel_catalogue,
+    build_transformer_channel_catalogue_for_core,
+    build_transformer_measurement_source_interfaces, validate_transformer_snapshot,
+    to_core_measurement_quality, measurement_availability_for_quality,
+)
 
 __all__ = [
-    "TransformerPlugin",
-    "Winding",
-    "VectorGroup",
-    "Grounding",
-    "TapChanger",
-    "TransformerEquivalent",
+    "TransformerPlugin", "Winding", "VectorGroup", "Grounding", "TapChanger",
+    "TransformerEquivalent", "TransformerProfile", "TransformerFamily",
+    "InsulationSystem", "CoolingMethod", "validate_transformer_profile_windings", "ChannelDefinition",
+    "MeasurementQuality", "SignalKind", "TelemetrySample", "TelemetrySnapshot",
+    "TransformerQuantity", "build_transformer_channel_catalogue", "build_transformer_channel_catalogue_for_core", "build_transformer_measurement_source_interfaces",
+    "validate_transformer_snapshot", "to_core_measurement_quality",
+    "measurement_availability_for_quality",
+    "TransformerMeasurementBinding", "resolve_transformer_measurement_bindings",
 ]
-
-
-__version__ = "0.1.0"
+__version__ = "0.2.0"
