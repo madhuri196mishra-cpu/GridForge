@@ -58,6 +58,36 @@ def _freeze(value: Any) -> Any:
 
 
 @dataclass(frozen=True, slots=True)
+class InstrumentationWiringReadModel:
+    """Detached, immutable Application projection of project wiring identity.
+
+    Values are plain read-side data. Core records, mutable dictionaries and
+    canvas geometry are never exposed through this boundary.
+    """
+
+    project_id: str
+    activation_generation: int
+    cables: tuple[Mapping[str, Any], ...]
+    cores: tuple[Mapping[str, Any], ...]
+    panel_wires: tuple[Mapping[str, Any], ...]
+    signals: tuple[Mapping[str, Any], ...]
+    signal_bindings: tuple[Mapping[str, Any], ...]
+    tag_policy: tuple[Mapping[str, Any], ...]
+    connection_hops: tuple[Mapping[str, Any], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.project_id, str) or not self.project_id.strip():
+            raise ValueError("InstrumentationWiringReadModel.project_id must be non-empty")
+        if isinstance(self.activation_generation, bool) or not isinstance(self.activation_generation, int) or self.activation_generation < 1:
+            raise ValueError("InstrumentationWiringReadModel.activation_generation must be positive")
+        for name in ("cables", "cores", "panel_wires", "signals", "signal_bindings", "tag_policy", "connection_hops"):
+            values = tuple(getattr(self, name))
+            if any(not isinstance(item, Mapping) for item in values):
+                raise TypeError(f"InstrumentationWiringReadModel.{name} must contain mappings")
+            object.__setattr__(self, name, tuple(_freeze(item) for item in values))
+
+
+@dataclass(frozen=True, slots=True)
 class EngineeringParameterReadModel:
     """Immutable Application read-side description of one engineering parameter.
 
@@ -814,4 +844,5 @@ __all__ = [
     "TransientDiscontinuityReadModel",
     "TransientEventReadModel",
     "TransientResultPresentationReadModel",
+    "InstrumentationWiringReadModel",
 ]
