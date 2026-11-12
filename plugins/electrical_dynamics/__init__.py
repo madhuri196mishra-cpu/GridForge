@@ -3,6 +3,10 @@ from .composition import ElectricalDynamicsComposition, require_electrical_dynam
 from core.solver.dynamics.dynamic_state_layout import (
     DynamicSystemLayoutError, DynamicStateBlockSlice, DynamicSystemStateLayout,
 )
+from core.solver.dynamics.component_assembly import (
+    DynamicComponentAssemblyError, DynamicComponentBinding,
+    DynamicComponentBatchEvaluation, evaluate_dynamic_components,
+)
 from core.solver.dynamics.component_contract import (
     DynamicComponentInputs, DynamicComponentEvaluation, DynamicStateComponent,
     validate_dynamic_state_component,
@@ -24,6 +28,8 @@ __all__ = [
     "ElectricalDynamicsComposition", "require_electrical_dynamics_composition",
     "DynamicComponentInputs", "DynamicComponentEvaluation", "DynamicStateComponent",
     "validate_dynamic_state_component",
+    "DynamicComponentAssemblyError", "DynamicComponentBinding",
+    "DynamicComponentBatchEvaluation", "evaluate_dynamic_components",
     "DynamicSystemLayoutError", "DynamicStateBlockSlice", "DynamicSystemStateLayout",
     "DynamicsEquipmentBinding", "DynamicsEquipmentKind",
     "DynamicsModelCapability", "DynamicsModelReadiness", "DynamicsParticipant",
