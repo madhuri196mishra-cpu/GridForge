@@ -165,7 +165,7 @@ def _commit(app, draft: DraftNetwork):
         CommitNetworkCommand(
             project_id=draft.project_id,
             activation_generation=draft.activation_generation,
-            draft_network=draft.to_dict(),
+            draft_network=app.draft_network.to_dict(),
             document_id=document.document_id,
         )
     )
@@ -388,8 +388,11 @@ def _route() -> dict:
 def _commit_with_sld(draft: DraftNetwork):
     app = create_application(Network())
     project_id = app.project_lifecycle.context.project_id
+    draft_data = draft.to_dict()
+    draft_data["project_id"] = project_id
+    draft_data["activation_generation"] = app.project_lifecycle.activation_generation
     draft = DraftNetwork.from_dict(
-        draft.to_dict(),
+        draft_data,
         project_id=project_id,
         activation_generation=app.project_lifecycle.activation_generation,
     )
@@ -406,7 +409,7 @@ def _commit_with_sld(draft: DraftNetwork):
     result = app.execute(CommitNetworkCommand(
         project_id=draft.project_id,
         activation_generation=draft.activation_generation,
-        draft_network=draft.to_dict(),
+        draft_network=app.draft_network.to_dict(),
         document_id=document.document_id,
     ))
     return app, result, document
@@ -512,7 +515,7 @@ def test_commit_rejects_stale_snapshot_without_discarding_newer_draft_changes():
     document = _attach_sld_document(app)
     draft.add_equipment(_bus("b1"))
     app.set_draft_network(draft)
-    stale_payload = draft.to_dict()
+    stale_payload = app.draft_network.to_dict()
 
     # Model a later, valid Application-owned authoring command after the
     # original commit snapshot was captured.
