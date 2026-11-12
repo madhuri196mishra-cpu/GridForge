@@ -18,7 +18,6 @@ from .commands import (
 if TYPE_CHECKING:
     from .dashboard import MotorTelemetryDashboardWidget
 from .persistence import MotorPluginPersistenceHandler
-from .read_models import MotorSimulationReadModelStore
 from .study_handler import MotorTransientResultPublisher, MotorTransientStudyHandler
 from core.application.events import StudyCancelled, StudyCompleted, StudyFailed, StudyStarted
 from core.plugin_sdk import (
@@ -73,7 +72,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
     def __init__(self) -> None:
         self.application: Any = None
         self.context: Any = None
-        self.read_models = MotorSimulationReadModelStore()
+        self.read_models: Any = None
         self.persistence: MotorPluginPersistenceHandler | None = None
         self.dashboard: MotorTelemetryDashboardWidget | None = None
         self._unhooks: list[Any] = []
@@ -124,12 +123,22 @@ class MotorDynamicsPlugin(GridForgePlugin):
         services = getattr(context, "services", None)
         if not isinstance(services, Mapping):
             raise TypeError("PluginContext.services must be a mapping")
-        composition = services.get("motor_dynamics_composition")
+        composition = services.get("electrical_dynamics_composition")
         if composition is None:
             raise RuntimeError(
                 "Motor dynamics cannot be activated until PluginContext.services "
-                "provides 'motor_dynamics_composition' with transactional motor "
-                "services and command registration."
+                "provides the Application-owned 'electrical_dynamics_composition'."
+            )
+        capability_report = getattr(composition, "capability_report", None)
+        motor_capability = capability_report.get("motor") if isinstance(capability_report, Mapping) else None
+        if (
+            motor_capability is None
+            or not getattr(motor_capability, "solver_adapter_available", False)
+            or not getattr(motor_capability, "executable_study", False)
+        ):
+            raise RuntimeError(
+                "Motor Dynamics requires an available Application motor solver adapter "
+                "and executable motor study capability."
             )
 
         register = getattr(composition, "register_motor_extension", None)
@@ -145,6 +154,21 @@ class MotorDynamicsPlugin(GridForgePlugin):
             raise RuntimeError(
                 "motor_dynamics_composition must expose a separate 'motor_service'; "
                 "the registration adapter itself is not a domain service."
+            )
+
+        read_models = getattr(composition, "motor_read_models", None)
+        required_read_model_methods = (
+            "publish", "get_motor_id_for_study",
+            "get_simulation_summary", "get_raw_channel_vector",
+        )
+        missing_read_model_methods = [
+            name for name in required_read_model_methods
+            if not callable(getattr(read_models, name, None))
+        ]
+        if missing_read_model_methods:
+            raise RuntimeError(
+                "Application electrical dynamics composition must provide its "
+                "motor read model with: " + ", ".join(missing_read_model_methods)
             )
 
         handler = MotorPlacementCommandHandler(motor_service)
@@ -191,7 +215,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
             # and then raises still gets an identity-safe unregister attempt.
             study_unhook = release_study_handler
             study_register("motor_transient", study_handler)
-            publisher = MotorTransientResultPublisher(application, self.read_models)
+            publisher = MotorTransientResultPublisher(application, read_models)
 
             def release_publisher() -> None:
                 # Close first: even if an event callback is already queued, it
@@ -242,7 +266,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
                 from .dashboard import MotorTelemetryDashboardWidget
 
                 dashboard = MotorTelemetryDashboardWidget(
-                    self.read_models,
+                    read_models,
                     event_bus=event_bus,
                     parent=parent,
                 )
@@ -281,6 +305,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
             self.context = context
             self.application = application
             self.persistence = persistence
+            self.read_models = read_models
             self.dashboard = dashboard if dashboard_retained else None
             if failed_token is not None:
                 self._unhooks.append(failed_token)
@@ -294,6 +319,7 @@ class MotorDynamicsPlugin(GridForgePlugin):
         self.context = context
         self.application = application
         self.persistence = persistence
+        self.read_models = read_models
         # Shutdown unwinds in reverse order: close/unregister study
         # publication before removing the command registration.
         self._unhooks.append(token)
@@ -335,11 +361,9 @@ class MotorDynamicsPlugin(GridForgePlugin):
             self._ready = False
             raise _aggregate_base_exceptions("Motor Dynamics plugin shutdown encountered failures", errors) from None
 
-        # No callbacks remain after successful teardown, so cached result
-        # projections can be cleared before a later initialize() cycle.
-        clear_read_models = getattr(self.read_models, "clear", None)
-        if callable(clear_read_models):
-            clear_read_models()
+        # Read-model lifetime belongs to Application. Plugin shutdown only
+        # releases this reference; it never clears the shared projection.
+        self.read_models = None
         self._initialized = False
         self._ready = False
         self.persistence = None
