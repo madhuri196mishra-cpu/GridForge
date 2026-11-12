@@ -468,3 +468,33 @@ def test_universal_motor_rejects_invalid_supply_mode():
             back_emf_constant_v_s_per_rad_wb=1.0,
             field_flux_per_ampere_wb_a=0.1, supply_mode="three_phase",
         )
+
+
+def test_wound_field_synchronous_solver_tracks_field_and_damper_states():
+    import numpy as np
+    from plugins.motor_dynamics.transient_solver import WoundFieldSynchronousParameters, solve_wound_field_synchronous_transient_cpu
+    p=WoundFieldSynchronousParameters(
+        stator_resistance_ohm=.4,stator_d_inductance_h=.08,stator_q_inductance_h=.09,
+        field_resistance_ohm=1.2,field_inductance_h=.3,damper_d_resistance_ohm=.5,
+        damper_q_resistance_ohm=.6,damper_d_inductance_h=.04,damper_q_inductance_h=.05,
+        mutual_field_inductance_h=.02,mutual_damper_d_inductance_h=.01,
+        mutual_damper_q_inductance_h=.01,pole_pairs=2,inertia_kg_m2=.08)
+    r=solve_wound_field_synchronous_transient_cpu("sync",p,.02,.0001,
+        stator_voltage_d_v=20.,stator_voltage_q_v=10.,field_voltage_v=12.,load_torque_nm=.2)
+    c=r.channels(p)
+    assert r.backend=="cpu-rk4" and np.isfinite(r.state_data).all()
+    assert c["field_current_a"][-1]>0
+    assert np.isfinite(c["electromagnetic_torque_nm"]).all()
+    assert "damper_d_current_a" in c and "synchronous_speed_error_rad_s" in c
+
+
+def test_wound_field_synchronous_rejects_nonpositive_mutual_energy():
+    import pytest
+    from plugins.motor_dynamics.transient_solver import WoundFieldSynchronousParameters
+    with pytest.raises(ValueError,match="positive-energy"):
+        WoundFieldSynchronousParameters(
+            stator_resistance_ohm=.4,stator_d_inductance_h=.08,stator_q_inductance_h=.09,
+            field_resistance_ohm=1.2,field_inductance_h=.3,damper_d_resistance_ohm=.5,
+            damper_q_resistance_ohm=.6,damper_d_inductance_h=.04,damper_q_inductance_h=.05,
+            mutual_field_inductance_h=.2,mutual_damper_d_inductance_h=.01,
+            mutual_damper_q_inductance_h=.01,pole_pairs=2,inertia_kg_m2=.08)
