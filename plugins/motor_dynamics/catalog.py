@@ -71,7 +71,7 @@ class MotorFamilyProfile:
 def _profile(family: MotorFamily, supply: str, phases: int, principle: str,
              drive: str, *, dynamic_model: str | None = None,
              regenerative: bool = False, notes: str = "") -> MotorFamilyProfile:
-    status = {"induction_dq": "experimental_induction_dq", "pmsm_dq": "experimental_pmsm_dq", "bldc_trapezoidal": "experimental_bldc_trapezoidal", "synrm_dq": "experimental_synrm_dq", "srm_phase_inductance": "experimental_srm_phase_inductance", "dc_excitation": "experimental_dc_excitation", "single_phase_rms_envelope": "experimental_single_phase_rms_envelope"}.get(dynamic_model, "catalogued_model_required")
+    status = {"induction_dq": "experimental_induction_dq", "pmsm_dq": "experimental_pmsm_dq", "bldc_trapezoidal": "experimental_bldc_trapezoidal", "synrm_dq": "experimental_synrm_dq", "srm_phase_inductance": "experimental_srm_phase_inductance", "dc_excitation": "experimental_dc_excitation", "single_phase_rms_envelope": "experimental_single_phase_rms_envelope", "pmsm_servo_cascade": "experimental_pmsm_servo_cascade", "induction_servo_foc": "experimental_induction_servo_foc", "dc_servo_cascade": "experimental_dc_servo_cascade"}.get(dynamic_model, "catalogued_model_required")
     return MotorFamilyProfile(family, supply, phases, principle, drive, dynamic_model, status, regenerative, notes)
 
 
@@ -97,8 +97,8 @@ MOTOR_FAMILY_PROFILES: Mapping[MotorFamily, MotorFamilyProfile] = MappingProxyTy
     MotorFamily.STEPPER_VARIABLE_RELUCTANCE: _profile(MotorFamily.STEPPER_VARIABLE_RELUCTANCE, "DC link", 2, "variable-reluctance stepper", "stepper current driver"),
     MotorFamily.STEPPER_PERMANENT_MAGNET: _profile(MotorFamily.STEPPER_PERMANENT_MAGNET, "DC link", 2, "permanent-magnet stepper", "stepper current driver"),
     MotorFamily.STEPPER_HYBRID: _profile(MotorFamily.STEPPER_HYBRID, "DC link", 2, "hybrid stepper", "microstepping current driver"),
-    MotorFamily.AC_SERVO: _profile(MotorFamily.AC_SERVO, "AC / DC link", 3, "synchronous or induction servo", "servo inverter / FOC", regenerative=True),
-    MotorFamily.DC_SERVO: _profile(MotorFamily.DC_SERVO, "DC", 2, "brushed DC servo", "four-quadrant servo drive", regenerative=True),
+    MotorFamily.AC_SERVO: _profile(MotorFamily.AC_SERVO, "AC / DC link", 3, "synchronous PM or induction servo", "servo inverter / FOC with encoder/resolver feedback", dynamic_model=None, regenerative=True, notes="Technology-specific servo solver selection is explicit: experimental PMSM cascade or separate experimental induction rotor-flux FOC CPU model; do not infer one technology from the family label."),
+    MotorFamily.DC_SERVO: _profile(MotorFamily.DC_SERVO, "DC", 2, "brushed DC servo", "four-quadrant servo drive", dynamic_model="dc_servo_cascade", regenerative=True, notes="Experimental CPU position/speed/current cascade for explicitly configured brushed-DC excitation machines; averaged drive and commutation approximation."),
     MotorFamily.LINEAR_INDUCTION: _profile(MotorFamily.LINEAR_INDUCTION, "AC", 3, "linear induction", "linear VFD", regenerative=True),
     MotorFamily.LINEAR_SYNCHRONOUS: _profile(MotorFamily.LINEAR_SYNCHRONOUS, "AC / DC link", 3, "linear synchronous / PM", "linear servo inverter", regenerative=True),
     MotorFamily.TRACTION_INDUCTION: _profile(MotorFamily.TRACTION_INDUCTION, "AC / DC link", 3, "traction induction", "traction inverter / FOC", regenerative=True),
