@@ -200,7 +200,7 @@ def load_model_capability(family: LoadFamily) -> DynamicsModelCapability:
     if not isinstance(family, LoadFamily):
         raise TypeError("family must be LoadFamily")
     points = load_measurement_contracts(family)
-    # The initial executable shared electrical representation is ZIP demand.
+    # The initial reduced-order algebraic representation is ZIP demand.
     # Family-specific transient solvers are not advertised by this catalogue.
     return DynamicsModelCapability(
         plugin_id=PLUGIN_ID,
