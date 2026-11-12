@@ -3175,3 +3175,37 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+======================================================================
+GRIDFORGE V2 — ELECTRICAL DYNAMICS APPLICATION COMPOSITION (PR #218)
+Date: 12 November 2026
+Implementation branch: electrical-dynamics-application-composition-2026-11-12
+
+- Added one Application-owned ElectricalDynamicsApplicationComposition,
+  constructed once by core/application/bootstrap.py and exposed as
+  Application.electrical_dynamics_composition.
+- Startup injects that same object under the canonical
+  electrical_dynamics_composition service key for the active Motor Dynamics
+  plugin and the general PluginContext. The legacy
+  Application.motor_dynamics_composition attribute remains an identity alias
+  during caller migration; it does not construct a second composition.
+- Moved MotorSimulationReadModelStore into
+  core/application/electrical_dynamics_read_models.py so its lifetime belongs
+  to Application, not the Motor Dynamics plugin. Plugin shutdown must not clear
+  this shared projection.
+- The composition exposes the canonical Application measurement-channel
+  snapshot and an explicit capability report. Current truth: motor sampled
+  study is available; generator/load sampled study adapters are unavailable;
+  fully coupled network transient execution is unavailable for all three.
+- Generator and Load plugin activation is intentionally not enabled by this
+  slice: their required host solver adapters are absent from create_application().
+  No placeholder solver or false execution capability is introduced.
+- No Core equipment, terminal, topology, dynamic injection, or solver contract
+  was replaced. No Qt/SLD dependency was added to Core.
+- Verification: fetched-back source and caller inspection only. No tests,
+  imports, startup, GUI, CI, or numerical execution were run.
+- This is a partial Application composition integration. Project-generation
+  scoping of simulation projections and activation of all three plugins remain
+  open; do not merge PR #218 on this evidence alone.
+======================================================================
