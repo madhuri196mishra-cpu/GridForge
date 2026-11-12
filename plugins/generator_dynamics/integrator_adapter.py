@@ -16,6 +16,7 @@ from core.solver.dynamics.component_contract import DynamicComponentInputs, Dyna
 from core.solver.dynamics.dynamic_state_layout import DynamicSystemStateLayout
 from core.solver.dynamics.integrator import Integrator
 from core.solver.dynamics.multimachine import MultiMachineSystem
+from core.solver.dynamics.network_coupling import DynamicNetworkSolver
 
 from .avr_component import FirstOrderAVRStateComponent
 from .network_stage import GeneratorNetworkSolver
@@ -159,11 +160,14 @@ class GeneratorAugmentedDAEAdapter:
         components: Sequence[DynamicStateComponent],
         component_bindings: Sequence[DynamicComponentBinding],
         avr_components: Sequence[FirstOrderAVRStateComponent],
-        network_solver: GeneratorNetworkSolver,
+        network_solver: GeneratorNetworkSolver | None,
         terminal_voltage_projector: TerminalVoltageProjector,
         base_mechanical_powers_pu: Mapping[str, float],
         machine_connection_state: MachineConnectionResolver | None = None,
         require_network_convergence_evidence: bool = False,
+        coupled_network_solver: DynamicNetworkSolver | None = None,
+        topology_revision: int | None = None,
+        network_current_bases_a: Mapping[tuple[str, str], float] | None = None,
     ) -> None:
         if not isinstance(machine_system, MultiMachineSystem):
             raise TypeError("machine_system must be the canonical MultiMachineSystem")
@@ -171,8 +175,19 @@ class GeneratorAugmentedDAEAdapter:
             raise TypeError("integrator must be the canonical Core Integrator")
         if not isinstance(layout, DynamicSystemStateLayout):
             raise TypeError("layout must be DynamicSystemStateLayout")
-        if not callable(network_solver) or not callable(terminal_voltage_projector):
-            raise TypeError("network solver and terminal voltage projector must be callable")
+        if (network_solver is None) == (coupled_network_solver is None):
+            raise TypeError("provide exactly one of network_solver or coupled_network_solver")
+        if network_solver is not None and not callable(network_solver):
+            raise TypeError("legacy network_solver must be callable")
+        if coupled_network_solver is not None and not callable(getattr(coupled_network_solver, "solve", None)):
+            raise TypeError("coupled_network_solver must implement solve(request)")
+        if not callable(terminal_voltage_projector):
+            raise TypeError("terminal_voltage_projector must be callable")
+        if coupled_network_solver is not None:
+            if type(topology_revision) is not int or topology_revision < 0:
+                raise TypeError("coupled network solver requires a non-negative topology_revision")
+            if not isinstance(network_current_bases_a, Mapping):
+                raise TypeError("coupled network solver requires network_current_bases_a")
         if machine_connection_state is not None and not callable(machine_connection_state):
             raise TypeError("machine_connection_state must be callable when supplied")
         if type(require_network_convergence_evidence) is not bool:
@@ -202,6 +217,9 @@ class GeneratorAugmentedDAEAdapter:
         self.component_bindings = tuple(component_bindings)
         self.avr_components = tuple(avr_components)
         self.network_solver = network_solver
+        self.coupled_network_solver = coupled_network_solver
+        self.topology_revision = topology_revision
+        self.network_current_bases_a = None if network_current_bases_a is None else dict(network_current_bases_a)
         self.terminal_voltage_projector = terminal_voltage_projector
         self.machine_bus_ids = {machine.machine_id: machine.bus_id for machine in machine_system.machines}
         self.base_mechanical_powers_pu = dict(base_mechanical_powers_pu)
@@ -308,6 +326,9 @@ class GeneratorAugmentedDAEAdapter:
                 component_bindings=self.component_bindings,
                 avr_components=self.avr_components,
                 network_solver=self.network_solver,
+                coupled_network_solver=self.coupled_network_solver,
+                topology_revision=self.topology_revision,
+                network_current_bases_a=self.network_current_bases_a,
                 terminal_voltage_projector=self.terminal_voltage_projector,
                 electrical_power_evaluator=electrical_power_evaluator,
                 machine_bus_ids=self.machine_bus_ids,
@@ -315,7 +336,7 @@ class GeneratorAugmentedDAEAdapter:
                 machine_derivative_evaluator=machine_derivative_evaluator,
                 machine_connection_states=connection_states,
             )
-            if self.require_network_convergence_evidence and stage.network.convergence is None:
+            if self.require_network_convergence_evidence and stage.coupled_network is None and stage.network.convergence is None:
                 raise GeneratorAugmentedIntegratorError(
                     "host network solver omitted required algebraic convergence evidence"
                 )
