@@ -3175,3 +3175,62 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+======================================================================
+GridForge V2 — Controlled root-main reconciliation (partial, source-reviewed)
+Date: 2026-11-12
+Repository: madhuri196mishra-cpu/GridForge
+Branch: sync/root-main-controlled-reconciliation-2026-11-12
+Authoritative root main: c75b3a43ce4125d787dc9bd584313430d95d9691
+Madhuri main: 7a9f5374d5f121dc4a81b3e1571f9d8cddbba263
+Common ancestor: 070d1db89c7452b17c493da2c718f82f3ae1b31a
+
+Reconciled root correction:
+- Ported the root-main active-document and complete-selection guard into
+  ui/canvas/graphics_view.py::_refresh_contextual_tool_strip.
+- Contextual group/single-symbol controls now derive visibility from the
+  canonical _rotation_selection_mode() preflight rather than selection count
+  alone. The existing Madhuri Q/E QAction enablement is retained and now
+  requires a fully resolvable single-symbol selection.
+- No Core, Application, SLD document, electrical topology, equipment identity,
+  or persistence contract was changed by this correction.
+
+Preserved Madhuri implementation:
+- Preserved the current main versions of MeasurementSourceReference,
+  physical source installations, MeasurementProvisioning, transformer
+  telemetry, generator/motor dynamics, CT secondary editor, and existing
+  project instrumentation lifecycle. No root file was copied over these
+  implementations.
+- Preserved the independent PR #219 engineering-batch salvage branch.
+
+Deliberate exclusions / unresolved integration:
+- Root instrumentation-wiring and temperature-instrument additions are not
+  imported in this pass. Root uses InstrumentationWiringService and
+  TemperatureInstrumentService; Madhuri currently owns physical source
+  installation and MeasurementChannel provisioning through
+  ProjectInstrumentationCollection and MeasurementSourceReference. Their
+  bootstrap, receiver validation, MeasurementChannel, migration and
+  .gridforge persistence contracts require a dedicated semantic integration;
+  copying root bootstrap/service/persistence files would remove or bypass
+  Madhuri source-installation behavior.
+- Root signal-endpoint PR #1207 remains a separate root-side draft and is not
+  imported.
+- Electrical dynamics PR #218 and optional DWG PR #19 remain independent.
+- Root/Madhuri path deltas remain divergent; this commit does not claim full
+  repository synchronization.
+
+PR disposition:
+- Stale root reconciliation PR #214 closed as superseded after its useful
+  engineering-batch changes were preserved in current-main PR #219.
+- PR #219 remains open/draft; it is not part of this synchronization branch.
+- PR #218, #19, and root #1207 remain separate and unmerged.
+
+Verification:
+- Static source inspection of root and Madhuri graphics_view.py, select_tool.py,
+  Application/bootstrap, MeasurementChannelService, read models, migration,
+  persistence, and existing package instrumentation contracts.
+- Confirmed branch base and changed-file scope through GitHub comparison.
+- No tests, CI, Python imports, application startup, GUI, or runtime experiments
+  were run.
+======================================================================
