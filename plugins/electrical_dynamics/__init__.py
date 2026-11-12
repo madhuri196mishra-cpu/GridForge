@@ -1,5 +1,8 @@
 """Shared interoperability contracts for GridForge electrical dynamics plugins."""
 from .composition import ElectricalDynamicsComposition, require_electrical_dynamics_composition
+from core.solver.dynamics.dynamic_state_layout import (
+    DynamicSystemLayoutError, DynamicStateBlockSlice, DynamicSystemStateLayout,
+)
 from core.solver.dynamics.component_contract import (
     DynamicComponentInputs, DynamicComponentEvaluation, DynamicStateComponent,
     validate_dynamic_state_component,
@@ -21,6 +24,7 @@ __all__ = [
     "ElectricalDynamicsComposition", "require_electrical_dynamics_composition",
     "DynamicComponentInputs", "DynamicComponentEvaluation", "DynamicStateComponent",
     "validate_dynamic_state_component",
+    "DynamicSystemLayoutError", "DynamicStateBlockSlice", "DynamicSystemStateLayout",
     "DynamicsEquipmentBinding", "DynamicsEquipmentKind",
     "DynamicsModelCapability", "DynamicsModelReadiness", "DynamicsParticipant",
     "MeasurementPointContract", "equipment_binding_from_endpoint",
