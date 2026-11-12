@@ -3504,3 +3504,25 @@ Injection-aware composed network-stage contract — 12 November 2026:
   remain open integration work.
 - Verification: source fetch-back and static type/validation-path inspection
   only. No tests, imports, runtime, network solve or numerical simulation.
+
+
+Fixed-point dynamic network/device current coordination — 12 November 2026:
+- Added solve_dynamic_network_stage to Core network_coupling. For each
+  iteration it submits the current terminal/phase injection estimate, machine
+  trial state, stage time, topology revision and generator field-voltage
+  handoff to the Application-supplied network solver.
+- The coordinator validates each AlgebraicNetworkSolution as accepted,
+  quality-verified, and exact-time/exact-topology; evaluates typed device
+  current contributions against that solution; converts them through their
+  ampere bases onto host-declared network current bases; and checks the
+  per-terminal/phase fixed-point residual against absolute-plus-relative
+  tolerances.
+- Only a converged stage result is returned. Missing current bases, invalid
+  solver evidence, callback errors and iteration exhaustion fail closed.
+  The callback is required to be pure; no state commit or sample publication
+  is performed by this Core primitive.
+- The primitive is not yet wired into GeneratorAugmentedDAEAdapter,
+  legacy DAESolver, Application lifecycle or accepted-step persistence.
+  Final derivative assembly and integration acceptance remain open.
+- Verification: source fetch-back and static control-flow/contract inspection
+  only. No tests, imports, runtime, network solve or numerical simulation.
