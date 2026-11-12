@@ -36,6 +36,7 @@ from core.analysis.transient_stability import TransientStabilityAnalysis, Transi
 from core.network import Network
 from core.model.breaker import Breaker
 from core.persistence import ProjectPersistenceService, StudyResultArchive
+from core.application.instrumentation import ProjectInstrumentationCollection
 from core.persistence.project_package import normalize_package_path
 from core.protection.project_configuration import ProtectionProjectConfiguration
 from core.control.configuration import ControlConfiguration
@@ -638,6 +639,7 @@ def create_application(
         control_service=control_service,
         protection_execution_audit_store=protection_execution_audit_store,
     )
+    application.instrumentation_collection = ProjectInstrumentationCollection(initial_context.project_id)
     measurement_channel_service.bind_execution_lock(application._execution_lock)
 
     def measurement_channel_is_referenced(channel_id: str) -> bool:
@@ -769,6 +771,7 @@ def create_application(
         previous_draft_collection = application.draft_network_collection
         previous_draft = application.draft_network
         previous_study_cases = dict(application._study_cases)
+        previous_instrumentation_collection = application.instrumentation_collection
 
         def restore_control_runtime() -> None:
             if not previous_control_active:
@@ -795,6 +798,7 @@ def create_application(
             if previous_draft_collection is None:
                 application.set_draft_network(previous_draft)
             application._study_cases = dict(previous_study_cases)
+            application.instrumentation_collection = previous_instrumentation_collection
             dynamic_models.replace(previous_dynamic_models)
             restore_control_runtime()
 
@@ -820,7 +824,12 @@ def create_application(
                 dynamic_models.replace(())
                 application.set_draft_network(DraftNetwork.empty(context.project_id if context is not None else "closed-project", generation))
                 application._study_cases = {}
+                application.instrumentation_collection = None
             else:
+                application.instrumentation_collection = (
+                    loaded.instrumentation if loaded is not None and loaded.instrumentation is not None
+                    else ProjectInstrumentationCollection(context.project_id)
+                )
                 configuration = (
                     loaded.protection_configuration
                     if loaded is not None and loaded.protection_configuration is not None
@@ -960,6 +969,19 @@ def create_application(
                         f"Dynamic model association {association.machine_id!r} has invalid persisted "
                         "activation provenance."
                     )
+            instrumentation = loaded.instrumentation
+            if instrumentation is not None:
+                if instrumentation.project_id != context.project_id:
+                    raise ValueError("Instrumentation collection project_id does not match the candidate project.")
+                for installation in instrumentation.installations:
+                    try:
+                        monitored = candidate_network.get_by_identity(installation.monitored_equipment_id)
+                    except KeyError as exc:
+                        raise ValueError(f"Instrumentation installation {installation.installation_id!r} references missing monitored equipment {installation.monitored_equipment_id!r}.") from exc
+                    expected_type = installation.monitored_equipment_type.replace("-", "_").upper()
+                    actual_type = str(getattr(monitored, "element_type", "")).upper()
+                    if expected_type != actual_type:
+                        raise ValueError(f"Instrumentation installation {installation.installation_id!r} expects {expected_type!r}, found {actual_type!r}.")
             configuration = loaded.protection_configuration
             if configuration is not None and configuration.project_id != context.project_id:
                 raise ValueError("Protection configuration project_id does not match the candidate project.")
@@ -1045,6 +1067,7 @@ def create_application(
             draft_network_collection=application.draft_network_collection,
             presentation_collection=presentation_collection,
             study_cases=application.study_cases,
+            instrumentation=application.instrumentation_collection,
             protection_presentation=(                application.protection_presentation.to_dict()
                 if callable(getattr(getattr(application, "protection_presentation", None), "to_dict", None))
                 else getattr(application, "protection_presentation", None)
