@@ -152,3 +152,17 @@ create producer identities or accept telemetry samples.
 
 
 **Canonical telemetry catalogue entry point:** `build_transformer_channel_catalogue_for_core(transformer, profile, ...)` validates that the plugin profile equipment ID and ordered winding IDs exactly match the authoritative Core `Transformer.windings` collection before generating channel definitions. This prevents a plugin profile from inventing or silently renaming winding points. The lower-level `build_transformer_channel_catalogue(equipment_id, winding_ids, ...)` remains available for explicit catalogue construction, but does not itself prove Core identity.
+
+
+## Physical source-interface projection
+
+`build_transformer_measurement_source_interfaces(catalogue, channel_ids)`
+projects a caller-selected set of physical sensor channel definitions into
+Core `MeasurementSourceInterface` value objects. The caller must group
+selected points by the actual instrument being described; the helper does
+not invent a physical source ID, assert that a device is installed, or add
+records to `ProjectInstrumentationCollection`. It rejects missing points,
+points without declared sensor types, and estimated/derived quantities so a
+computed value cannot be misrepresented as a physical instrument output.
+The returned interfaces can be included in the existing Core
+`PhysicalMeasurementSource` and project-owned installation workflow.
