@@ -18,6 +18,7 @@ from .component_contract import (
     DynamicComponentEvaluation,
     DynamicComponentInputs,
     DynamicStateComponent,
+    DynamicTerminalInjection,
     validate_dynamic_state_component,
 )
 from .dynamic_state_layout import DynamicSystemStateLayout
@@ -29,18 +30,43 @@ class DynamicComponentAssemblyError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class DynamicComponentBinding:
-    """Bind one extension component to its canonical Core machine and terminal."""
+    """Bind a state component to one canonical equipment identity and terminal.
+
+    Generator components retain the machine_id handoff. Motor and load
+    components set machine_id=None and identify their Core equipment through
+    equipment_kind/equipment_id; they are never represented as synthetic
+    synchronous machines.
+    """
 
     component_id: str
-    machine_id: str
+    machine_id: str | None
     bus_id: str
     terminal_id: str
+    equipment_kind: str = "generator"
+    equipment_id: str | None = None
 
     def __post_init__(self) -> None:
-        for name in ("component_id", "machine_id", "bus_id", "terminal_id"):
+        for name in ("component_id", "bus_id", "terminal_id"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise DynamicComponentAssemblyError(f"{name} must be a non-empty stable identity")
+            object.__setattr__(self, name, value.strip())
+        if self.equipment_kind not in {"generator", "motor", "load"}:
+            raise DynamicComponentAssemblyError("equipment_kind must be generator, motor or load")
+        if self.machine_id is not None:
+            if not isinstance(self.machine_id, str) or not self.machine_id.strip():
+                raise DynamicComponentAssemblyError("machine_id must be None or a non-empty identity")
+            if self.equipment_kind != "generator":
+                raise DynamicComponentAssemblyError("only generator bindings may drive a machine state block")
+            object.__setattr__(self, "machine_id", self.machine_id.strip())
+        elif self.equipment_kind == "generator":
+            raise DynamicComponentAssemblyError("generator bindings require a canonical machine_id")
+        equipment_id = self.equipment_id
+        if equipment_id is None:
+            equipment_id = self.machine_id
+        if not isinstance(equipment_id, str) or not equipment_id.strip():
+            raise DynamicComponentAssemblyError("equipment_id must be a non-empty canonical Core identity")
+        object.__setattr__(self, "equipment_id", equipment_id.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +75,7 @@ class DynamicComponentBatchEvaluation:
 
     component_derivatives: Mapping[str, tuple[float, ...]]
     mechanical_power_outputs_pu: Mapping[str, float]
+    terminal_injections: tuple[DynamicTerminalInjection, ...] = ()
 
     def __post_init__(self) -> None:
         derivatives: dict[str, tuple[float, ...]] = {}
@@ -69,8 +96,17 @@ class DynamicComponentBatchEvaluation:
             if not np.isfinite(numeric):
                 raise DynamicComponentAssemblyError("mechanical power outputs must be finite numeric values")
             powers[machine_id] = numeric
+        injections = tuple(self.terminal_injections)
+        if any(not isinstance(item, DynamicTerminalInjection) for item in injections):
+            raise DynamicComponentAssemblyError(
+                "terminal_injections must contain DynamicTerminalInjection values"
+            )
+        injection_ids = [item.injection_id for item in injections]
+        if len(injection_ids) != len(set(injection_ids)):
+            raise DynamicComponentAssemblyError("terminal injection identities must be unique per batch")
         object.__setattr__(self, "component_derivatives", MappingProxyType(derivatives))
         object.__setattr__(self, "mechanical_power_outputs_pu", MappingProxyType(powers))
+        object.__setattr__(self, "terminal_injections", injections)
 
 
 def evaluate_dynamic_components(
@@ -124,20 +160,29 @@ def evaluate_dynamic_components(
     machine_ids = {block.owner_id for block in layout.machine_blocks}
     component_derivatives: dict[str, tuple[float, ...]] = {}
     mechanical_outputs: dict[str, float] = {}
+    terminal_injections: list[DynamicTerminalInjection] = []
+    equipment_keys: set[tuple[str, str]] = set()
 
     for component_id, component in registered.items():
         binding = binding_by_id[component_id]
-        if binding.machine_id not in machine_ids:
+        equipment_key = (binding.equipment_kind, binding.equipment_id)
+        if equipment_key in equipment_keys:
             raise DynamicComponentAssemblyError(
-                f"component {component_id!r} references unknown machine {binding.machine_id!r}"
+                f"canonical equipment {equipment_key!r} is bound more than once"
             )
+        equipment_keys.add(equipment_key)
+        if binding.machine_id is not None:
+            if binding.machine_id not in machine_ids:
+                raise DynamicComponentAssemblyError(
+                    f"component {component_id!r} references unknown machine {binding.machine_id!r}"
+                )
+            if binding.machine_id not in inputs.electrical_active_power_pu:
+                raise DynamicComponentAssemblyError(
+                    f"component {component_id!r} has no electrical-power input for machine {binding.machine_id!r}"
+                )
         if binding.terminal_id not in inputs.terminal_voltages:
             raise DynamicComponentAssemblyError(
                 f"component {component_id!r} references unavailable terminal {binding.terminal_id!r}"
-            )
-        if binding.machine_id not in inputs.electrical_active_power_pu:
-            raise DynamicComponentAssemblyError(
-                f"component {component_id!r} has no electrical-power input for machine {binding.machine_id!r}"
             )
         local_state = component_states[component_id]
         result = component.evaluate(local_state, inputs)
@@ -150,6 +195,10 @@ def evaluate_dynamic_components(
                 f"component {component_id!r} derivative dimension does not match its state slice"
             )
         component_derivatives[component_id] = result.state_derivative
+        if binding.machine_id is None and result.mechanical_power_outputs_pu:
+            raise DynamicComponentAssemblyError(
+                f"non-generator component {component_id!r} cannot emit machine mechanical-power handoffs"
+            )
         for machine_id, power in result.mechanical_power_outputs_pu.items():
             if machine_id != binding.machine_id:
                 raise DynamicComponentAssemblyError(
@@ -160,10 +209,17 @@ def evaluate_dynamic_components(
                     f"multiple dynamic components drive machine {machine_id!r}; aggregation is undefined"
                 )
             mechanical_outputs[machine_id] = power
+        for injection in result.terminal_injections:
+            if injection.terminal_id != binding.terminal_id:
+                raise DynamicComponentAssemblyError(
+                    f"component {component_id!r} cannot inject at unbound terminal {injection.terminal_id!r}"
+                )
+            terminal_injections.append(injection)
 
     return DynamicComponentBatchEvaluation(
         component_derivatives=component_derivatives,
         mechanical_power_outputs_pu=mechanical_outputs,
+        terminal_injections=tuple(terminal_injections),
     )
 
 
