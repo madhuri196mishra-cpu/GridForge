@@ -391,7 +391,9 @@ def publish_active_transformer_sensor_snapshot(
         instrumentation.project_id != context.project_id
         or service.project_id != context.project_id
         or service.network is not network
+        or getattr(lifecycle, "state", None) != "ACTIVE"
         or service.activation_generation <= 0
+        or service.activation_generation != getattr(lifecycle, "activation_generation", None)
     ):
         raise RuntimeError("Application project, instrumentation and measurement activation identities disagree.")
     return publish_transformer_sensor_snapshot(
