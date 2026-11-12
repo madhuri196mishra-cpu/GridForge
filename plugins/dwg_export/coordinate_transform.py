@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+import hashlib
+import json
 from datetime import date
 import math
 from typing import Iterable
@@ -30,11 +32,58 @@ class SLDCoordinateTransform:
     reviewer: str
     reviewed_on: str
     review_reference: str
+    reviewed_mapping_fingerprint: str
+
+    @staticmethod
+    def calculate_fingerprint(*, mapping_id: str, mapping_version: str, source_coordinate_system: str,
+                               source_units: str, millimetres_per_source_unit: float,
+                               world_origin_x_mm: float, world_origin_y_mm: float,
+                               rotation_degrees: float, reviewer: str, reviewed_on: str,
+                               review_reference: str) -> str:
+        payload = {
+            "mapping_id": mapping_id.strip(), "mapping_version": mapping_version.strip(),
+            "source_coordinate_system": source_coordinate_system.strip(), "source_units": source_units.strip(),
+            "target_coordinate_system": "world", "target_units": "mm",
+            "millimetres_per_source_unit": float(millimetres_per_source_unit),
+            "world_origin_mm": (float(world_origin_x_mm), float(world_origin_y_mm)),
+            "rotation_degrees": float(rotation_degrees), "reviewer": reviewer.strip(),
+            "reviewed_on": reviewed_on.strip(), "review_reference": review_reference.strip(),
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def fingerprint_from_provenance(provenance: Mapping[str, object]) -> str:
+        origin = provenance["world_origin_mm"]
+        return SLDCoordinateTransform.calculate_fingerprint(
+            mapping_id=str(provenance["mapping_id"]), mapping_version=str(provenance["mapping_version"]),
+            source_coordinate_system=str(provenance["source_coordinate_system"]),
+            source_units=str(provenance["source_units"]),
+            millimetres_per_source_unit=provenance["millimetres_per_source_unit"],
+            world_origin_x_mm=origin[0], world_origin_y_mm=origin[1],
+            rotation_degrees=provenance["rotation_degrees"], reviewer=str(provenance["reviewer"]),
+            reviewed_on=str(provenance["reviewed_on"]), review_reference=str(provenance["review_reference"]),
+        )
+
+    @property
+    def fingerprint(self) -> str:
+        return self.calculate_fingerprint(
+            mapping_id=self.mapping_id, mapping_version=self.mapping_version,
+            source_coordinate_system=self.source_coordinate_system, source_units=self.source_units,
+            millimetres_per_source_unit=self.millimetres_per_source_unit,
+            world_origin_x_mm=self.world_origin_x_mm, world_origin_y_mm=self.world_origin_y_mm,
+            rotation_degrees=self.rotation_degrees, reviewer=self.reviewer,
+            reviewed_on=self.reviewed_on, review_reference=self.review_reference,
+        )
+
+    def assert_reviewed_fingerprint(self) -> None:
+        if self.fingerprint != self.reviewed_mapping_fingerprint:
+            raise ValueError("SLD coordinate mapping differs from its pinned reviewed fingerprint")
 
     def __post_init__(self) -> None:
         for name in (
             "mapping_id", "mapping_version", "source_coordinate_system",
-            "source_units", "reviewer", "reviewed_on", "review_reference",
+            "source_units", "reviewer", "reviewed_on", "review_reference", "reviewed_mapping_fingerprint",
         ):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
@@ -59,12 +108,18 @@ class SLDCoordinateTransform:
             raise ValueError("millimetres_per_source_unit must be positive")
         if self.source_coordinate_system != "sld-document-local":
             raise ValueError("only the declared sld-document-local source is supported")
+        if len(self.reviewed_mapping_fingerprint) != 64 or any(
+            character not in "0123456789abcdef" for character in self.reviewed_mapping_fingerprint.lower()
+        ):
+            raise ValueError("reviewed_mapping_fingerprint must be a SHA-256 hex digest")
+        self.assert_reviewed_fingerprint()
         if self.source_units == "mm":
             # Even millimetre labels do not imply a world coordinate frame;
             # the explicit mapping remains required, but identity scale is clear.
             pass
 
     def transform_point(self, point: object) -> tuple[float, float]:
+        self.assert_reviewed_fingerprint()
         if not isinstance(point, (tuple, list)) or len(point) != 2:
             raise ValueError("SLD geometry points must be 2D")
         x, y = point
@@ -83,6 +138,7 @@ class SLDCoordinateTransform:
 
     def transform_vector(self, vector: object) -> tuple[float, float]:
         """Rotate a symbol-local millimetre vector without document scaling or translation."""
+        self.assert_reviewed_fingerprint()
         if not isinstance(vector, (tuple, list)) or len(vector) != 2:
             raise ValueError("SLD symbol offset vectors must be 2D")
         x, y = vector
@@ -97,6 +153,7 @@ class SLDCoordinateTransform:
 
     def transform_entities(self, entities: Iterable[DrawingEntity]) -> tuple[DrawingEntity, ...]:
         """Transform every supported world-space primitive; retain local symbol definitions."""
+        self.assert_reviewed_fingerprint()
         transformed: list[DrawingEntity] = []
         angle = self.rotation_degrees
         scale_factor = self.millimetres_per_source_unit
@@ -219,6 +276,7 @@ class SLDCoordinateTransform:
                 "reviewer": self.reviewer,
                 "reviewed_on": self.reviewed_on,
                 "review_reference": self.review_reference,
+                "mapping_fingerprint": self.fingerprint,
             }
             transformed.append(replace(entity, geometry=geometry, metadata=metadata))
         return tuple(transformed)
