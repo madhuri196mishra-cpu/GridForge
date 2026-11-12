@@ -113,6 +113,7 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
         )
 
     control_mapping_fingerprint: str | None = None
+    sld_mapping_provenance: dict[str, object] | None = None
     seen: set[str] = set()
     for entity in plan.entities:
         if entity.entity_id in seen:
@@ -126,6 +127,62 @@ def validate_drawing_plan(plan: DrawingPlan) -> None:
             )
         geometry = entity.geometry
         _finite_numbers(geometry, f"entities[{entity.entity_id}].geometry")
+
+        if plan.source_kind == "sld_export_snapshot":
+            provenance = entity.metadata.get("coordinate_transform")
+            required_provenance = {
+                "mapping_id", "mapping_version", "source_coordinate_system",
+                "source_units", "target_coordinate_system", "target_units",
+                "millimetres_per_source_unit", "world_origin_mm",
+                "rotation_degrees", "reviewer", "reviewed_on", "review_reference",
+            }
+            if not isinstance(provenance, Mapping) or set(provenance) != required_provenance:
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} has incomplete or unsupported coordinate-transform provenance"
+                )
+            if (
+                provenance.get("source_coordinate_system") != "sld-document-local"
+                or not isinstance(provenance.get("source_units"), str)
+                or not provenance.get("source_units", "").strip()
+                or provenance.get("target_coordinate_system") != "world"
+                or provenance.get("target_units") != "mm"
+            ):
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} has an incompatible coordinate mapping declaration"
+                )
+            if not all(
+                isinstance(provenance.get(field), str) and str(provenance[field]).strip()
+                for field in ("mapping_id", "mapping_version", "reviewer", "review_reference")
+            ):
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} has incomplete coordinate review evidence"
+                )
+            try:
+                date.fromisoformat(str(provenance["reviewed_on"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} has an invalid coordinate review date"
+                ) from exc
+            scale = provenance.get("millimetres_per_source_unit")
+            rotation = provenance.get("rotation_degrees")
+            origin = provenance.get("world_origin_mm")
+            if (
+                isinstance(scale, bool) or not isinstance(scale, (int, float))
+                or not math.isfinite(float(scale)) or float(scale) <= 0
+                or isinstance(rotation, bool) or not isinstance(rotation, (int, float))
+                or not math.isfinite(float(rotation))
+            ):
+                raise DrawingPlanValidationError(
+                    f"SLD entity {entity.entity_id} has invalid coordinate mapping scale or rotation"
+                )
+            _point(origin, "coordinate_transform.world_origin_mm", entity.entity_id)
+            normalized_provenance = dict(provenance)
+            if sld_mapping_provenance is None:
+                sld_mapping_provenance = normalized_provenance
+            elif normalized_provenance != sld_mapping_provenance:
+                raise DrawingPlanValidationError(
+                    "SLD drawing contains conflicting coordinate mapping provenance"
+                )
 
         if plan.source_kind == "control_program_read_model":
             provenance = entity.metadata.get("coordinate_transform")
