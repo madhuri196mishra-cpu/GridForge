@@ -3526,3 +3526,9 @@ Fixed-point dynamic network/device current coordination — 12 November 2026:
   Final derivative assembly and integration acceptance remain open.
 - Verification: source fetch-back and static control-flow/contract inspection
   only. No tests, imports, runtime, network solve or numerical simulation.
+
+- The network-stage request permits an empty machine-state prefix so
+  motor/load-only composed studies do not require a synthetic generator.
+  The result object independently recomputes the reported current residual
+  from its request and returned aggregate, preventing caller-supplied
+  convergence numbers from being treated as evidence.
