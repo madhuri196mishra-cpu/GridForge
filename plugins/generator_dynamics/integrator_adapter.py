@@ -454,6 +454,12 @@ class GeneratorAugmentedDAEAdapter:
                     "accepted generator step could not be published to its host observer"
                 )
                 failure.accepted_step_result = result
+                # StudyService's generic failure boundary preserves an
+                # exception.partial_result. Supply the detached, versioned
+                # primitive archive payload there so an already accepted
+                # numerical step is not lost when checkpoint publication
+                # fails. The host still owns durable persistence.
+                failure.partial_result = result.to_archive_payload()
                 failure.cause_type = type(exc).__name__
                 raise failure from exc
         return result
