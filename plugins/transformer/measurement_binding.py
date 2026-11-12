@@ -95,6 +95,11 @@ def resolve_transformer_measurement_bindings(
                 f"{point.quantity.value} is incompatible with Core signal type {signal_type!r}."
             )
         core_unit = str(getattr(channel, "unit", "")).strip()
+        core_phase = getattr(getattr(channel, "phase", None), "value", None)
+        if point.phase is not None and core_phase != point.phase.upper():
+            raise ValueError(
+                f"Phase mismatch for {point.channel_id}: plugin={point.phase!r}, Core={core_phase!r}."
+            )
         if core_unit and point.unit and core_unit.casefold() != point.unit.casefold():
             raise ValueError(
                 f"Unit mismatch for {point.channel_id}: plugin={point.unit!r}, Core={core_unit!r}."
