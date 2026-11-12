@@ -14,6 +14,27 @@ class MeasurementQuality(str, Enum):
     GOOD="good"; UNCERTAIN="uncertain"; BAD="bad"; NOT_CONNECTED="not_connected"
     STALE="stale"; SUBSTITUTED="substituted"; OUT_OF_RANGE="out_of_range"
 
+def to_core_measurement_quality(quality: MeasurementQuality):
+    """Map transformer telemetry quality to the canonical Core channel state."""
+    from core.measurement.measurement_channel import MeasurementQuality as CoreQuality
+    if not isinstance(quality, MeasurementQuality):
+        raise TypeError("quality must be a transformer MeasurementQuality.")
+    return {
+        MeasurementQuality.GOOD: CoreQuality.GOOD,
+        MeasurementQuality.UNCERTAIN: CoreQuality.SUSPECT,
+        MeasurementQuality.BAD: CoreQuality.INVALID,
+        MeasurementQuality.NOT_CONNECTED: CoreQuality.NOT_CONNECTED,
+        MeasurementQuality.STALE: CoreQuality.STALE,
+        MeasurementQuality.SUBSTITUTED: CoreQuality.SUBSTITUTED,
+        MeasurementQuality.OUT_OF_RANGE: CoreQuality.OUT_OF_RANGE,
+    }[quality]
+
+
+def measurement_availability_for_quality(quality: MeasurementQuality) -> bool:
+    if not isinstance(quality, MeasurementQuality):
+        raise TypeError("quality must be a transformer MeasurementQuality.")
+    return quality is not MeasurementQuality.NOT_CONNECTED
+
 
 def _require_canonical_text(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip() or value != value.strip():
@@ -111,6 +132,7 @@ class TelemetrySample:
     source: str = ""
     sequence: int | None = None
     unit: str = ""
+    diagnostic_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_canonical_text(self.channel_id, "channel_id")
@@ -129,6 +151,12 @@ class TelemetrySample:
             or not isfinite(float(self.value))
         ):
             raise ValueError("Telemetry value must be a finite number or boolean.")
+        codes = tuple(self.diagnostic_codes)
+        if any(not isinstance(code, str) or not code.strip() or code != code.strip() for code in codes):
+            raise ValueError("diagnostic_codes must contain canonical non-empty strings.")
+        if len(set(codes)) != len(codes):
+            raise ValueError("diagnostic_codes cannot contain duplicates.")
+        object.__setattr__(self, "diagnostic_codes", codes)
         if self.sequence is not None and (
             isinstance(self.sequence, bool)
             or not isinstance(self.sequence, int)
