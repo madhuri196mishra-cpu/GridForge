@@ -75,6 +75,9 @@ from .services.sld_service import SLDService
 from .services.measurement_channel_service import MeasurementChannelService
 from .services.instrumentation_wiring_service import InstrumentationWiringService
 from .services.temperature_instrument_service import TemperatureInstrumentService
+from .services.instrumentation_wiring_schedules import (
+    build_cable_core_schedule, build_panel_wire_schedule, build_signal_loop_schedule,
+)
 from .read_models import InstrumentationWiringReadModel
 from .protection_dependency import build_protection_dependency_registry
 from .protection_execution import (
@@ -5072,6 +5075,36 @@ class Application:
         if service.project_id != lifecycle.context.project_id or service.activation_generation != lifecycle.activation_generation:
             raise RuntimeError("Temperature instrument inventory is stale for the active project generation.")
         return service.inventory
+
+    def read_cable_core_schedule(self):
+        """Derive the cable/core schedule from the canonical wiring inventory."""
+        lifecycle = self.project_lifecycle
+        service = self._instrumentation_wiring_service
+        if not lifecycle.has_project or lifecycle.state != "ACTIVE" or service is None:
+            raise RuntimeError("Cable schedule reads require an active instrumentation wiring service.")
+        if service.project_id != lifecycle.context.project_id or service.activation_generation != lifecycle.activation_generation:
+            raise RuntimeError("Instrumentation wiring inventory is stale for the active project generation.")
+        return build_cable_core_schedule(service.inventory)
+
+    def read_panel_wire_schedule(self):
+        """Derive the panel-wire schedule from the canonical wiring inventory."""
+        lifecycle = self.project_lifecycle
+        service = self._instrumentation_wiring_service
+        if not lifecycle.has_project or lifecycle.state != "ACTIVE" or service is None:
+            raise RuntimeError("Panel-wire schedule reads require an active instrumentation wiring service.")
+        if service.project_id != lifecycle.context.project_id or service.activation_generation != lifecycle.activation_generation:
+            raise RuntimeError("Instrumentation wiring inventory is stale for the active project generation.")
+        return build_panel_wire_schedule(service.inventory)
+
+    def read_signal_loop_schedule(self):
+        """Derive the signal-loop schedule from the canonical wiring inventory."""
+        lifecycle = self.project_lifecycle
+        service = self._instrumentation_wiring_service
+        if not lifecycle.has_project or lifecycle.state != "ACTIVE" or service is None:
+            raise RuntimeError("Signal-loop schedule reads require an active instrumentation wiring service.")
+        if service.project_id != lifecycle.context.project_id or service.activation_generation != lifecycle.activation_generation:
+            raise RuntimeError("Instrumentation wiring inventory is stale for the active project generation.")
+        return build_signal_loop_schedule(service.inventory)
 
     def read_measurement_channels(self) -> tuple[MeasurementChannelReadModel, ...]:
         """Return immutable snapshots of the active project's MeasurementChannels."""
