@@ -1154,6 +1154,7 @@ class Transformer(Branch):
             self._lv_neutral_grounding_impedance_ohm, self._lv_winding_connection, "LV"
         )
         self._hv_terminal_role, self._lv_terminal_role = self._validate_terminal_mapping(self._hv_terminal_role, self._lv_terminal_role)
+        self._validate_explicit_winding_compatibility()
         self._impedance_reference_winding = self._normalize_reference_winding(self._impedance_reference_winding)
         self._zero_sequence_resistance_ohm, self._zero_sequence_reactance_ohm = self._validate_zero_sequence_impedance(self._zero_sequence_resistance_ohm, self._zero_sequence_reactance_ohm)
         self._core_construction = self._normalize_core_construction(self._core_construction)
