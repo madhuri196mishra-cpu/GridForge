@@ -3175,3 +3175,46 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+
+======================================================================
+GRIDFORGE V2 — ELECTRICAL DYNAMICS INTEROPERABILITY FOUNDATION
+Date: 12 November 2026
+Implementation repository: madhuri196mishra-cpu/GridForge
+Implementation branch: electrical-dynamics-integration
+Baseline: generator-dynamics-plugin (143 commits ahead of main at branch creation)
+
+- Created a coordinated integration branch from generator-dynamics-plugin,
+  preserving its generator implementation and the motor catalogue,
+  instrumentation and solver enhancements already present on that branch.
+- Ported the initial Load Dynamics package and its design record from
+  load-dynamics-plugin without changing or deleting that source branch.
+- Added plugins/electrical_dynamics shared DTO contracts for canonical Core
+  equipment bindings, normalized logical measurement-point metadata,
+  specialist model readiness and duplicate Core participant rejection.
+- Added generator, motor and load interoperability adapters. Motor readiness
+  follows its family profile; generator reports host-solver-required; load
+  reports experimental ZIP model data and does not advertise an integrated
+  power-flow or transient study.
+- Added one ElectricalDynamicsComposition host protocol. All three plugin
+  activation paths now resolve PluginContext.services[
+  'electrical_dynamics_composition']; the host supplies the object. Existing
+  specialist registration hooks and solver adapters remain plugin-specific
+  capabilities on the shared host object.
+- No new Core equipment, measurement channel/value store, Application study
+  scheduler, event bus, persistence authority, command manager or UI manager
+  was introduced. Core Generator/Motor/Load and Application StudyService
+  remain authoritative.
+- Documented the no-double-counting rule: one physical motor must not be
+  represented by both its detailed motor injection and an independent static
+  load injection in the same coupled study. Cross-type physical asset
+  equivalence requires an explicit host-owned mapping.
+- Coupled DAE/global state assembly, host composition-root implementation,
+  physical asset equivalence resolution, canonical measurement provisioning,
+  persistence/UI integration and reference-case validation remain open.
+- Verification: source-level fetch-back and architecture inspection only.
+  No tests, CI, imports, startup, GUI, coupled simulation, hardware probing
+  or commissioning were run. No merge to main and no changes to
+  SubhenduMishra29/GridForge.
+======================================================================
