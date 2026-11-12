@@ -113,6 +113,7 @@ def resolve_transformer_measurement_bindings(
                 or installation.monitored_equipment_type != "transformer"
                 or installation.monitored_point_id != point.winding_id
                 or interface.quantity != point.quantity.value
+                or interface.signal_kind != "analog"
                 or interface.unit.casefold() != point.unit.casefold()
                 or interface.winding_id != point.winding_id
             ):
