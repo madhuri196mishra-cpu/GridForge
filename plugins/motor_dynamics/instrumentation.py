@@ -91,6 +91,12 @@ def motor_measurement_points(family: MotorFamily) -> tuple[MotorMeasurementPoint
                 _p("machine.synchronous_speed_error", "Synchronous speed error", X, N, "rad/s", ("control","protection","alarm")),
                 _p("machine.rotor_angle", "Rotor electrical angle", X, N, "rad", ("control","analysis")),
                 _p("machine.field_winding_temperature", "Field winding temperature", X, N, "degC", ("monitoring","alarm","maintenance"))]
+    if family == MotorFamily.HYSTERESIS:
+        pts += [_p("machine.rotor_speed", "Rotor speed", X, N, "rad/s", ("metering","control","protection"), True),
+                _p("machine.load_angle", "Rotor load angle", X, N, "rad", ("control","analysis","protection"), True),
+                _p("machine.pullout_torque_margin", "Pull-out torque margin", X, N, "N.m", ("control","protection","alarm"), True),
+                _p("machine.rotor_temperature", "Rotor temperature", X, N, "degC", ("monitoring","alarm","maintenance")),
+                _p("machine.rotor_loss", "Rotor loss estimate", X, N, "W", ("monitoring","analysis"))]
     if family == MotorFamily.UNIVERSAL:
         pts += [_p("machine.armature_current", "Armature current", C, N, "A", ("metering","protection","control"), True),
                 _p("machine.series_field_current", "Series field current", C, N, "A", ("monitoring","protection")),
