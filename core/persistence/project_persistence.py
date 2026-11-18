@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from core.analysis.dynamic_model_association import DynamicMachineModelAssociation
-from core.application.project import ProjectContext
+from core.application.project import ConfigurationReviewRecord, ProjectContext
 from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
 from core.application.revision import ProjectRevision
 from core.application.study import StudyCaseDefinition
@@ -67,6 +67,7 @@ class LoadedProject:
     control_signal_mapping: ControlSignalMapping | None = None
     study_cases: tuple[StudyCaseDefinition, ...] = ()
     instrumentation: ProjectInstrumentationCollection | None = None
+    configuration_review_records: tuple[ConfigurationReviewRecord, ...] = ()
 
 
 class ProjectPersistenceError(RuntimeError):
@@ -142,6 +143,15 @@ class ProjectPersistenceService:
             )
         except (TypeError, ValueError, KeyError) as exc:
             raise ProjectPersistenceError(f"Invalid project instrumentation collection: {exc}") from exc
+        try:
+            configuration_review_records = tuple(
+                ConfigurationReviewRecord.from_dict(item, project_id=project_id)
+                for item in project.get("configuration_review_records", [])
+            )
+            self._validate_configuration_review_records(network, configuration_review_records, project_id)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProjectPersistenceError(f"Invalid configuration review register: {exc}") from exc
+
         document_ids = tuple(
             str(item.get("document_id", "")).strip()
             for item in presentation_collection.get("documents", ())
@@ -229,6 +239,7 @@ class ProjectPersistenceService:
             protection_presentation=protection_presentation,
             study_cases=study_cases,
             instrumentation=instrumentation,
+            configuration_review_records=configuration_review_records,
         )
 
     def save(self, context: ProjectContext, network: Network,
@@ -244,7 +255,8 @@ class ProjectPersistenceService:
              protection_presentation: Mapping[str, Any] | None = None,
              presentation_collection: Mapping[str, Any] | None = None,
              study_cases: Sequence[StudyCaseDefinition] = (),
-             instrumentation: ProjectInstrumentationCollection | None = None) -> None:
+             instrumentation: ProjectInstrumentationCollection | None = None,
+             configuration_review_records: Sequence[ConfigurationReviewRecord] = ()) -> None:
         if path is None:
             path = presentation
             presentation = None
@@ -310,6 +322,14 @@ class ProjectPersistenceService:
             raise TypeError("instrumentation must be ProjectInstrumentationCollection or None.")
         if instrumentation.project_id != context.project_id:
             raise ProjectPersistenceError("Instrumentation collection project_id does not match the project.")
+        if not isinstance(configuration_review_records, Sequence) or any(
+            not isinstance(item, ConfigurationReviewRecord) for item in configuration_review_records
+        ):
+            raise TypeError("configuration_review_records must be a sequence of ConfigurationReviewRecord values.")
+        if any(item.project_id != context.project_id for item in configuration_review_records):
+            raise ProjectPersistenceError("configuration_review_records contains an obligation for a different project.")
+        self._validate_configuration_review_records(network, configuration_review_records, context.project_id)
+
         if not isinstance(study_cases, Sequence) or any(
             not isinstance(item, StudyCaseDefinition) for item in study_cases
         ):
@@ -395,6 +415,7 @@ class ProjectPersistenceService:
             "measurement": {"channels": [dict(item) for item in measurement_definitions]},
             "study_cases": [self._serialize_study_case(item) for item in study_cases],
             "instrumentation": instrumentation.to_mapping(),
+            "configuration_review_records": [item.to_dict() for item in configuration_review_records],
         }
         if protection_snapshot is not None:
             project["protection"] = protection_snapshot.to_dict()
@@ -739,7 +760,7 @@ class ProjectPersistenceService:
         allowed = {
             "schema", "project", "network", "presentations", "dynamic_models",
             "measurement", "control", "control_signal_mapping", "protection", "protection_presentation",
-            "draft_network", "draft_networks", "study_cases", "instrumentation",
+            "draft_network", "draft_networks", "study_cases", "instrumentation", "configuration_review_records",
         }
         unknown = sorted(set(project) - allowed)
         if unknown:
@@ -796,9 +817,48 @@ class ProjectPersistenceService:
                 raise ProjectPersistenceError(f"Canonical {key} payload must be an object.")
         if "draft_network" in project and "draft_networks" in project:
             raise ProjectPersistenceError("Canonical project cannot contain both draft_network and draft_networks.")
+        review_records = project.get("configuration_review_records", [])
+        if not isinstance(review_records, list) or any(not isinstance(item, Mapping) for item in review_records):
+            raise ProjectPersistenceError("Canonical configuration_review_records must be an array of objects.")
+        project_id = metadata.get("project_id")
+        try:
+            parsed_records = tuple(ConfigurationReviewRecord.from_dict(dict(item), project_id=project_id) for item in review_records)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProjectPersistenceError(f"Invalid canonical configuration review record: {exc}") from exc
+        record_keys = [(item.equipment_id, item.field_name, item.disposition_kind) for item in parsed_records]
+        if len(record_keys) != len(set(record_keys)):
+            raise ProjectPersistenceError("Canonical configuration review records contain duplicate identities.")
+
         study_cases = project.get("study_cases", [])
         if not isinstance(study_cases, list) or any(not isinstance(item, Mapping) for item in study_cases):
             raise ProjectPersistenceError("Canonical study_cases must be an array of objects.")
+
+    @staticmethod
+    def _validate_configuration_review_records(
+        network: Network,
+        records: Sequence[ConfigurationReviewRecord],
+        project_id: str,
+    ) -> None:
+        """Ensure pending obligations still identify equipment in their owning project."""
+        seen: set[tuple[str, str, str]] = set()
+        for record in records:
+            if not isinstance(record, ConfigurationReviewRecord) or record.project_id != project_id:
+                raise ProjectPersistenceError("Configuration review record has invalid project ownership.")
+            key = (record.equipment_id, record.field_name, record.disposition_kind)
+            if key in seen:
+                raise ProjectPersistenceError("Configuration review records contain duplicate identities.")
+            seen.add(key)
+            try:
+                equipment = network.get_by_identity(record.equipment_id)
+            except KeyError as exc:
+                raise ProjectPersistenceError(
+                    f"Configuration review record references missing equipment {record.equipment_id!r}."
+                ) from exc
+            actual_type = str(getattr(equipment, "element_type", "")).strip().casefold()
+            if actual_type != record.equipment_type.casefold():
+                raise ProjectPersistenceError(
+                    f"Configuration review record equipment type mismatch for {record.equipment_id!r}."
+                )
 
     @staticmethod
     def _validate_project_state(context: ProjectContext, network: Network, presentation: Mapping[str, Any] | None, presentation_collection: Mapping[str, Any] | None, dynamic_models: Sequence[DynamicMachineModelAssociation], protection_configuration: ProtectionProjectConfiguration | None, control_configuration: ControlConfiguration | None = None, measurement_definitions: Sequence[Mapping[str, Any]] = (), instrumentation: ProjectInstrumentationCollection | None = None) -> None:
