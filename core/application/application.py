@@ -58,7 +58,7 @@ from .events import (
     SLDPresentationChanged, TopologyChanged, ProtectionChanged, ValidationChanged, DraftChanged, StudyCaseCreated,
     SimpleWireConnectionCreated, SimpleWireConnectionRemoved, JunctionCreated, JunctionRemoved,
 )
-from .project import ProjectContext, ProjectSnapshot
+from .project import ConfigurationReviewRecord, ProjectContext, ProjectSnapshot
 from .instrumentation import ProjectInstrumentationCollection
 from .project_lifecycle import ProjectLifecycleService
 from .project_transition import ProjectTransitionDecision, ProjectTransitionRequired
@@ -186,6 +186,8 @@ class Application:
         # installed by another owner under a command type we originally owned.
         self._extension_handler_handlers: dict[str, dict[str, Any]] = {}
         self._revision_service = RevisionService()
+        # Pending configuration obligations are Application project state, never Core equipment fields.
+        self._configuration_review_records: dict[tuple[str, str, str], ConfigurationReviewRecord] = {}
         self._study_service = StudyService(self._event_bus)
         self._study_service.register("protection", ProtectionStudyHandler(self))
         self._study_cases: dict[UUID, StudyCaseDefinition] = {}
@@ -3771,6 +3773,66 @@ class Application:
         self._extension_handler_command_types = next_extension_types
         self._extension_handler_handlers = next_extension_handlers
 
+    @property
+    def configuration_review_records(self) -> tuple[ConfigurationReviewRecord, ...]:
+        """Return the active project's immutable pending configuration-review records."""
+        return tuple(
+            self._configuration_review_records[key]
+            for key in sorted(self._configuration_review_records)
+        )
+
+    def _record_configuration_review_obligations(
+        self, created_elements: tuple[Any, ...], transaction: Any
+    ) -> None:
+        """Record canonical review obligations in the creating command's undo journal."""
+        lifecycle = self._project_lifecycle
+        context = lifecycle.context if lifecycle is not None else None
+        if context is None:
+            raise RuntimeError("Configuration review obligations require an active project.")
+        previous = dict(self._configuration_review_records)
+        updated = dict(previous)
+        for item in created_elements:
+            if not isinstance(item, dict):
+                continue
+            equipment_id = item.get("core_id")
+            equipment_type = item.get("element_type")
+            dispositions = item.get("command_field_dispositions", {})
+            if not isinstance(equipment_id, str) or not equipment_id.strip():
+                raise ValueError("Committed equipment review metadata requires a Core identity.")
+            if not isinstance(equipment_type, str) or not equipment_type.strip():
+                raise ValueError("Committed equipment review metadata requires an equipment type.")
+            if not isinstance(dispositions, Mapping):
+                raise TypeError("Canonical command_field_dispositions must be a mapping.")
+            for field_name, disposition in dispositions.items():
+                if not isinstance(field_name, str) or not field_name.strip():
+                    raise ValueError("Canonical configuration field names must be non-empty strings.")
+                if not isinstance(disposition, Mapping):
+                    raise TypeError("Canonical field disposition entries must be mappings.")
+                kind = disposition.get("kind")
+                if kind not in {
+                    "operating_point", "later_configuration", "lifecycle_state",
+                    "operational_state", "measurement_association", "provisional_default",
+                }:
+                    continue
+                reason = disposition.get("reason")
+                workflow = disposition.get("workflow")
+                record = ConfigurationReviewRecord(
+                    project_id=context.project_id,
+                    equipment_id=equipment_id,
+                    equipment_type=equipment_type,
+                    field_name=field_name,
+                    disposition_kind=kind,
+                    reason=reason,
+                    workflow=workflow,
+                )
+                updated[(record.equipment_id, record.field_name, record.disposition_kind)] = record
+        if updated == previous:
+            return
+        self._configuration_review_records = updated
+        transaction.record_undo(
+            lambda snapshot=previous: setattr(self, "_configuration_review_records", dict(snapshot))
+        )
+
     def _coordinate_pre_commit(self, command: Command, result: ApplicationResult, transaction: Any) -> None:
         """Coordinate Core and persistent SLD semantic reconciliation in one transaction.
 
@@ -3816,6 +3878,9 @@ class Application:
             if self._revision_service.is_topology_command(command) and network is not None:
                 topology_revision = int(network.state.topology_revision)
             if command.command_type == "network.commit_draft":
+                self._record_configuration_review_obligations(
+                    tuple(result.metadata.get("created_elements", ())), transaction
+                )
                 self._revision_service.record_draft_commit(
                     command,
                     tuple(result.metadata.get("created_elements", ())),
