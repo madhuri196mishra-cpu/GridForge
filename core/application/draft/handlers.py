@@ -484,6 +484,7 @@ class CommitNetworkHandler:
                 parameter_contract=canonical_contract["parameter_contract"],
                 conditional_requirements=canonical_contract["conditional_requirements"],
                 equipment_type=canonical_contract["equipment_type"],
+                command_field_dispositions=canonical_contract["command_field_dispositions"],
             )
             prepared = preparer.prepare(intent, canonical_contract=canonical_contract)
             prepared_commands.append(prepared)
@@ -495,6 +496,12 @@ class CommitNetworkHandler:
                 "x": x,
                 "y": y,
                 "presentation": dict(item.presentation),
+                # Carry the trusted Application contract classification with the
+                # commit result; this remains workflow metadata, not Core state.
+                "command_field_dispositions": {
+                    field_name: dict(disposition)
+                    for field_name, disposition in canonical_contract["command_field_dispositions"].items()
+                },
                 "sld_node_id": f"sld-core-{core_ids[item.draft_id]}",
             })
 
