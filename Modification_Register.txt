@@ -3321,3 +3321,42 @@ Verification:
 - No tests, CI, GUI, startup, or runtime experiments were run.
 - Upstream write access remains blocked by GitHub HTTP 403; no upstream write
   or synchronization is claimed.
+
+
+======================================================================
+GridForge V2 — Project configuration review committed read-model projection (Issue #32)
+Date: 2026-11-18
+Implementation: madhuri196mishra-cpu/GridForge
+Branch: fix/issue-32-draft-configuration-review
+
+Finding:
+- The Application-owned pending configuration register survived commit,
+  deletion, activation and persistence, but the canonical network and
+  element read methods returned equipment snapshots without those obligations.
+- Presentation consumers therefore had no committed read-side route to show
+  which engineering fields still required their owning workflow.
+
+Correction:
+- Added immutable ConfigurationReviewReadModel values to the Application
+  read-model contract and an optional tuple on ElementReadModel.
+- Application.read_network() and read_element() enrich detached read snapshots
+  from the active project's ConfigurationReviewRecord values.
+- The projection carries field identity, canonical disposition kind, reason
+  and owning workflow. It reports pending obligations only; no completion,
+  applicability or engineering values are inferred.
+- The read service remains a Core-backed adapter and does not gain ownership
+  of project workflow state. The Application remains the composition boundary.
+
+Boundary / remaining work:
+- This exposes pending obligations through committed read models. It does not
+  yet resolve obligations through workflow-specific evidence, enforce
+  study-specific applicability, or close Issue #32.
+- Plugin-owned equipment deletion commands still require a complete inventory
+  and reconciliation contract where they bypass canonical model deletion.
+
+Verification:
+- Modified Application and read-model sources were fetched from the PR branch,
+  updated with anchored source transformations, and will be fetched back for
+  static inspection. No tests, CI, GUI, startup, or runtime experiments were run.
+- Upstream write access remains blocked by GitHub HTTP 403; no upstream
+  synchronization is claimed.
