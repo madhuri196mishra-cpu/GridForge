@@ -3227,3 +3227,51 @@ Verification:
 - Source files are re-fetched after updates and inspected for immutable intent storage, canonical contract sourcing, and transaction result propagation.
 - Static source review only; no tests, CI, startup, GUI, or runtime experiments were executed.
 - Upstream main was checked before this change and its creation.py matched Madhuri main at blob SHA 2ca28ba3e44aac4e7dd9a7d9d1c8c2d202cb6603. Upstream write/synchronization must be confirmed separately; no upstream change is claimed here.
+
+
+======================================================================
+GridForge V2 — Project-owned configuration review register (Issue #32)
+Date: 2026-11-18
+Implementation: madhuri196mishra-cpu/GridForge
+Branch: fix/issue-32-draft-configuration-review
+Project persistence schema: 6 → 7
+
+Finding:
+- Canonical field dispositions survived DraftEquipment and the Draft→Core
+  commit result, but were not retained as committed project state. Once draft
+  authoring ended, the project could not show which fields still required
+  their owning engineering workflow.
+
+Correction:
+- Added immutable Application ConfigurationReviewRecord values keyed by
+  project/equipment/field/disposition identity. Records retain canonical
+  disposition kind, reason and workflow and represent pending review only.
+- Draft commit creates records from the trusted created_elements result metadata
+  inside the same Application transaction. The inverse is registered in the
+  command UndoJournal, so rollback and user undo restore the prior register;
+  redo re-executes the canonical commit path.
+- Project activation installs the candidate project's records and restores the
+  previous register during activation rollback. Project save/load round-trips
+  the records through LoadedProject and the existing Application persistence
+  composition path.
+- Added strict canonical project validation and equipment/project identity
+  checks for persisted records. Project schema 6→7 initializes an empty register
+  for historical projects; no completion is inferred from Core defaults.
+- The register remains Application-owned. No Core equipment fields, duplicate
+  Core registry, or UI authority were introduced.
+
+Boundary / remaining work:
+- This slice records pending obligations only. It does not yet resolve them,
+  establish workflow-specific completion evidence, prune obligations on every
+  equipment deletion path, project the register into committed read models, or
+  enforce study-specific applicability. Issue #32 remains open.
+- Equipment deletion reconciliation must be completed before this register is
+  considered lifecycle-complete; stale-reference validation intentionally
+  prevents silently persisting orphaned obligations.
+
+Verification:
+- Modified source files and the project schema migration were fetched back
+  from the implementation branch and statically inspected. No tests, CI,
+  startup, GUI, or runtime experiments were run.
+- Upstream write access remains blocked by GitHub HTTP 403. No upstream change
+  or synchronization is claimed.
