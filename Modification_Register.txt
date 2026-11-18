@@ -3201,3 +3201,29 @@ Upstream tracking: SubhenduMishra29/GridForge#994
   study-specific enforcement remain open.
 - Verification: modified projection and unchanged main source were re-fetched.
   No tests, CI, GUI, startup, or runtime experiments were run.
+
+======================================================================
+GridForge V2 — Preserve canonical field dispositions through Draft→Core commit (Issue #32)
+Date: 2026-11-18
+Repository: madhuri196mishra-cpu/GridForge
+Branch: fix/issue-32-draft-configuration-review
+
+Finding:
+- CommitNetworkHandler validated each DraftEquipment disposition against the trusted Application creation contract, but discarded the classification when constructing CreationCommitIntent and the committed-element result metadata.
+- Downstream Application workflows therefore had no commit-result handoff containing the exact trusted field classification.
+
+Correction:
+- CreationCommitIntent now retains an immutable snapshot of command_field_dispositions.
+- canonicalize_creation_intent() sources the retained dispositions from the trusted canonical Application contract, not draft-supplied metadata.
+- CommitNetworkHandler passes the canonical classification into the intent and includes it in each created_elements result record.
+- The metadata remains Application workflow information; it is not added to Core equipment models or create-command payloads.
+
+Boundary / remaining work:
+- This correction preserves the trusted classification at the Draft→Core transaction result boundary only.
+- It does not yet establish a durable project-owned configuration-decision aggregate, field-level completion evidence, project schema migration, read-model projection, or study validation enforcement.
+- Issue #32 remains open until those lifecycle stages are implemented and verified.
+
+Verification:
+- Source files are re-fetched after updates and inspected for immutable intent storage, canonical contract sourcing, and transaction result propagation.
+- Static source review only; no tests, CI, startup, GUI, or runtime experiments were executed.
+- Upstream main was checked before this change and its creation.py matched Madhuri main at blob SHA 2ca28ba3e44aac4e7dd9a7d9d1c8c2d202cb6603. Upstream write/synchronization must be confirmed separately; no upstream change is claimed here.
