@@ -47,6 +47,35 @@ class ProjectContext:
 
 
 
+@dataclass(frozen=True, slots=True)
+class ConfigurationReviewRecord:
+    """Application-owned pending review obligation derived from a canonical creation contract."""
+
+    project_id: str
+    equipment_id: str
+    equipment_type: str
+    field_name: str
+    disposition_kind: str
+    reason: str
+    workflow: str | None = None
+
+    def __post_init__(self) -> None:
+        for field_name in ("project_id", "equipment_id", "equipment_type", "field_name", "disposition_kind", "reason"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field_name} must be a non-empty string.")
+            object.__setattr__(self, field_name, value.strip())
+        if self.disposition_kind not in {
+            "operating_point", "later_configuration", "lifecycle_state",
+            "operational_state", "measurement_association", "provisional_default",
+        }:
+            raise ValueError("Configuration review record requires a review-relevant canonical disposition.")
+        if self.workflow is not None:
+            if not isinstance(self.workflow, str) or not self.workflow.strip():
+                raise ValueError("workflow must be a non-empty string or None.")
+            object.__setattr__(self, "workflow", self.workflow.strip())
+
+
 
 @dataclass(frozen=True, slots=True)
 class ProjectSnapshot:
@@ -69,4 +98,4 @@ class ProjectSnapshot:
         object.__setattr__(self, "dynamic_models", tuple(self.dynamic_models))
 
 
-__all__ = ["ProjectContext", "ProjectSnapshot"]
+__all__ = ["ConfigurationReviewRecord", "ProjectContext", "ProjectSnapshot"]
