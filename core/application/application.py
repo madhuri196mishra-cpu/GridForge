@@ -3801,6 +3801,46 @@ class Application:
             for item in records
         }
 
+    def _reconcile_configuration_review_deletions(
+        self, command: Command, result: ApplicationResult, transaction: Any
+    ) -> None:
+        """Remove obligations for deleted equipment in the same command journal."""
+        deleted_ids: set[str] = set()
+        if command.command_type.startswith("model.delete_"):
+            object_id = result.metadata.get("object_id")
+            if isinstance(object_id, str) and object_id.strip():
+                deleted_ids.add(object_id.strip())
+        elif command.command_type == "sld.delete_selection_batch":
+            for child in tuple(command.payload.get("commands", ())):
+                if getattr(child, "command_type", "").startswith("model.delete_"):
+                    # Child commands execute inside the outer batch transaction;
+                    # select the equipment identity from their typed payload.
+                    candidates = {
+                        value.strip()
+                        for key, value in dict(getattr(child, "payload", {})).items()
+                        if key.endswith("_id")
+                        and key not in {"command_id", "correlation_id", "causation_id"}
+                        and isinstance(value, str)
+                        and value.strip()
+                    }
+                    deleted_ids.update(
+                        object_id for object_id in candidates
+                        if any(key[0] == object_id for key in self._configuration_review_records)
+                    )
+        if not deleted_ids:
+            return
+        previous = dict(self._configuration_review_records)
+        updated = {
+            key: record for key, record in previous.items()
+            if record.equipment_id not in deleted_ids
+        }
+        if updated == previous:
+            return
+        self._configuration_review_records = updated
+        transaction.record_undo(
+            lambda snapshot=previous: setattr(self, "_configuration_review_records", dict(snapshot))
+        )
+
     def _record_configuration_review_obligations(
         self, created_elements: tuple[Any, ...], transaction: Any
     ) -> None:
@@ -3917,6 +3957,7 @@ class Application:
         )
 
         command_type = command.command_type
+        self._reconcile_configuration_review_deletions(command, result, transaction)
         if command_type == "sld.delete_selection_batch":
             if self._sld_service is not None:
                 for child in selection_batch_children:
