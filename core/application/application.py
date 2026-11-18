@@ -3781,6 +3781,26 @@ class Application:
             for key in sorted(self._configuration_review_records)
         )
 
+    def _replace_configuration_review_records(
+        self, records: tuple[ConfigurationReviewRecord, ...], *, project_id: str | None
+    ) -> None:
+        """Install one project's detached review register during activation/rollback."""
+        if not isinstance(records, tuple) or any(
+            not isinstance(item, ConfigurationReviewRecord) for item in records
+        ):
+            raise TypeError("Configuration review state must be a tuple of ConfigurationReviewRecord values.")
+        if project_id is None and records:
+            raise ValueError("An inactive project cannot retain configuration review records.")
+        if any(item.project_id != project_id for item in records):
+            raise ValueError("Configuration review state contains a record for another project.")
+        keys = [(item.equipment_id, item.field_name, item.disposition_kind) for item in records]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Configuration review state contains duplicate record identities.")
+        self._configuration_review_records = {
+            (item.equipment_id, item.field_name, item.disposition_kind): item
+            for item in records
+        }
+
     def _record_configuration_review_obligations(
         self, created_elements: tuple[Any, ...], transaction: Any
     ) -> None:
