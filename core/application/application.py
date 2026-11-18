@@ -63,7 +63,7 @@ from .instrumentation import ProjectInstrumentationCollection
 from .project_lifecycle import ProjectLifecycleService
 from .project_transition import ProjectTransitionDecision, ProjectTransitionRequired
 from .recovery import ApplicationRecoveryStatus
-from .read_models import (ElementReadModel, MeasurementChannelReadModel, NetworkReadModel, ProtectionReadModel, RelayReadModel, SimpleWireReadModel, PhysicalRelayConfigurationReadModel, ProtectionSettingValueReadModel, ProtectionFunctionConfigurationReadModel)
+from .read_models import (ConfigurationReviewReadModel, ElementReadModel, MeasurementChannelReadModel, NetworkReadModel, ProtectionReadModel, RelayReadModel, SimpleWireReadModel, PhysicalRelayConfigurationReadModel, ProtectionSettingValueReadModel, ProtectionFunctionConfigurationReadModel)
 from .read_service import MeasurementChannelReadService, ProtectionReadService, ReadService, StudyReadService
 from .results import ApplicationResult
 from core.persistence.network_serializer import deserialize_network, serialize_network
@@ -5181,10 +5181,32 @@ class Application:
             raise RuntimeError("Application Control service is not configured.")
         return service.read()
 
+    def _project_configuration_reviews(self, element: ElementReadModel) -> ElementReadModel:
+        """Attach active-project pending obligations to a detached read-side element."""
+        records = tuple(
+            ConfigurationReviewReadModel(
+                field_name=record.field_name,
+                disposition_kind=record.disposition_kind,
+                reason=record.reason,
+                workflow=record.workflow,
+            )
+            for record in self.configuration_review_records
+            if record.equipment_id == element.object_id
+        )
+        return replace(element, configuration_reviews=records)
+
     def read_network(self) -> NetworkReadModel:
-        self._require_read_service(); return self._read_service.network()  # type: ignore[union-attr]
+        self._require_read_service()
+        network = self._read_service.network()  # type: ignore[union-attr]
+        return replace(
+            network,
+            elements=tuple(self._project_configuration_reviews(item) for item in network.elements),
+        )
+
     def read_element(self, element_type: str, object_id: str) -> ElementReadModel:
-        self._require_read_service(); return self._read_service.element(element_type, object_id)  # type: ignore[union-attr]
+        self._require_read_service()
+        element = self._read_service.element(element_type, object_id)  # type: ignore[union-attr]
+        return self._project_configuration_reviews(element)
     def read_simple_wire(self, connection_id: str) -> SimpleWireReadModel:
         network = self.read_network()
         for connection in network.simple_wires:
