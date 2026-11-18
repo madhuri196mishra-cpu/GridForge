@@ -3175,3 +3175,29 @@ Upstream tracking: SubhenduMishra29/GridForge#1190
   anchors while authored route data remains unchanged.
 - Verification: static source inspection and GitHub fetch-back only. No tests,
   CI, GUI, startup or runtime experiments were run.
+
+
+======================================================================
+GRIDFORGE V2 — DRAFT CONFIGURATION REVIEW DISPOSITION PROJECTION (ISSUE #32)
+Date: 18 November 2026
+Implementation: madhuri196mishra-cpu/GridForge
+Implementation PR: #224
+Upstream tracking: SubhenduMishra29/GridForge#994
+
+- Corrected the SLD draft read-side projection so configuration review is
+  visible for all workflow-backed command-field dispositions preserved by
+  DraftEquipment: later_configuration, operating_point, lifecycle_state,
+  operational_state, measurement_association, and provisional_default.
+- Previously, the projection recognized only later_configuration. Other
+  workflow-backed dispositions could therefore be presented as an ordinary
+  draft even though the canonical creation contract identified follow-up work.
+- The status remains presentation/read-side visibility only. It does not
+  decide applicability, claim completion, impose universal mandatory fields,
+  or move engineering authority into the UI.
+- Position-first placement and existing Application-owned command and
+  transaction paths are unchanged.
+- This bounded correction does not close issue #32. The full pending/resolved
+  configuration lifecycle, committed read-model/persistence propagation, and
+  study-specific enforcement remain open.
+- Verification: modified projection and unchanged main source were re-fetched.
+  No tests, CI, GUI, startup, or runtime experiments were run.
