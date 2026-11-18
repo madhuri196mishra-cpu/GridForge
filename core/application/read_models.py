@@ -86,6 +86,27 @@ class EngineeringParameterReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfigurationReviewReadModel:
+    """UI-neutral snapshot of one pending Application-owned configuration obligation."""
+
+    field_name: str
+    disposition_kind: str
+    reason: str
+    workflow: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("field_name", "disposition_kind", "reason"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"ConfigurationReviewReadModel.{name} must be non-empty")
+            object.__setattr__(self, name, value.strip())
+        if self.workflow is not None:
+            if not isinstance(self.workflow, str) or not self.workflow.strip():
+                raise ValueError("ConfigurationReviewReadModel.workflow must be non-empty or None")
+            object.__setattr__(self, "workflow", self.workflow.strip())
+
+
+@dataclass(frozen=True, slots=True)
 class ElementReadModel:
     """Stable, UI-neutral immutable snapshot of one network element."""
 
@@ -95,6 +116,7 @@ class ElementReadModel:
     connectivity_refs: tuple[str, ...]
     attributes: Mapping[str, Any]
     engineering_parameters: tuple[EngineeringParameterReadModel, ...] = ()
+    configuration_reviews: tuple[ConfigurationReviewReadModel, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.object_id, str) or not self.object_id:
@@ -111,6 +133,10 @@ class ElementReadModel:
             raise TypeError("ElementReadModel.engineering_parameters must be a tuple")
         if not all(isinstance(item, EngineeringParameterReadModel) for item in self.engineering_parameters):
             raise TypeError("ElementReadModel.engineering_parameters must contain EngineeringParameterReadModel values")
+        if not isinstance(self.configuration_reviews, tuple) or not all(
+            isinstance(item, ConfigurationReviewReadModel) for item in self.configuration_reviews
+        ):
+            raise TypeError("ElementReadModel.configuration_reviews must contain ConfigurationReviewReadModel values")
         attributes = dict(self.attributes)
         semantic_type = self.element_type.strip().upper()
         for key in _CANONICAL_ATTRIBUTES.get(semantic_type, ()):
@@ -118,6 +144,7 @@ class ElementReadModel:
         object.__setattr__(self, "labels", _freeze(self.labels))
         object.__setattr__(self, "attributes", _freeze(attributes))
         object.__setattr__(self, "engineering_parameters", tuple(self.engineering_parameters))
+        object.__setattr__(self, "configuration_reviews", tuple(self.configuration_reviews))
 
 
 @dataclass(frozen=True, slots=True)
@@ -798,7 +825,7 @@ class MeasurementChannelReadModel:
 
 __all__ = [
     "ElementReadModel",
-    "EngineeringParameterReadModel",
+    "ConfigurationReviewReadModel", "EngineeringParameterReadModel",
     "NetworkReadModel",
     "SimpleWireReadModel",
     "ProtectionReadModel",
