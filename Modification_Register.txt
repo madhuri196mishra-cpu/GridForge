@@ -3275,3 +3275,49 @@ Verification:
   startup, GUI, or runtime experiments were run.
 - Upstream write access remains blocked by GitHub HTTP 403. No upstream change
   or synchronization is claimed.
+
+
+======================================================================
+GridForge V2 — Reconcile configuration review obligations on equipment deletion (Issue #32)
+Date: 2026-11-18
+Implementation: madhuri196mishra-cpu/GridForge
+Branch: fix/issue-32-draft-configuration-review
+
+Finding:
+- The pending configuration register is keyed by committed equipment identity.
+  The canonical model deletion commands return the deleted object identity in
+  ApplicationResult metadata, but the Application pre-commit boundary did not
+  remove related review obligations.
+- SLD selection deletion composes child commands in one outer transaction and
+  has an explicit child-command list. Its legacy SLD reconciliation covered
+  only Bus, Transformer and Breaker, while the model command catalogue includes
+  additional equipment types.
+
+Correction:
+- Added one Application pre-commit reconciliation step for every canonical
+  model.delete_* command, using the successful handler result's object_id.
+- Extended the same step to model.delete_* children in the SLD selection batch,
+  resolving equipment identities from their typed command payloads and only
+  selecting identities actually present in the register.
+- Register pruning is performed in the outer command transaction and records
+  its exact prior snapshot in the same UndoJournal. Failed transaction rollback
+  restores the register; user undo restores the obligations along with the
+  deleted equipment; redo removes them again through the normal pre-commit path.
+- No equipment service receives configuration-register ownership and no Core
+  mutation or duplicate deletion registry was introduced.
+
+Boundary / remaining work:
+- This covers canonical model.delete_* commands and model.delete_* children in
+  the SLD selection batch. Non-model extension-specific deletion paths must
+  either use the canonical model deletion commands or be explicitly reconciled
+  at their owning Application aggregate boundary before Issue #32 closure.
+- Workflow-specific completion/applicability evidence, committed read-model
+  projection and study-specific enforcement remain open.
+
+Verification:
+- Re-fetched and statically inspected Application deletion reconciliation,
+  model command handler result metadata, SLD selection batch child routing,
+  and the existing transaction undo journal usage.
+- No tests, CI, GUI, startup, or runtime experiments were run.
+- Upstream write access remains blocked by GitHub HTTP 403; no upstream write
+  or synchronization is claimed.
