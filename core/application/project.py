@@ -75,6 +75,38 @@ class ConfigurationReviewRecord:
                 raise ValueError("workflow must be a non-empty string or None.")
             object.__setattr__(self, "workflow", self.workflow.strip())
 
+    def to_dict(self) -> dict[str, str | None]:
+        """Return the canonical persistence representation of this obligation."""
+        return {
+            "project_id": self.project_id,
+            "equipment_id": self.equipment_id,
+            "equipment_type": self.equipment_type,
+            "field_name": self.field_name,
+            "disposition_kind": self.disposition_kind,
+            "reason": self.reason,
+            "workflow": self.workflow,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Any, *, project_id: str) -> "ConfigurationReviewRecord":
+        if not isinstance(value, dict):
+            raise TypeError("Configuration review record must be an object.")
+        if value.get("project_id") != project_id:
+            raise ValueError("Configuration review record belongs to a different project.")
+        allowed = {"project_id", "equipment_id", "equipment_type", "field_name", "disposition_kind", "reason", "workflow"}
+        unknown = set(value) - allowed
+        if unknown:
+            raise ValueError("Unknown configuration review record fields: " + ", ".join(sorted(unknown)))
+        return cls(
+            project_id=value["project_id"],
+            equipment_id=value["equipment_id"],
+            equipment_type=value["equipment_type"],
+            field_name=value["field_name"],
+            disposition_kind=value["disposition_kind"],
+            reason=value["reason"],
+            workflow=value.get("workflow"),
+        )
+
 
 
 @dataclass(frozen=True, slots=True)
