@@ -775,6 +775,10 @@ def create_application(
         previous_draft = application.draft_network
         previous_study_cases = dict(application._study_cases)
         previous_instrumentation_collection = application.instrumentation_collection
+        previous_configuration_review_records = application.configuration_review_records
+        previous_configuration_review_project_id = (
+            previous_lifecycle_context.project_id if previous_lifecycle_context is not None else None
+        )
 
         def restore_control_runtime() -> None:
             if not previous_control_active:
@@ -802,6 +806,10 @@ def create_application(
                 application.set_draft_network(previous_draft)
             application._study_cases = dict(previous_study_cases)
             application.instrumentation_collection = previous_instrumentation_collection
+            application._replace_configuration_review_records(
+                previous_configuration_review_records,
+                project_id=previous_configuration_review_project_id,
+            )
             dynamic_models.replace(previous_dynamic_models)
             restore_control_runtime()
 
@@ -929,6 +937,10 @@ def create_application(
                 candidate_protection_runtime.compose(measurement_channel_service.channels)
                 application.protection_runtime = candidate_protection_runtime
                 application.protection_presentation = getattr(loaded, "protection_presentation", None) if loaded is not None else None
+                application._replace_configuration_review_records(
+                    tuple(getattr(loaded, "configuration_review_records", ())) if loaded is not None else (),
+                    project_id=context.project_id if context is not None else None,
+                )
                 application._study_cases = {
                     case.study_id: replace(
                         case,
@@ -1068,6 +1080,7 @@ def create_application(
             presentation_collection=presentation_collection,
             study_cases=application.study_cases,
             instrumentation=application.instrumentation_collection,
+            configuration_review_records=application.configuration_review_records,
             protection_presentation=(                application.protection_presentation.to_dict()
                 if callable(getattr(getattr(application, "protection_presentation", None), "to_dict", None))
                 else getattr(application, "protection_presentation", None)
