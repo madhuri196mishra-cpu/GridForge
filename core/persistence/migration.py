@@ -172,6 +172,21 @@ class _ProjectSchema3To4(ProjectMigration):
         return result
 
 
+class _ProjectSchema6To7(ProjectMigration):
+    source_schema = 6
+    target_schema = 7
+
+    def migrate(self, data: Mapping[str, Any]) -> Mapping[str, Any]:
+        result = deepcopy(dict(data))
+        if result.get("schema") != self.source_schema:
+            raise ProjectMigrationError("Project schema 6-to-7 received a non-schema-6 payload.")
+        # Historical projects have no evidence of reviewed configuration; an
+        # empty register is safer than inferring completion from Core defaults.
+        result.setdefault("configuration_review_records", [])
+        result["schema"] = self.target_schema
+        return result
+
+
 class _ProjectSchema5To6(ProjectMigration):
     source_schema = 5
     target_schema = 6
@@ -708,6 +723,7 @@ class ProjectPersistenceMigration:
         3: _ProjectSchema3To4(),
         4: _ProjectSchema4To5(),
         5: _ProjectSchema5To6(),
+        6: _ProjectSchema6To7(),
     }
     _sld_steps: dict[int, SLDMigration] = {1: _SLDSchema1To2(), 2: _SLDSchema2To3(), 3: _SLDSchema3To4()}
 
@@ -741,6 +757,7 @@ class ProjectPersistenceMigration:
         current.setdefault("measurement", {"channels": []})
         current.setdefault("study_cases", [])
         current.setdefault("instrumentation", None)
+        current.setdefault("configuration_review_records", [])
         current = self._migrate_presentation_collection(current)
         current = self._migrate_network_connectivity(current)
         self._reject_legacy_project_aliases(current)
