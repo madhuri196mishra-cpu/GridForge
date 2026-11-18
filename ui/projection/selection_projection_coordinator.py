@@ -402,12 +402,21 @@ class SelectionProjectionCoordinator:
             object_id=str(item["draft_id"]),
             display_type=equipment_type,
             labels=(str(item.get("display_name") or equipment_type), "Draft"),
-            # Later-configuration fields remain pending review, not universally
-            # mandatory. Study applicability is resolved by owning workflows.
+            # Workflow-backed fields and provisional defaults remain visible as
+            # configuration review work. This is a read-side status only:
+            # applicability and completion are decided by their owning
+            # Application workflows, not by the SLD projection.
             status=(
                 "configuration_review_required"
                 if any(
-                    disposition.get("kind") == "later_configuration"
+                    disposition.get("kind") in {
+                        "later_configuration",
+                        "operating_point",
+                        "lifecycle_state",
+                        "operational_state",
+                        "measurement_association",
+                        "provisional_default",
+                    }
                     for disposition in dict(item.get("command_field_dispositions", {})).values()
                 )
                 else "draft"
