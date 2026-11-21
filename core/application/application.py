@@ -3917,6 +3917,25 @@ class Application:
             ),
         }
         contract = completion_contracts.get(command.command_type)
+        if command.command_type == "model.update_grid":
+            grounding_fields = (
+                "neutral_grounding_impedance_ohm",
+            )
+            if (
+                command.payload.get("neutral_grounding_impedance_ohm") is not None
+                or command.payload.get("clear_neutral_grounding_impedance") is True
+            ):
+                contract = (
+                    "grid_id", "grid", "later_configuration",
+                    "Grid grounding configuration / UpdateGridCommand",
+                    grounding_fields,
+                )
+            elif any(command.payload.get(name) is not None for name in ("z1_pu", "z2_pu", "z0_pu")):
+                contract = (
+                    "grid_id", "grid", "later_configuration",
+                    "Grid sequence-impedance configuration / UpdateGridCommand",
+                    ("z1_pu", "z2_pu", "z0_pu"),
+                )
         if contract is None:
             return
         identity_field, equipment_type, disposition_kind, workflow, field_names = contract
@@ -3928,13 +3947,43 @@ class Application:
         if updated_id is None or str(updated_id) != equipment_id:
             return
 
-        satisfied_fields = tuple(
-            field_name
-            for field_name in field_names
-            if command.payload.get(field_name) is not None
-            and hasattr(updated_object, field_name)
-            and getattr(updated_object, field_name) == command.payload.get(field_name)
-        )
+        if command.command_type == "model.update_grid" and workflow == "Grid operating-point editor / UpdateGridCommand":
+            satisfied_fields = tuple(
+                field_name
+                for field_name in field_names
+                if command.payload.get(field_name) is not None
+                and hasattr(updated_object, field_name)
+                and getattr(updated_object, field_name) == command.payload.get(field_name)
+            )
+        elif command.command_type == "model.update_grid" and workflow == "Grid grounding configuration / UpdateGridCommand":
+            clearing = command.payload.get("clear_neutral_grounding_impedance") is True
+            requested = command.payload.get("neutral_grounding_impedance_ohm")
+            field_matches = (
+                clearing and getattr(updated_object, "neutral_grounding_impedance_ohm", object()) is None
+            ) or (
+                requested is not None
+                and getattr(updated_object, "neutral_grounding_impedance_ohm", object()) == requested
+            )
+            satisfied_fields = ("neutral_grounding_impedance_ohm",) if field_matches else ()
+        elif command.command_type == "model.update_grid" and workflow == "Grid sequence-impedance configuration / UpdateGridCommand":
+            sequence_fields = ("z1_pu", "z2_pu", "z0_pu")
+            # The Core setter treats these as one sequence-impedance snapshot.
+            # Do not complete a subset when the command only partially supplies it.
+            supplied_as_group = all(command.payload.get(name) is not None for name in sequence_fields)
+            group_matches = supplied_as_group and all(
+                hasattr(updated_object, name)
+                and getattr(updated_object, name) == command.payload.get(name)
+                for name in sequence_fields
+            )
+            satisfied_fields = sequence_fields if group_matches else ()
+        else:
+            satisfied_fields = tuple(
+                field_name
+                for field_name in field_names
+                if command.payload.get(field_name) is not None
+                and hasattr(updated_object, field_name)
+                and getattr(updated_object, field_name) == command.payload.get(field_name)
+            )
         if not satisfied_fields:
             return
 
