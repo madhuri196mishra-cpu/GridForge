@@ -321,14 +321,15 @@ class GraphicsView(QGraphicsView):
             and callable(getattr(self.tool_manager, "get_tool", None))
             else None
         )
-        selected_count = (
-            select_tool.selected_transform_count()
-            if callable(getattr(select_tool, "selected_transform_count", None))
-            else 0
-        )
-        group_mode = selected_count > 1
+        rotation_mode = self._rotation_selection_mode()
+        if rotation_mode is None:
+            for action in self._symbol_rotation_actions:
+                action.setEnabled(False)
+            self._contextual_strip.hide()
+            return
+        group_mode = rotation_mode == "group"
         for action in self._symbol_rotation_actions:
-            action.setEnabled(selected_count == 1)
+            action.setEnabled(rotation_mode == "single")
         for button in self._single_symbol_buttons:
             button.setVisible(not group_mode)
         for button in self._group_transform_buttons:
