@@ -3896,29 +3896,41 @@ class Application:
     def _record_configuration_review_completion(
         self, command: Command, result: ApplicationResult, transaction: Any
     ) -> None:
-        """Record only the exact Bus operating-point fields proven by its owning update command.
+        """Record only fields proven by their exact canonical owning update workflow.
 
-        This first completion contract is intentionally narrow. The canonical
-        Bus disposition names UpdateBusCommand as its owner; the command payload
-        must identify the same Bus and explicitly supply the field, and the
-        transaction-visible Core object returned by the handler must reflect
-        that exact value. Other equipment/workflows remain pending until their
-        own typed completion contracts are defined.
+        Each supported branch names its equipment identity, command type,
+        disposition kind, workflow and field inventory explicitly. A field is
+        completed only when the successful handler returns the same Core
+        equipment identity and its transaction-visible value equals the
+        explicitly supplied command payload. Unsupported workflows stay pending.
         """
-        if command.command_type != "model.update_bus":
+        completion_contracts = {
+            "model.update_bus": (
+                "bus_id", "bus", "operating_point",
+                "Bus operating-point editor / UpdateBusCommand",
+                ("voltage_pu", "angle_deg"),
+            ),
+            "model.update_grid": (
+                "grid_id", "grid", "operating_point",
+                "Grid operating-point editor / UpdateGridCommand",
+                ("voltage_pu", "angle_deg", "p_mw", "q_mvar"),
+            ),
+        }
+        contract = completion_contracts.get(command.command_type)
+        if contract is None:
             return
-        bus_id = command.payload.get("bus_id")
+        identity_field, equipment_type, disposition_kind, workflow, field_names = contract
+        equipment_id = command.payload.get(identity_field)
         updated_object = result.value
-        if not isinstance(bus_id, str) or not bus_id.strip() or updated_object is None:
+        if not isinstance(equipment_id, str) or not equipment_id.strip() or updated_object is None:
             return
         updated_id = getattr(updated_object, "id", None)
-        if updated_id is None or str(updated_id) != bus_id:
+        if updated_id is None or str(updated_id) != equipment_id:
             return
 
-        workflow = "Bus operating-point editor / UpdateBusCommand"
         satisfied_fields = tuple(
             field_name
-            for field_name in ("voltage_pu", "angle_deg")
+            for field_name in field_names
             if command.payload.get(field_name) is not None
             and hasattr(updated_object, field_name)
             and getattr(updated_object, field_name) == command.payload.get(field_name)
@@ -3930,9 +3942,9 @@ class Application:
         updated = dict(previous)
         for key, record in previous.items():
             if (
-                record.equipment_id != bus_id
-                or record.equipment_type.strip().lower() != "bus"
-                or record.disposition_kind != "operating_point"
+                record.equipment_id != equipment_id
+                or record.equipment_type.strip().lower() != equipment_type
+                or record.disposition_kind != disposition_kind
                 or record.workflow != workflow
                 or record.field_name not in satisfied_fields
             ):
