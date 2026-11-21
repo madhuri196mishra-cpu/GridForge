@@ -3893,6 +3893,62 @@ class Application:
             lambda snapshot=previous: setattr(self, "_configuration_review_records", dict(snapshot))
         )
 
+    def _record_configuration_review_completion(
+        self, command: Command, result: ApplicationResult, transaction: Any
+    ) -> None:
+        """Record only the exact Bus operating-point fields proven by its owning update command.
+
+        This first completion contract is intentionally narrow. The canonical
+        Bus disposition names UpdateBusCommand as its owner; the command payload
+        must identify the same Bus and explicitly supply the field, and the
+        transaction-visible Core object returned by the handler must reflect
+        that exact value. Other equipment/workflows remain pending until their
+        own typed completion contracts are defined.
+        """
+        if command.command_type != "model.update_bus":
+            return
+        bus_id = command.payload.get("bus_id")
+        updated_object = result.value
+        if not isinstance(bus_id, str) or not bus_id.strip() or updated_object is None:
+            return
+        updated_id = getattr(updated_object, "id", None)
+        if updated_id is None or str(updated_id) != bus_id:
+            return
+
+        workflow = "Bus operating-point editor / UpdateBusCommand"
+        satisfied_fields = tuple(
+            field_name
+            for field_name in ("voltage_pu", "angle_deg")
+            if command.payload.get(field_name) is not None
+            and hasattr(updated_object, field_name)
+            and getattr(updated_object, field_name) == command.payload.get(field_name)
+        )
+        if not satisfied_fields:
+            return
+
+        previous = dict(self._configuration_review_records)
+        updated = dict(previous)
+        for key, record in previous.items():
+            if (
+                record.equipment_id != bus_id
+                or record.equipment_type.strip().lower() != "bus"
+                or record.disposition_kind != "operating_point"
+                or record.workflow != workflow
+                or record.field_name not in satisfied_fields
+            ):
+                continue
+            updated[key] = replace(
+                record,
+                completion_command_id=str(command.command_id),
+                completion_command_type=command.command_type,
+            )
+        if updated == previous:
+            return
+        self._configuration_review_records = updated
+        transaction.record_undo(
+            lambda snapshot=previous: setattr(self, "_configuration_review_records", dict(snapshot))
+        )
+
     def _coordinate_pre_commit(self, command: Command, result: ApplicationResult, transaction: Any) -> None:
         """Coordinate Core and persistent SLD semantic reconciliation in one transaction.
 
@@ -3957,6 +4013,7 @@ class Application:
         )
 
         command_type = command.command_type
+        self._record_configuration_review_completion(command, result, transaction)
         self._reconcile_configuration_review_deletions(command, result, transaction)
         if command_type == "sld.delete_selection_batch":
             if self._sld_service is not None:
@@ -5189,6 +5246,8 @@ class Application:
                 disposition_kind=record.disposition_kind,
                 reason=record.reason,
                 workflow=record.workflow,
+                completion_command_id=record.completion_command_id,
+                completion_command_type=record.completion_command_type,
             )
             for record in self.configuration_review_records
             if record.equipment_id == element.object_id
