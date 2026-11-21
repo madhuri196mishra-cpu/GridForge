@@ -3423,3 +3423,13 @@ Verification:
 - Completion evidence remains attached to the existing Application-owned review record and is journaled through the same transaction undo snapshot. No Core model, command payload, persistence schema, or parallel workflow registry was added.
 - Grounding impedance and sequence-impedance obligations remain pending; their complex-valued/grouped replacement and clearing semantics need a distinct evidence contract. Grid lifecycle state is also not inferred from generic update success.
 - Static source inspection only; no tests, CI, startup, GUI, or runtime experiments were run. Upstream write/synchronization remains blocked and is not claimed.
+
+
+## 2026-11-21 — Record grouped Grid grounding and sequence-impedance completion evidence (Issue #32)
+
+- Extended the existing `model.update_grid` completion coordinator using the exact canonical workflows `Grid grounding configuration / UpdateGridCommand` and `Grid sequence-impedance configuration / UpdateGridCommand`.
+- Neutral grounding is completed only when a non-null complex impedance is explicitly supplied and the returned Core Grid matches it, or when the command explicitly carries `clear_neutral_grounding_impedance=True` and the returned Core field is `None`. This covers the Application preparer's explicit-None-to-clear-flag mapping without treating an omitted field as a clear operation.
+- Sequence-impedance obligations for `z1_pu`, `z2_pu`, and `z0_pu` are completed as one group only when all three complex values are explicitly supplied and all three returned Core fields match exactly. Partial updates do not discharge any member of the grouped obligation. Core validation continues to enforce the required impedance bases.
+- Both workflows require the command's `grid_id` to match the returned Core Grid and use the existing Application review-record replacement and transaction undo journal. No Core model, command contract, persistence schema, or additional service was introduced.
+- Explicit clearing of individual sequence-impedance values is not representable by the current command payload (None means omitted); those cases remain pending rather than being inferred.
+- Static source inspection only; no tests, CI, startup, GUI, or runtime experiments were run. Upstream write/synchronization remains blocked and is not claimed.
