@@ -58,6 +58,8 @@ class ConfigurationReviewRecord:
     disposition_kind: str
     reason: str
     workflow: str | None = None
+    completion_command_id: str | None = None
+    completion_command_type: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("project_id", "equipment_id", "equipment_type", "field_name", "disposition_kind", "reason"):
@@ -74,6 +76,17 @@ class ConfigurationReviewRecord:
             if not isinstance(self.workflow, str) or not self.workflow.strip():
                 raise ValueError("workflow must be a non-empty string or None.")
             object.__setattr__(self, "workflow", self.workflow.strip())
+        completion_values = (self.completion_command_id, self.completion_command_type)
+        if any(value is not None for value in completion_values):
+            if any(not isinstance(value, str) or not value.strip() for value in completion_values):
+                raise ValueError("Configuration completion evidence requires both command identity and command type.")
+            object.__setattr__(self, "completion_command_id", self.completion_command_id.strip())
+            object.__setattr__(self, "completion_command_type", self.completion_command_type.strip())
+
+    @property
+    def completed(self) -> bool:
+        """Return whether an owning Application workflow recorded completion evidence."""
+        return self.completion_command_id is not None and self.completion_command_type is not None
 
     def to_dict(self) -> dict[str, str | None]:
         """Return the canonical persistence representation of this obligation."""
@@ -85,6 +98,8 @@ class ConfigurationReviewRecord:
             "disposition_kind": self.disposition_kind,
             "reason": self.reason,
             "workflow": self.workflow,
+            "completion_command_id": self.completion_command_id,
+            "completion_command_type": self.completion_command_type,
         }
 
     @classmethod
@@ -93,7 +108,11 @@ class ConfigurationReviewRecord:
             raise TypeError("Configuration review record must be an object.")
         if value.get("project_id") != project_id:
             raise ValueError("Configuration review record belongs to a different project.")
-        allowed = {"project_id", "equipment_id", "equipment_type", "field_name", "disposition_kind", "reason", "workflow"}
+        allowed = {
+            "project_id", "equipment_id", "equipment_type", "field_name",
+            "disposition_kind", "reason", "workflow",
+            "completion_command_id", "completion_command_type",
+        }
         unknown = set(value) - allowed
         if unknown:
             raise ValueError("Unknown configuration review record fields: " + ", ".join(sorted(unknown)))
@@ -105,6 +124,8 @@ class ConfigurationReviewRecord:
             disposition_kind=value["disposition_kind"],
             reason=value["reason"],
             workflow=value.get("workflow"),
+            completion_command_id=value.get("completion_command_id"),
+            completion_command_type=value.get("completion_command_type"),
         )
 
 
