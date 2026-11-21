@@ -93,6 +93,8 @@ class ConfigurationReviewReadModel:
     disposition_kind: str
     reason: str
     workflow: str | None = None
+    completion_command_id: str | None = None
+    completion_command_type: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("field_name", "disposition_kind", "reason"):
@@ -104,6 +106,17 @@ class ConfigurationReviewReadModel:
             if not isinstance(self.workflow, str) or not self.workflow.strip():
                 raise ValueError("ConfigurationReviewReadModel.workflow must be non-empty or None")
             object.__setattr__(self, "workflow", self.workflow.strip())
+        completion_values = (self.completion_command_id, self.completion_command_type)
+        if any(value is not None for value in completion_values):
+            if any(not isinstance(value, str) or not value.strip() for value in completion_values):
+                raise ValueError("Configuration completion provenance requires both command identity and type.")
+            object.__setattr__(self, "completion_command_id", self.completion_command_id.strip())
+            object.__setattr__(self, "completion_command_type", self.completion_command_type.strip())
+
+    @property
+    def completed(self) -> bool:
+        """Return whether the Application recorded owning-workflow completion evidence."""
+        return self.completion_command_id is not None and self.completion_command_type is not None
 
 
 @dataclass(frozen=True, slots=True)
