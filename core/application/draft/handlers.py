@@ -484,6 +484,7 @@ class CommitNetworkHandler:
                 parameter_contract=canonical_contract["parameter_contract"],
                 conditional_requirements=canonical_contract["conditional_requirements"],
                 equipment_type=canonical_contract["equipment_type"],
+                command_field_dispositions=canonical_contract.get("command_field_dispositions", {}),
             )
             prepared = preparer.prepare(intent, canonical_contract=canonical_contract)
             prepared_commands.append(prepared)
@@ -496,6 +497,12 @@ class CommitNetworkHandler:
                 "y": y,
                 "presentation": dict(item.presentation),
                 "sld_node_id": f"sld-core-{core_ids[item.draft_id]}",
+                "command_field_dispositions": {
+                    field_name: dict(disposition)
+                    for field_name, disposition in canonical_contract.get(
+                        "command_field_dispositions", {}
+                    ).items()
+                },
             })
 
         # Prepare every Simple Wire command before the first Core mutation as
