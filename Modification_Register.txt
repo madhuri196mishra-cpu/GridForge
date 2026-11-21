@@ -5823,3 +5823,53 @@ Verification boundary:
   GUI, concurrency stress, rollback/undo/redo runtime, or performance profiling
   were run.
 ======================================================================
+
+
+======================================================================
+GridForge V2 — Preserve canonical command-field dispositions at Draft→Core commit (Issue #32)
+Date: 2026-11-21
+Repository: SubhenduMishra29/GridForge
+Implementation branch: contribute/issue-32-commit-disposition-handoff-root-main
+Tracking: SubhenduMishra29/GridForge#994; madhuri196mishra-cpu/GridForge#32
+
+Finding:
+- The authoritative commit path validates serialized DraftEquipment
+  command_field_dispositions against the trusted canonical CreationDefinition.
+- However, CreationCommitIntent and the created_elements transaction result
+  did not retain or expose that classification. A subsequent Application-owned
+  lifecycle aggregate therefore could not consume the trusted per-field
+  disposition after the draft had been committed.
+
+Correction:
+- CreationCommitIntent now accepts an optional immutable snapshot of
+  command_field_dispositions. Nested disposition mappings are frozen as well.
+- CommitNetworkHandler supplies the trusted canonical CreationDefinition
+  dispositions, not draft-authored metadata.
+- canonicalize_creation_intent validates any supplied disposition snapshot
+  against the trusted canonical contract and reconstructs the final intent
+  from that contract.
+- Each created_elements result record carries a detached plain-data copy of
+  the same canonical disposition mapping for downstream Application
+  transaction participants.
+- No command payload, Core equipment model, persistence schema, or UI
+  authority was added. Empty legacy draft metadata remains compatible with
+  the existing canonicalization policy.
+
+Scope boundary:
+- This is the commit-result handoff only. It does not yet create durable
+  project-owned pending/resolved/not-applicable records, implement
+  workflow-specific completion evidence, project committed read models,
+  or enforce study-specific applicability.
+- Issue #994 / implementation issue #32 remains OPEN.
+
+Reconciliation:
+- Contribution branch was created from authoritative root main at
+  f3e63707c46541181d89ccac5a7ccc7bc0c5c182.
+- Only the existing Application creation/commit paths and this append-only
+  register entry are changed. No fork-only project schema migration or
+  unrelated implementation commits are included.
+
+Verification boundary:
+- Static source inspection and GitHub fetch-back only.
+- No tests, CI, imports, startup, GUI, or runtime experiments were run.
+======================================================================
