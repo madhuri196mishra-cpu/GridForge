@@ -3414,3 +3414,12 @@ Verification:
 - No tests, CI, startup, GUI, or runtime experiments were run.
 - Upstream write access remains blocked by GitHub HTTP 403; no upstream change
   or synchronization is claimed.
+
+
+## 2026-11-21 — Record field-specific Grid operating-point completion evidence (Issue #32)
+
+- Extended the existing Application pre-commit completion coordinator with an exact `model.update_grid` contract owned by `Grid operating-point editor / UpdateGridCommand`.
+- Completion is limited to `voltage_pu`, `angle_deg`, `p_mw`, and `q_mvar`; each field must be explicitly supplied, the command's `grid_id` must match the returned Core Grid identity, and the transaction-visible Grid field must equal the requested value.
+- Completion evidence remains attached to the existing Application-owned review record and is journaled through the same transaction undo snapshot. No Core model, command payload, persistence schema, or parallel workflow registry was added.
+- Grounding impedance and sequence-impedance obligations remain pending; their complex-valued/grouped replacement and clearing semantics need a distinct evidence contract. Grid lifecycle state is also not inferred from generic update success.
+- Static source inspection only; no tests, CI, startup, GUI, or runtime experiments were run. Upstream write/synchronization remains blocked and is not claimed.
