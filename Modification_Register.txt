@@ -3360,3 +3360,57 @@ Verification:
   static inspection. No tests, CI, GUI, startup, or runtime experiments were run.
 - Upstream write access remains blocked by GitHub HTTP 403; no upstream
   synchronization is claimed.
+
+
+======================================================================
+GridForge V2 — Record field-specific Bus operating-point completion evidence (Issue #32)
+Date: 2026-11-21
+Implementation: madhuri196mishra-cpu/GridForge
+Branch: fix/issue-32-draft-configuration-review
+
+Finding:
+- The Application-owned configuration review register retained canonical
+  pending obligations, but had no durable completion provenance. A generic
+  successful update could not safely complete an obligation because update
+  commands span multiple engineering fields and workflow categories.
+
+Correction:
+- Extended ConfigurationReviewRecord with optional completion command identity
+  and command type. The evidence pair is validated as all-or-none, persisted
+  with each record, and remains backward-compatible with schema-7 records that
+  do not contain the optional fields.
+- Exposed the evidence and a derived completed status in the immutable
+  ConfigurationReviewReadModel. The Application continues to own the register;
+  Core models and Core read services remain unaware of workflow obligations.
+- Added the first deliberately narrow completion contract: only
+  model.update_bus can complete Bus operating_point obligations whose canonical
+  owner is exactly "Bus operating-point editor / UpdateBusCommand".
+- A field is marked complete only when that exact command explicitly supplies
+  voltage_pu or angle_deg and the transaction-visible Core Bus returned by the
+  successful handler has the same identity and reflects the requested value.
+  Other Bus fields, other equipment types, and all other disposition/workflow
+  categories remain pending until their owning workflow contracts are defined.
+- Completion replacement records the exact prior register snapshot in the
+  same command transaction. Failed pre-commit rollback restores the pending
+  state; command undo restores it; redo re-executes the owning command and
+  re-establishes completion evidence through the normal Application path.
+- No completion is inferred from constructor defaults, non-null Core values,
+  generic command success, or UI/read-model state.
+
+Boundary / remaining work:
+- This is the first field-specific completion slice, not full Issue #32 closure.
+  Exact owning-workflow contracts remain to be implemented for Grid, Generator,
+  Transformer, line/cable, switching equipment, measurement association,
+  protection/control, and remaining canonical dispositions.
+- Study-specific applicability and completion evidence requirements remain
+  open. Issue #32 must remain open.
+- PR #224 remains open; PR #19 is untouched.
+
+Verification:
+- Re-fetched modified source files and statically inspected record validation,
+  backward-compatible persistence representation, read-model projection,
+  exact command/workflow/field matching, transaction undo registration, and
+  the pre-commit invocation point.
+- No tests, CI, startup, GUI, or runtime experiments were run.
+- Upstream write access remains blocked by GitHub HTTP 403; no upstream change
+  or synchronization is claimed.
