@@ -347,6 +347,7 @@ class CreationCommitIntent:
     parameter_contract: tuple[Mapping[str, Any], ...] = ()
     conditional_requirements: tuple[Mapping[str, Any], ...] = ()
     equipment_type: str = ""
+    command_field_dispositions: Mapping[str, Mapping[str, str]] | None = None
 
     def __post_init__(self) -> None:
         if not all(isinstance(v, str) and v.strip() for v in (self.command_type, self.id_field, self.object_id)):
@@ -361,6 +362,15 @@ class CreationCommitIntent:
         object.__setattr__(self, "endpoints", MappingProxyType(dict(self.endpoints)))
         object.__setattr__(self, "parameter_contract", tuple(MappingProxyType(dict(x)) for x in self.parameter_contract))
         object.__setattr__(self, "conditional_requirements", tuple(MappingProxyType(dict(x)) for x in self.conditional_requirements))
+        if self.command_field_dispositions is not None:
+            object.__setattr__(
+                self,
+                "command_field_dispositions",
+                MappingProxyType({
+                    str(field_name): MappingProxyType(dict(disposition))
+                    for field_name, disposition in self.command_field_dispositions.items()
+                }),
+            )
         if self.position is not None:
             object.__setattr__(self, "position", (float(self.position[0]), float(self.position[1])))
 
@@ -419,6 +429,7 @@ def canonicalize_creation_intent(intent: "CreationCommitIntent", canonical_contr
         parameter_contract=intent.parameter_contract,
         conditional_requirements=intent.conditional_requirements,
         canonical_contract=canonical_contract,
+        command_field_dispositions=intent.command_field_dispositions,
     )
     return CreationCommitIntent(
         command_type=canonical_contract["command_type"],
@@ -432,6 +443,7 @@ def canonicalize_creation_intent(intent: "CreationCommitIntent", canonical_contr
         parameter_contract=canonical_contract["parameter_contract"],
         conditional_requirements=canonical_contract["conditional_requirements"],
         equipment_type=canonical_contract["equipment_type"],
+        command_field_dispositions=canonical_contract.get("command_field_dispositions", {}),
     )
 
 
