@@ -6392,3 +6392,45 @@ Verification boundary:
 - Static source inspection and fetch-back review only. No tests/CI, Python
   syntax/import execution, GUI or runtime experiments performed.
 ======================================================================
+
+======================================================================
+GridForge V2 — Configuration review deletion reconciliation (Issue #32)
+Date: 2026-11-24
+Repository: SubhenduMishra29/GridForge
+Implementation branch: contribute/issue-32-review-delete-reconciliation-root-main-20261124
+Tracking: SubhenduMishra29/GridForge#994; madhuri196mishra-cpu/GridForge#32
+
+Finding:
+- The Application-owned configuration-review register is persisted and
+  projected into immutable element/network read models, but canonical
+  equipment deletion did not remove the corresponding review record.
+- A stale review obligation could therefore outlive its Core equipment
+  identity, including when deletion was issued inside an SLD selection batch.
+
+Correction:
+- The Application pre-commit coordinator now recognizes canonical
+  model.delete_* commands at both direct-command and SLD selection-batch
+  boundaries.
+- It resolves the deleted equipment identity from the command's explicit
+  element_id or its single canonical *_id payload field; ambiguous or empty
+  identities fail closed.
+- Matching Application-owned review records are removed in the same command
+  transaction and a transaction undo operation restores the exact immutable
+  records when the deletion is undone.
+- Non-model commands and SimpleWire deletion remain outside this register
+  reconciliation path.
+- No Core model, persistence schema, duplicate registry, or UI authority
+  was introduced.
+
+Reconciliation:
+- Branch starts from authoritative root main commit
+  923ca983953dd6a5608da0d6f48fec6e81e055b4.
+- The durable schema-10 register and read-model projection were confirmed
+  already present in current upstream main; no duplicate implementation
+  was submitted.
+
+Verification boundary:
+- Static source inspection and GitHub fetch-back only.
+- No tests, CI, imports, startup, GUI, or runtime undo/redo experiments
+  were run.
+======================================================================
