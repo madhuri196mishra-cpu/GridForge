@@ -86,6 +86,30 @@ class EngineeringParameterReadModel:
 
 
 @dataclass(frozen=True, slots=True)
+class ConfigurationReviewReadModel:
+    """Detached read-side snapshot of one committed configuration-review obligation."""
+
+    record_id: str
+    element_id: str
+    element_type: str
+    status: str
+    field_dispositions: Mapping[str, Mapping[str, Any]]
+    completion_command_id: str | None = None
+    completion_command_type: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("record_id", "element_id", "element_type"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"ConfigurationReviewReadModel.{name} must be non-empty.")
+        if self.status not in {"pending", "resolved", "not_applicable"}:
+            raise ValueError("ConfigurationReviewReadModel.status is unsupported.")
+        if not isinstance(self.field_dispositions, Mapping):
+            raise TypeError("ConfigurationReviewReadModel.field_dispositions must be a mapping.")
+        object.__setattr__(self, "field_dispositions", _freeze(self.field_dispositions))
+
+
+@dataclass(frozen=True, slots=True)
 class ElementReadModel:
     """Stable, UI-neutral immutable snapshot of one network element."""
 
@@ -95,6 +119,7 @@ class ElementReadModel:
     connectivity_refs: tuple[str, ...]
     attributes: Mapping[str, Any]
     engineering_parameters: tuple[EngineeringParameterReadModel, ...] = ()
+    configuration_reviews: tuple[ConfigurationReviewReadModel, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.object_id, str) or not self.object_id:
@@ -118,6 +143,11 @@ class ElementReadModel:
         object.__setattr__(self, "labels", _freeze(self.labels))
         object.__setattr__(self, "attributes", _freeze(attributes))
         object.__setattr__(self, "engineering_parameters", tuple(self.engineering_parameters))
+        if not isinstance(self.configuration_reviews, tuple) or not all(
+            isinstance(item, ConfigurationReviewReadModel) for item in self.configuration_reviews
+        ):
+            raise TypeError("ElementReadModel.configuration_reviews must contain ConfigurationReviewReadModel values.")
+        object.__setattr__(self, "configuration_reviews", tuple(self.configuration_reviews))
 
 
 @dataclass(frozen=True, slots=True)
