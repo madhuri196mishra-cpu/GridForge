@@ -4360,6 +4360,49 @@ class Application:
         )
 
         command_type = command.command_type
+        deleted_element_ids: set[str] = set()
+        delete_commands = (
+            tuple(
+                child for child in selection_batch_children
+                if str(getattr(child, "command_type", "")).startswith("model.delete_")
+            )
+            if command_type == "sld.delete_selection_batch"
+            else (command,) if command_type.startswith("model.delete_") else ()
+        )
+        for delete_command in delete_commands:
+            payload = delete_command.payload
+            explicit_element_id = payload.get("element_id")
+            identity_fields = [
+                key for key in payload
+                if isinstance(key, str) and key.endswith("_id")
+                and key not in {"command_id", "correlation_id", "causation_id", "project_id"}
+            ]
+            if isinstance(explicit_element_id, str) and explicit_element_id.strip():
+                deleted_element_ids.add(explicit_element_id.strip())
+            elif len(identity_fields) == 1:
+                value = payload.get(identity_fields[0])
+                if isinstance(value, str) and value.strip():
+                    deleted_element_ids.add(value.strip())
+                else:
+                    raise ValueError(
+                        f"{delete_command.command_type} requires a non-empty canonical element identity."
+                    )
+            else:
+                raise ValueError(
+                    f"{delete_command.command_type} does not expose one unambiguous canonical element identity."
+                )
+        removed_reviews = {
+            element_id: self._configuration_reviews[element_id]
+            for element_id in deleted_element_ids
+            if element_id in self._configuration_reviews
+        }
+        if removed_reviews:
+            transaction.record_undo(
+                lambda removed=removed_reviews: self._configuration_reviews.update(removed)
+            )
+            for element_id in removed_reviews:
+                del self._configuration_reviews[element_id]
+
         if command_type == "sld.delete_selection_batch":
             if self._sld_service is not None:
                 for child in selection_batch_children:
