@@ -37,6 +37,8 @@ from core.network import Network
 from core.model.breaker import Breaker
 from core.persistence import ProjectPersistenceService, StudyResultArchive
 from core.application.instrumentation import ProjectInstrumentationCollection, validate_instrumentation_targets
+from core.model.instrument_wiring import InstrumentationWiringInventory
+from core.model.temperature_instrument import TemperatureInstrumentInventory
 from core.persistence.project_package import normalize_package_path
 from core.protection.project_configuration import ProtectionProjectConfiguration
 from core.control.configuration import ControlConfiguration
@@ -643,6 +645,8 @@ def create_application(
         protection_execution_audit_store=protection_execution_audit_store,
     )
     application.instrumentation_collection = ProjectInstrumentationCollection(initial_context.project_id)
+    application.instrumentation_wiring_inventory = InstrumentationWiringInventory()
+    application.temperature_instrument_inventory = TemperatureInstrumentInventory()
     measurement_channel_service.bind_execution_lock(application._execution_lock)
 
     def measurement_channel_is_referenced(channel_id: str) -> bool:
@@ -775,6 +779,8 @@ def create_application(
         previous_draft = application.draft_network
         previous_study_cases = dict(application._study_cases)
         previous_instrumentation_collection = application.instrumentation_collection
+        previous_instrumentation_wiring_inventory = application.instrumentation_wiring_inventory
+        previous_temperature_instrument_inventory = application.temperature_instrument_inventory
 
         def restore_control_runtime() -> None:
             if not previous_control_active:
@@ -802,6 +808,8 @@ def create_application(
                 application.set_draft_network(previous_draft)
             application._study_cases = dict(previous_study_cases)
             application.instrumentation_collection = previous_instrumentation_collection
+            application.instrumentation_wiring_inventory = previous_instrumentation_wiring_inventory
+            application.temperature_instrument_inventory = previous_temperature_instrument_inventory
             dynamic_models.replace(previous_dynamic_models)
             restore_control_runtime()
 
@@ -816,6 +824,16 @@ def create_application(
                 else ProjectInstrumentationCollection(context.project_id)
                 if context is not None
                 else None
+            )
+            candidate_instrumentation_wiring = (
+                loaded.instrumentation_wiring
+                if context is not None and loaded is not None and loaded.instrumentation_wiring is not None
+                else InstrumentationWiringInventory()
+            )
+            candidate_temperature_instruments = (
+                loaded.temperature_instruments
+                if context is not None and loaded is not None and loaded.temperature_instruments is not None
+                else TemperatureInstrumentInventory()
             )
             measurement_channel_service.activate(
                 context,
@@ -836,8 +854,12 @@ def create_application(
                 application.set_draft_network(DraftNetwork.empty(context.project_id if context is not None else "closed-project", generation))
                 application._study_cases = {}
                 application.instrumentation_collection = None
+                application.instrumentation_wiring_inventory = InstrumentationWiringInventory()
+                application.temperature_instrument_inventory = TemperatureInstrumentInventory()
             else:
                 application.instrumentation_collection = candidate_instrumentation
+                application.instrumentation_wiring_inventory = candidate_instrumentation_wiring
+                application.temperature_instrument_inventory = candidate_temperature_instruments
                 configuration = (
                     loaded.protection_configuration
                     if loaded is not None and loaded.protection_configuration is not None
@@ -1068,6 +1090,8 @@ def create_application(
             presentation_collection=presentation_collection,
             study_cases=application.study_cases,
             instrumentation=application.instrumentation_collection,
+            instrumentation_wiring=application.instrumentation_wiring_inventory,
+            temperature_instruments=application.temperature_instrument_inventory,
             protection_presentation=(                application.protection_presentation.to_dict()
                 if callable(getattr(getattr(application, "protection_presentation", None), "to_dict", None))
                 else getattr(application, "protection_presentation", None)

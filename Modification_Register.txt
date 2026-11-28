@@ -3404,4 +3404,33 @@ Verification:
 - Static source inspection and fetch-back only; no tests, imports, runtime,
   GUI, startup, or CI were executed.
 ======================================================================
+======================================================================
+GridForge V2 — Application activation and rollback for instrumentation inventories
+Date: 2026-11-28
+Repository: madhuri196mishra-cpu/GridForge
+Branch: feature/application-instrumentation-inventory-activation-2026-11-28
+Base: 474ccbf9d342033a68d7c72b83830a57bcc3019e
+
+Correction:
+- Added Application composition-root ownership for the immutable instrumentation
+  wiring and temperature inventories.
+- Project activation selects the candidate inventories from LoadedProject,
+  with empty canonical inventories for legacy/unspecified payloads.
+- Closed-project activation clears both inventories.
+- Project-state rollback restores the exact previous inventory references.
+- Project save now passes both active inventories to ProjectPersistenceService,
+  completing the bootstrap-to-.gridforge persistence path.
+
+Ownership and scope:
+- Existing ProjectInstrumentationCollection and MeasurementChannelService
+  remain unchanged and authoritative for physical sources and channels.
+- The new inventories are project-scoped immutable state only at this stage;
+  this change does not yet add mutation commands/services, receiver compatibility
+  checks, cross-inventory physical continuity validation, or channel provisioning.
+- No physical cable routes are inferred.
+
+Verification:
+- Static source fetch-back only. No tests, imports, runtime, GUI, startup, or
+  CI were executed.
+======================================================================
 
