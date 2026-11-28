@@ -3294,3 +3294,27 @@ this follow-up. The review establishes the safe ownership boundary and the
 required integration order; implementation must proceed through focused
 Application and persistence changes rather than copying root files wholesale.
 ----------------------------------------------------------------------
+
+
+======================================================================
+GridForge V2 — Root-main startup splash display-fit correction
+Date: 2026-11-28
+Repository: madhuri196mishra-cpu/GridForge
+Branch: sync/splash-screen-fit-root-main-2026-11-28
+Upstream source: SubhenduMishra29/GridForge@6e0e905f40689919ecd0a10fea0c5a3f5d373eec
+
+Correction:
+- Ported the upstream startup splash sizing correction to ui/splash_screen.py.
+- The splash now checks the primary screen, falls back to the first available
+  screen, and preserves the original pixmap when display geometry is unavailable.
+- Oversized artwork is scaled within 82% of available screen width and 78% of
+  available screen height, preserving aspect ratio with smooth transformation.
+- Qt access remains through ui.core.qt; no new UI or display authority added.
+
+Scope and verification:
+- Only ui/splash_screen.py was changed in this source correction.
+- Source compared against upstream main and fetched back from the implementation
+  branch. Static inspection only; no GUI, startup, runtime or test execution.
+- This focused port is independent of the still-unresolved broad synchronization
+  PR #225 and does not claim full repository synchronization.
+======================================================================
