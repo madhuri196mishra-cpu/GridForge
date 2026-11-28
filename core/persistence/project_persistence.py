@@ -33,6 +33,10 @@ from core.control.configuration import ControlConfiguration
 from core.network import Network
 from core.protection.project_configuration import ProtectionProjectConfiguration, ProtectionProjectConfigurationSnapshot
 from core.application.services.validation_service import ValidationService, ValidationSeverity
+from core.model.instrument_wiring import InstrumentationWiringInventory
+from core.model.temperature_instrument import TemperatureInstrumentInventory
+from .instrument_wiring_serializer import serialize_instrumentation_wiring, deserialize_instrumentation_wiring
+from .temperature_instrument_serializer import serialize_temperature_instruments, deserialize_temperature_instruments
 
 from .network_serializer import deserialize_network, serialize_network
 from .migration import ProjectPersistenceMigration, ProjectMigrationError, SLDMigrationError, validate_canonical_sld
@@ -67,6 +71,8 @@ class LoadedProject:
     control_signal_mapping: ControlSignalMapping | None = None
     study_cases: tuple[StudyCaseDefinition, ...] = ()
     instrumentation: ProjectInstrumentationCollection | None = None
+    instrumentation_wiring: InstrumentationWiringInventory | None = None
+    temperature_instruments: TemperatureInstrumentInventory | None = None
 
 
 class ProjectPersistenceError(RuntimeError):
@@ -142,6 +148,17 @@ class ProjectPersistenceService:
             )
         except (TypeError, ValueError, KeyError) as exc:
             raise ProjectPersistenceError(f"Invalid project instrumentation collection: {exc}") from exc
+        try:
+            instrumentation_wiring = deserialize_instrumentation_wiring(
+                project.get("instrumentation_wiring")
+            )
+            temperature_instruments = deserialize_temperature_instruments(
+                project.get("temperature_instruments")
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProjectPersistenceError(
+                f"Invalid project instrumentation wiring/temperature inventory: {exc}"
+            ) from exc
         document_ids = tuple(
             str(item.get("document_id", "")).strip()
             for item in presentation_collection.get("documents", ())
@@ -229,6 +246,8 @@ class ProjectPersistenceService:
             protection_presentation=protection_presentation,
             study_cases=study_cases,
             instrumentation=instrumentation,
+            instrumentation_wiring=instrumentation_wiring,
+            temperature_instruments=temperature_instruments,
         )
 
     def save(self, context: ProjectContext, network: Network,
@@ -244,7 +263,9 @@ class ProjectPersistenceService:
              protection_presentation: Mapping[str, Any] | None = None,
              presentation_collection: Mapping[str, Any] | None = None,
              study_cases: Sequence[StudyCaseDefinition] = (),
-             instrumentation: ProjectInstrumentationCollection | None = None) -> None:
+             instrumentation: ProjectInstrumentationCollection | None = None,
+             instrumentation_wiring: InstrumentationWiringInventory | None = None,
+             temperature_instruments: TemperatureInstrumentInventory | None = None) -> None:
         if path is None:
             path = presentation
             presentation = None
@@ -395,6 +416,12 @@ class ProjectPersistenceService:
             "measurement": {"channels": [dict(item) for item in measurement_definitions]},
             "study_cases": [self._serialize_study_case(item) for item in study_cases],
             "instrumentation": instrumentation.to_mapping(),
+            "instrumentation_wiring": serialize_instrumentation_wiring(
+                instrumentation_wiring or InstrumentationWiringInventory()
+            ),
+            "temperature_instruments": serialize_temperature_instruments(
+                temperature_instruments or TemperatureInstrumentInventory()
+            ),
         }
         if protection_snapshot is not None:
             project["protection"] = protection_snapshot.to_dict()
@@ -740,6 +767,7 @@ class ProjectPersistenceService:
             "schema", "project", "network", "presentations", "dynamic_models",
             "measurement", "control", "control_signal_mapping", "protection", "protection_presentation",
             "draft_network", "draft_networks", "study_cases", "instrumentation",
+            "instrumentation_wiring", "temperature_instruments",
         }
         unknown = sorted(set(project) - allowed)
         if unknown:
