@@ -72,11 +72,20 @@ from .instrument_wiring import (
     WiringTagSeries, WiringTagPolicy, InstrumentationWiringInventory,
 )
 
+from .temperature_instrument import (
+    TemperatureService, TemperatureSensorTechnology, TemperatureInputMode,
+    TemperatureConsumerKind, TemperatureThermocoupleCableClass,
+    TemperatureThermocoupleCableSpec, TemperatureReceiverInputKind,
+    TemperatureReceiverInput, TemperatureTerminalMapping, TemperatureInstrument,
+    TemperatureInterfaceDevice, TemperatureAlarmTripBinding,
+    TemperatureInstrumentInventory,
+)
+
 from .endpoint_reference import EndpointReference, EndpointReferenceKind, EquipmentType
 
 __all__ = (
     "ElectricalObject", "Terminal", "Injection", "PhysicalConductorPath", "PhysicalConductorConstruction", "TransformerWindingConductorConstruction", "TransformerPhysicalConductorConstruction", "Bus", "Branch", "ConductorRole", "ConductorMaterial", "PhysicalConductor", "BranchConductorSystem", "Line", "Cable", "ImpedanceBasis", "TransformerCoreConstruction", "TransformerWindingConnection", "TransformerWinding", "TransformerVectorGroupConnection", "TransformerWindingPolarity", "ZeroSequenceTestEnergizedWinding", "ZeroSequenceTestOtherWindingCondition", "TransformerVectorGroupConfiguration", "TransformerZeroSequenceTestConfiguration", "TransformerZeroSequenceTwoWindingTestData", "TransformerZeroSequenceMultiportEvidence", "TransformerDeltaLoopState", "transformer_multiport_fingerprint", "transformer_delta_loop_fingerprint", "validate_zero_sequence_test_applicability", "Transformer", "Switch",
     "Breaker", "Disconnector", "Fuse", "Load", "Generator", "SynchronousMachine", "SyncMachine", "Motor",
     "Shunt", "Capacitor", "Reactor", "Solar", "Battery", "Grid", "CTPolarity", "CurrentTransformer", "PT",
-    "PotentialTransformer", "CVT", "Relay", "WiringTerminalReference", "WiringConductorRole", "SignalKind", "CarrierKind", "CableAssembly", "CableCore", "PanelWire", "SignalDefinition", "SignalCarrierBinding", "SignalEndpointKind", "SignalEndpointReference", "SignalEndpointBinding", "PhysicalConnectionHop", "TerminalAccessoryKind", "TerminalAccessoryState", "TerminalBlock", "TerminalPoint", "TerminalAccessory", "WiringTagSeries", "WiringTagPolicy", "InstrumentationWiringInventory", "EndpointReference", "EndpointReferenceKind", "EquipmentType",
+    "PotentialTransformer", "CVT", "Relay", "WiringTerminalReference", "WiringConductorRole", "SignalKind", "CarrierKind", "CableAssembly", "CableCore", "PanelWire", "SignalDefinition", "SignalCarrierBinding", "SignalEndpointKind", "SignalEndpointReference", "SignalEndpointBinding", "PhysicalConnectionHop", "TerminalAccessoryKind", "TerminalAccessoryState", "TerminalBlock", "TerminalPoint", "TerminalAccessory", "WiringTagSeries", "WiringTagPolicy", "InstrumentationWiringInventory", "TemperatureService", "TemperatureSensorTechnology", "TemperatureInputMode", "TemperatureConsumerKind", "TemperatureThermocoupleCableClass", "TemperatureThermocoupleCableSpec", "TemperatureReceiverInputKind", "TemperatureReceiverInput", "TemperatureTerminalMapping", "TemperatureInstrument", "TemperatureInterfaceDevice", "TemperatureAlarmTripBinding", "TemperatureInstrumentInventory", "EndpointReference", "EndpointReferenceKind", "EquipmentType",
 )
