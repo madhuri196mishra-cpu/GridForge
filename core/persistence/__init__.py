@@ -34,6 +34,12 @@ from .instrument_wiring_serializer import (
     serialize_instrumentation_wiring,
     deserialize_instrumentation_wiring,
 )
+from .temperature_instrument_serializer import (
+    TEMPERATURE_INSTRUMENT_SCHEMA_VERSION,
+    TemperatureInstrumentSerializationError,
+    serialize_temperature_instruments,
+    deserialize_temperature_instruments,
+)
 from .study_result_archive import (
     ARCHIVE_FORMAT,
     ARCHIVE_SCHEMA_VERSION,
@@ -71,6 +77,10 @@ __all__ = [
     "InstrumentationWiringSerializationError",
     "serialize_instrumentation_wiring",
     "deserialize_instrumentation_wiring",
+    "TEMPERATURE_INSTRUMENT_SCHEMA_VERSION",
+    "TemperatureInstrumentSerializationError",
+    "serialize_temperature_instruments",
+    "deserialize_temperature_instruments",
     "ARCHIVE_FORMAT",
     "ARCHIVE_SCHEMA_VERSION",
     "ArchivedStudyResult",
