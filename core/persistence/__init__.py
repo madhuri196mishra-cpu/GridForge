@@ -28,6 +28,12 @@ from .project_package import (
     normalize_package_path,
 )
 from .project_persistence import ProjectPersistenceError, ProjectPersistenceService
+from .instrument_wiring_serializer import (
+    WIRING_SCHEMA_VERSION,
+    InstrumentationWiringSerializationError,
+    serialize_instrumentation_wiring,
+    deserialize_instrumentation_wiring,
+)
 from .study_result_archive import (
     ARCHIVE_FORMAT,
     ARCHIVE_SCHEMA_VERSION,
@@ -61,6 +67,10 @@ __all__ = [
     "normalize_package_path",
     "ProjectPersistenceError",
     "ProjectPersistenceService",
+    "WIRING_SCHEMA_VERSION",
+    "InstrumentationWiringSerializationError",
+    "serialize_instrumentation_wiring",
+    "deserialize_instrumentation_wiring",
     "ARCHIVE_FORMAT",
     "ARCHIVE_SCHEMA_VERSION",
     "ArchivedStudyResult",
