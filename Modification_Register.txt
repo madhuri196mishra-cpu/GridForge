@@ -3375,4 +3375,33 @@ Verification:
 - Static source fetch-back and export/register inspection only.
 - No tests, imports, runtime, GUI, startup, or CI were executed.
 ======================================================================
+======================================================================
+GridForge V2 — Backward-compatible project persistence for instrumentation
+Date: 2026-11-28
+Repository: madhuri196mishra-cpu/GridForge
+Branch: feature/project-instrumentation-inventory-persistence-2026-11-28
+Base: dfe1bb97d61055fedfdf1d87846e4a749996fb95
+
+Correction:
+- Extended LoadedProject and ProjectPersistenceService.save/load with separate
+  instrumentation_wiring and temperature_instruments inventory fields.
+- Project save writes each inventory through its own versioned canonical codec.
+- Project load reconstructs both inventories and wraps malformed payload errors
+  as ProjectPersistenceError.
+- Canonical project field validation now explicitly allows these two fields.
+- Legacy packages without either field load as empty inventories through the
+  codecs' documented None behavior; existing project schema and physical
+  ProjectInstrumentationCollection payload remain unchanged.
+
+Ownership:
+- Physical measurement sources/installations remain in instrumentation.
+- Measurement channel definitions remain in measurement.channels.
+- Wiring and temperature records are independent sibling inventories.
+- No duplicate channel registry, automatic channel provisioning, physical
+  route inference, or Application service activation is introduced here.
+
+Verification:
+- Static source inspection and fetch-back only; no tests, imports, runtime,
+  GUI, startup, or CI were executed.
+======================================================================
 
