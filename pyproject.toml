@@ -18,6 +18,9 @@ dependencies = [
 dev = [
   "pytest>=8,<10",
 ]
+cad-export = [
+  "ezdxf>=1.4,<2",
+]
 
 [tool.setuptools]
 py-modules = ["main"]

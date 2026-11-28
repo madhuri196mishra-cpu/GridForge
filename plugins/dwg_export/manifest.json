@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "plugin_id": "gridforge.plugin.dwg_export",
+  "name": "DWG Export",
+  "version": "1.0.0",
+  "api_version": "V2.0",
+  "description": "Optional engineering plugin for validated backend-neutral drawing plans and ODA-backed DWG export.",
+  "author": "GridForge",
+  "entry_point": "plugin.DWGExportPlugin",
+  "capabilities": [
+    "cad_export",
+    "dwg_export",
+    "drawing_plan"
+  ],
+  "runtime": {
+    "python": ">=3.12,<3.13",
+    "optional_python_extra": "dwg-export",
+    "external_executable": "ODA File Converter (explicitly configured)"
+  },
+  "activation": {
+    "host": "core.plugin_sdk.EngineeringPluginHost",
+    "configuration_service": "dwg_export_configuration",
+    "automatic": false
+  }
+}

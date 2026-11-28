@@ -1,0 +1,212 @@
+"""Detached, renderer-independent SLD export snapshot contracts.
+
+These DTOs carry persisted presentation and engineering references across the
+UI/Application boundary. They are not an electrical authority.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import math
+from types import MappingProxyType
+from typing import Any, Mapping
+from uuid import uuid4
+
+
+def _finite_number(value: Any, name: str) -> float:
+    """Normalize a real numeric value without accepting bool or coercible strings."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{name} must be a real number")
+    normalized = float(value)
+    if not math.isfinite(normalized):
+        raise ValueError(f"{name} must be finite")
+    return normalized
+
+
+def _freeze(value: Any, path: str) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{path} must contain only finite numbers")
+        return value
+    if isinstance(value, Mapping):
+        result = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key:
+                raise TypeError(f"{path} keys must be non-empty strings")
+            result[key] = _freeze(item, f"{path}.{key}")
+        return MappingProxyType(result)
+    if isinstance(value, (tuple, list)):
+        return tuple(_freeze(item, f"{path}[{index}]") for index, item in enumerate(value))
+    raise TypeError(f"{path} contains unsupported value {type(value).__name__}")
+
+
+@dataclass(frozen=True, slots=True)
+class SLDSymbolPlacementSnapshot:
+    symbol_instance_id: str
+    symbol_definition_id: str
+    representation_id: str
+    visible: bool
+    scale: float
+    rotation_degrees: float
+    properties: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in ("symbol_instance_id", "symbol_definition_id", "representation_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value.strip())
+        if not isinstance(self.visible, bool):
+            raise TypeError("visible must be boolean")
+        for name in ("scale", "rotation_degrees"):
+            value = _finite_number(getattr(self, name), name)
+            if name == "scale" and value <= 0:
+                raise ValueError(f"{name} is outside its valid numeric range")
+            object.__setattr__(self, name, value)
+        object.__setattr__(self, "properties", _freeze(self.properties, "symbol.properties"))
+
+
+@dataclass(frozen=True, slots=True)
+class SLDNodeExportSnapshot:
+    node_id: str
+    equipment_id: str | None
+    x: float
+    y: float
+    properties: Mapping[str, Any]
+    symbol: SLDSymbolPlacementSnapshot | None
+    engineering_attributes: Mapping[str, Any] = field(default_factory=dict)
+    engineering_units: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.node_id, str) or not self.node_id.strip():
+            raise ValueError("node_id must be non-empty")
+        object.__setattr__(self, "node_id", self.node_id.strip())
+        if self.equipment_id is not None:
+            if not isinstance(self.equipment_id, str) or not self.equipment_id.strip():
+                raise ValueError("equipment_id must be non-empty when supplied")
+            object.__setattr__(self, "equipment_id", self.equipment_id.strip())
+        object.__setattr__(self, "x", _finite_number(self.x, "node.x"))
+        object.__setattr__(self, "y", _finite_number(self.y, "node.y"))
+        object.__setattr__(self, "properties", _freeze(self.properties, "node.properties"))
+        object.__setattr__(self, "engineering_attributes", _freeze(self.engineering_attributes, "node.engineering_attributes"))
+        object.__setattr__(self, "engineering_units", _freeze(self.engineering_units, "node.engineering_units"))
+        if self.symbol is not None and not isinstance(self.symbol, SLDSymbolPlacementSnapshot):
+            raise TypeError("symbol must be SLDSymbolPlacementSnapshot or None")
+
+
+@dataclass(frozen=True, slots=True)
+class SLDConnectionExportSnapshot:
+    connection_id: str
+    source_node_id: str
+    target_node_id: str
+    source_endpoint: Mapping[str, Any] | None
+    target_endpoint: Mapping[str, Any] | None
+    route_points: tuple[tuple[float, float], ...]
+    connection_kind: str | None
+    presentation_owner: str | None
+    projection_source: str | None
+    route_routing_mode: str = "orthogonal"
+    route_ownership: str = "auto"
+    properties: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in ("connection_id", "source_node_id", "target_node_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value.strip())
+        for name in ("source_endpoint", "target_endpoint"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, _freeze(value, name))
+        if not isinstance(self.route_routing_mode, str) or self.route_routing_mode not in {"direct", "orthogonal", "manual"}:
+            raise ValueError(f"connection {self.connection_id!r} has unsupported route routing_mode")
+        if not isinstance(self.route_ownership, str) or self.route_ownership not in {"auto", "engineer"}:
+            raise ValueError(f"connection {self.connection_id!r} has unsupported route ownership")
+        for endpoint_name, endpoint, node_id in (
+            ("source_endpoint", self.source_endpoint, self.source_node_id),
+            ("target_endpoint", self.target_endpoint, self.target_node_id),
+        ):
+            if endpoint is not None and "node_id" in endpoint and endpoint["node_id"] != node_id:
+                raise ValueError(
+                    f"connection {self.connection_id!r} {endpoint_name} node_id does not match its connection node"
+                )
+        normalized_points = []
+        for index, point in enumerate(self.route_points):
+            if not isinstance(point, (tuple, list)) or len(point) != 2:
+                raise ValueError(
+                    f"connection {self.connection_id!r} route point {index} must be 2D"
+                )
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in point):
+                raise ValueError(
+                    f"connection {self.connection_id!r} route point {index} must be numeric"
+                )
+            x, y = float(point[0]), float(point[1])
+            if not (math.isfinite(x) and math.isfinite(y)):
+                raise ValueError(f"connection {self.connection_id!r} has non-finite route geometry")
+            normalized_points.append((x, y))
+        object.__setattr__(self, "route_points", tuple(normalized_points))
+        object.__setattr__(self, "properties", _freeze(self.properties, "connection.properties"))
+
+
+@dataclass(frozen=True, slots=True)
+class SLDAnnotationExportSnapshot:
+    annotation_id: str
+    node_id: str
+    x: float
+    y: float
+    text: str
+    visible: bool
+
+    def __post_init__(self) -> None:
+        for name in ("annotation_id", "node_id", "text"):
+            if not isinstance(getattr(self, name), str):
+                raise TypeError(f"{name} must be a string")
+        if not self.annotation_id.strip() or not self.node_id.strip():
+            raise ValueError("annotation_id and node_id must be non-empty")
+        object.__setattr__(self, "x", _finite_number(self.x, "annotation.x"))
+        object.__setattr__(self, "y", _finite_number(self.y, "annotation.y"))
+        if not isinstance(self.visible, bool):
+            raise TypeError("annotation visible must be boolean")
+
+
+@dataclass(frozen=True, slots=True)
+class SLDExportSnapshot:
+    project_id: str
+    document_id: str
+    source_revision: str
+    nodes: tuple[SLDNodeExportSnapshot, ...]
+    connections: tuple[SLDConnectionExportSnapshot, ...]
+    annotations: tuple[SLDAnnotationExportSnapshot, ...] = ()
+    snapshot_id: str = field(default_factory=lambda: str(uuid4()))
+    coordinate_system: str = "sld-document-local"
+    units: str = "sld-unit"
+
+    def __post_init__(self) -> None:
+        for name in ("project_id", "document_id", "source_revision", "snapshot_id", "coordinate_system", "units"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+            object.__setattr__(self, name, value.strip())
+        nodes, connections, annotations = tuple(self.nodes), tuple(self.connections), tuple(self.annotations)
+        if any(not isinstance(item, SLDNodeExportSnapshot) for item in nodes):
+            raise TypeError("nodes must contain SLDNodeExportSnapshot values")
+        if any(not isinstance(item, SLDConnectionExportSnapshot) for item in connections):
+            raise TypeError("connections must contain SLDConnectionExportSnapshot values")
+        if any(not isinstance(item, SLDAnnotationExportSnapshot) for item in annotations):
+            raise TypeError("annotations must contain SLDAnnotationExportSnapshot values")
+        if len({item.node_id for item in nodes}) != len(nodes):
+            raise ValueError("SLD snapshot contains duplicate node IDs")
+        if len({item.connection_id for item in connections}) != len(connections):
+            raise ValueError("SLD snapshot contains duplicate connection IDs")
+        object.__setattr__(self, "nodes", nodes)
+        object.__setattr__(self, "connections", connections)
+        object.__setattr__(self, "annotations", annotations)
+
+
+__all__ = [
+    "SLDSymbolPlacementSnapshot", "SLDNodeExportSnapshot",
+    "SLDConnectionExportSnapshot", "SLDAnnotationExportSnapshot",
+    "SLDExportSnapshot",
+]
