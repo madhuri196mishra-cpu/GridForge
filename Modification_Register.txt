@@ -3345,4 +3345,34 @@ Scope and verification:
 - This is a domain/codec foundation only, not a claim that project-level
   instrumentation wiring is activated or persisted in .gridforge packages.
 ======================================================================
+======================================================================
+GridForge V2 — Temperature instrument domain and persistence codec foundation
+Date: 2026-11-28
+Repository: madhuri196mishra-cpu/GridForge
+Branch: feature/temperature-instrument-domain-codec-2026-11-28
+Upstream source: SubhenduMishra29/GridForge@6e0e905f40689919ecd0a10fea0c5a3f5d373eec
+
+Correction:
+- Added the canonical service-specific BTD/OTD/WTD temperature instrument
+  records, receiver input contracts, interface-device declarations,
+  thermocouple cable specifications, and alarm/trip bindings as a Core model.
+- Added the strict schema-versioned temperature-instrument serializer and
+  deserializer as a Persistence codec.
+- Exported the model and codec through the existing package APIs.
+- Kept temperature service inventory separate from the fork's physical
+  measurement-source catalogue and MeasurementChannel registry.
+
+Scope boundary:
+- No Application service, command registration, bootstrap activation,
+  transactional rollback, receiver compatibility orchestration, project
+  package payload, migration, read model, or UI action is added here.
+- The codec is not yet connected to .gridforge project save/load. That
+  integration requires a separate compatibility review of the fork's
+  existing instrumentation payload and project activation sequence.
+- No cable routes or physical installation paths are inferred.
+
+Verification:
+- Static source fetch-back and export/register inspection only.
+- No tests, imports, runtime, GUI, startup, or CI were executed.
+======================================================================
 
