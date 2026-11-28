@@ -3318,3 +3318,31 @@ Scope and verification:
 - This focused port is independent of the still-unresolved broad synchronization
   PR #225 and does not claim full repository synchronization.
 ======================================================================
+======================================================================
+GridForge V2 — Instrumentation wiring domain and persistence codec foundation
+Date: 2026-11-28
+Repository: madhuri196mishra-cpu/GridForge
+Branch: feature/instrumentation-wiring-domain-codec-2026-11-28
+Upstream source: SubhenduMishra29/GridForge@6e0e905f40689919ecd0a10fea0c5a3f5d373eec
+
+Correction:
+- Added the upstream immutable instrumentation-wiring domain records as a
+  separate Core model module, preserving separation from power-network Cable
+  and MeasurementChannel ownership.
+- Added the versioned lossless wiring-inventory serializer as a Persistence
+  codec, with public model and persistence exports.
+- No Application service, project activation, project package payload, schema
+  migration, command registry, or UI wiring was enabled in this foundation
+  change. Those remain separate integration work and must preserve the fork's
+  ProjectInstrumentationCollection and MeasurementSourceReference contracts.
+
+Scope and verification:
+- Added core/model/instrument_wiring.py and
+  core/persistence/instrument_wiring_serializer.py from the stated upstream
+  revision; updated the two package export modules.
+- Static source inspection only. No tests, runtime, GUI, startup, or imports
+  were executed.
+- This is a domain/codec foundation only, not a claim that project-level
+  instrumentation wiring is activated or persisted in .gridforge packages.
+======================================================================
+
